@@ -38,10 +38,15 @@ export type ProductBuyerRow = {
   discountAmount:      number; // potongan voucher pada baris INI (invoice_items.discountAmount)
   voucherCode:         string | null; // kode voucher invoice ini (invoices.voucherCode), null = tanpa voucher
   shippingLabel:       string;
-  // Alamat lengkap+kodepos — snapshot checkout (shippingAddress+shippingCityName, sudah satu
-  // string lengkap) DIUTAMAKAN, fallback ke alamat member tersimpan HANYA kalau snapshot kosong
-  // total (docs/arsitektur-product.md § "Susulan — Alamat Lengkap..."). "" kalau keduanya kosong.
-  fullAddress:         string;
+  // Dua kolom terpisah (lebih presisi — user eksplisit minta dipisah 2026-09-17, bukan digabung
+  // dengan fallback tersembunyi): "Alamat Checkout" = snapshot apa adanya dari transaksi ini
+  // (invoices.shippingAddress+shippingCityName, sudah satu string+kodepos), "Alamat User" =
+  // alamat tersimpan di profil member (public.addresses via homeAddressId) — HANYA terisi kalau
+  // link memberId invoice ini terbukti lewat jalur HP terverifikasi (§ anti-abuse di bawah).
+  // Keduanya "" kalau tidak ada/tidak lolos syarat — admin lihat dua-duanya, bukan satu nilai
+  // gabungan yang menyembunyikan sumbernya.
+  checkoutAddress:     string;
+  memberAddress:       string;
   shippingCost:        number; // 0 untuk pickup — SELALU punya nilai pasti, beda dari totalDibayarkan
   paymentStatusLabel:  "Lunas" | "Sebagian" | "Belum Bayar";
   totalDibayarkan:     number | "";
@@ -140,27 +145,28 @@ export async function resolveProductBuyers(
     shippingLines.map((s) => [`${s.invoiceId}|${s.sellerType}|${s.sellerId ?? ""}`, s]),
   );
 
-  // Alamat lengkap — checkout snapshot DIUTAMAKAN. Fallback ke alamat member tersimpan HANYA
-  // untuk invoice yang shippingAddress-nya kosong total DAN punya memberId (docs/arsitektur-
-  // product.md § "Susulan — Alamat Lengkap..."). Batch via Promise.all (bukan N+1 serial) —
-  // hanya invoice yang genuinely butuh fallback yang di-query, sisanya nol query tambahan.
+  // "Alamat User" — alamat tersimpan di profil member, DIHITUNG TERPISAH dari "Alamat
+  // Checkout" (bukan fallback tersembunyi — user minta 2 kolom eksplisit 2026-09-17, lebih
+  // presisi buat admin lihat dua-duanya). Dihitung untuk SEMUA invoice yang punya memberId
+  // (bukan cuma yang shippingAddress-nya kosong), batch via Promise.all (bukan N+1 serial).
   //
-  // ANTI-ABUSE (security review 2026-09-17): invoices.memberId bisa ke-link lewat match EMAIL
-  // di resolveIdentity() (packages/db/src/helpers/resolve-identity.ts) TANPA verifikasi apa
-  // pun — beda dari match HP yang di checkoutAction WAJIB lolos gate OTP dulu
-  // (cart/actions.ts:536-551) sebelum resolveIdentity() dipanggil. Kalau fallback dipakai
-  // buta-buta dari memberId, tamu yang kebetulan/sengaja isi EMAIL milik anggota lain bisa
-  // membuat alamat rumah ASLI anggota itu ketampil ke admin toko. Fix: fallback HANYA jalan
-  // kalau nomor HP di invoice ini (customerPhone, yang benar-benar diketik saat transaksi)
-  // SAMA dengan nomor HP tersimpan milik member yang match — kalau sama, invoice ini MESTI
-  // sudah lolos gate OTP (satu-satunya jalur match-HP-lalu-checkout-sukses). Kalau beda
-  // (match aslinya lewat email), fallback di-skip, alamat tetap kosong. Limitasi yang
-  // diterima: invoice historis dari SEBELUM gate OTP dibangun (commit ed5ce17) tidak bisa
-  // dibedakan dari sini — residual risk kecil, dicatat sebagai limitasi eksplisit di dokumen.
-  const needsFallback = invoiceRows.filter((i) => !i.shippingAddress?.trim() && i.memberId);
-  const fallbackAddressMap = new Map<string, string>();
-  if (needsFallback.length > 0) {
-    const memberIds = [...new Set(needsFallback.map((i) => i.memberId as string))];
+  // ANTI-ABUSE (security review 2026-09-17, tetap berlaku meski sekarang 2 kolom terpisah):
+  // invoices.memberId bisa ke-link lewat match EMAIL di resolveIdentity() (packages/db/src/
+  // helpers/resolve-identity.ts) TANPA verifikasi apa pun — beda dari match HP yang di
+  // checkoutAction WAJIB lolos gate OTP dulu (cart/actions.ts:536-551) sebelum
+  // resolveIdentity() dipanggil. Kalau "Alamat User" ditampilkan buta-buta dari memberId,
+  // tamu yang kebetulan/sengaja isi EMAIL milik anggota lain bisa membuat alamat rumah ASLI
+  // anggota itu ketampil ke admin toko. Fix: kolom ini HANYA terisi kalau nomor HP di invoice
+  // ini (customerPhone, yang benar-benar diketik saat transaksi) SAMA dengan nomor HP
+  // tersimpan milik member yang match — kalau sama, invoice ini MESTI sudah lolos gate OTP
+  // (satu-satunya jalur match-HP-lalu-checkout-sukses). Kalau beda (match aslinya lewat
+  // email), kolom tetap kosong. Limitasi yang diterima: invoice historis dari SEBELUM gate
+  // OTP dibangun (commit ed5ce17) tidak bisa dibedakan dari sini — residual risk kecil,
+  // dicatat sebagai limitasi eksplisit di dokumen.
+  const invoicesWithMember = invoiceRows.filter((i) => i.memberId);
+  const memberAddressMap = new Map<string, string>();
+  if (invoicesWithMember.length > 0) {
+    const memberIds = [...new Set(invoicesWithMember.map((i) => i.memberId as string))];
     const memberRows = await publicDb
       .select({ id: publicMembers.id, homeAddressId: publicMembers.homeAddressId, contactId: publicMembers.contactId })
       .from(publicMembers)
@@ -177,7 +183,7 @@ export async function resolveProductBuyers(
     const contactPhoneMap = new Map(contactRows.map((c) => [c.id, c.phone]));
 
     const resolved = await Promise.all(
-      needsFallback.map(async (inv) => {
+      invoicesWithMember.map(async (inv) => {
         const member = memberMap.get(inv.memberId as string);
         if (!member?.homeAddressId) return [inv.id, ""] as const;
 
@@ -190,7 +196,7 @@ export async function resolveProductBuyers(
       }),
     );
     for (const [invoiceId, address] of resolved) {
-      if (address) fallbackAddressMap.set(invoiceId, address);
+      if (address) memberAddressMap.set(invoiceId, address);
     }
   }
 
@@ -224,7 +230,7 @@ export async function resolveProductBuyers(
     const checkoutAddress = [invoice.shippingAddress, invoice.shippingCityName]
       .filter((p): p is string => !!p?.trim())
       .join(", ");
-    const fullAddress = checkoutAddress || fallbackAddressMap.get(invoice.id) || "";
+    const memberAddress = memberAddressMap.get(invoice.id) ?? "";
 
     rows.push({
       invoiceId:          invoice.id,
@@ -239,7 +245,8 @@ export async function resolveProductBuyers(
       discountAmount:     parseFloat(String(item.discountAmount ?? "0")),
       voucherCode:        invoice.voucherCode ?? null,
       shippingLabel:      formatShippingMethod(shipping),
-      fullAddress,
+      checkoutAddress,
+      memberAddress,
       shippingCost:       shipping ? parseFloat(String(shipping.cost)) : 0,
       paymentStatusLabel,
       totalDibayarkan,

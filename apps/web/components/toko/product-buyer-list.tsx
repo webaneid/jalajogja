@@ -50,7 +50,7 @@ export function ProductBuyerList({ slug, rows }: { slug: string; rows: ProductBu
         </div>
       ) : (
         <div className="border border-border rounded-lg overflow-x-auto">
-          <table className="w-full text-sm min-w-[1080px]">
+          <table className="w-full text-sm min-w-[1280px]">
             <thead>
               <tr className="border-b border-border bg-muted/40">
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Invoice</th>
@@ -59,7 +59,8 @@ export function ProductBuyerList({ slug, rows }: { slug: string; rows: ProductBu
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Jumlah</th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Subtotal</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Pengiriman</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Alamat</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Alamat Checkout</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Alamat User</th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Ongkir</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Tanggal</th>
@@ -88,8 +89,11 @@ export function ProductBuyerList({ slug, rows }: { slug: string; rows: ProductBu
                     )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{r.shippingLabel}</td>
-                  <td className="px-4 py-3 text-muted-foreground max-w-[240px] truncate" title={r.fullAddress}>
-                    {r.fullAddress || "—"}
+                  <td className="px-4 py-3 text-muted-foreground max-w-[200px] truncate" title={r.checkoutAddress}>
+                    {r.checkoutAddress || "—"}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground max-w-[200px] truncate" title={r.memberAddress}>
+                    {r.memberAddress || "—"}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
                     {fmtRp(r.shippingCost)}

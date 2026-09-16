@@ -1400,35 +1400,45 @@ diduplikasi di sini.
 - `invoice_shipping_lines.cost` (numeric) — sudah di-`select` untuk hitung `shippingLabel`,
   cuma kolom `cost`-nya sendiri belum ikut di-`select`.
 
-**Fallback "kombinasikan dengan data member" — DIKUNCI setelah security review (2026-09-17)**:
-`invoices.memberId` (hasil `resolveIdentity()` saat checkout) dipakai untuk fallback ke alamat
-member tersimpan (`public.members.homeAddressId → public.addresses`, helper `composeAddress()`,
-`packages/db/src/helpers/resolve-checkout-contact.ts`) HANYA kalau `shippingAddress` kosong
-total — checkout snapshot SELALU diutamakan kalau ada (prinsip "snapshot saat transaksi" yang
-sudah dikunci berkali-kali di project ini).
+**Revisi 2 — dipisah jadi 2 kolom eksplisit, bukan digabung (2026-09-17)**: draft pertama
+menggabungkan checkout snapshot + fallback member jadi SATU kolom "Alamat Lengkap" (fallback
+kalau snapshot kosong). User minta lebih presisi: *"atau dibuat 2 kolom menjadi lebih presisi
+kali.. alamat user jika ada, dan alamat ketika checkout aja"* — jadi SEKARANG dua kolom
+independen, keduanya dihitung untuk SEMUA baris (bukan satu meng-override yang lain):
+- **"Alamat Checkout"** — apa adanya dari transaksi ini (`invoices.shippingAddress` +
+  `shippingCityName`, sudah satu string+kodepos, prinsip "snapshot saat transaksi" TIDAK
+  berubah).
+- **"Alamat User"** — alamat tersimpan di profil member (`public.members.homeAddressId →
+  public.addresses`, helper `composeAddress()`, `packages/db/src/helpers/resolve-checkout-
+  contact.ts`) — HANYA terisi kalau invoice ini terhubung ke member (`invoices.memberId`) DAN
+  lolos syarat anti-abuse di bawah. Dihitung independen, TIDAK peduli apakah "Alamat Checkout"
+  kosong atau tidak — admin lihat dua-duanya sekaligus.
 
-**⚠️ Temuan security review + fix — celah kebocoran alamat via match email tak terverifikasi**:
+**⚠️ Temuan security review + fix — celah kebocoran alamat via match email tak terverifikasi
+(tetap berlaku meski sekarang 2 kolom terpisah, bukan cuma soal "fallback")**:
 `resolveIdentity()` (dipanggil di `checkoutAction`) bisa me-link `invoices.memberId` lewat
 match EMAIL (`packages/db/src/helpers/resolve-identity.ts` baris 71-82) **tanpa verifikasi
 apa pun** — beda dari match HP yang WAJIB lolos gate OTP dulu (`cart/actions.ts:536-551`,
-fitur checkout OTP sesi sebelumnya) sebelum `resolveIdentity()` dipanggil. Fallback naif akan
-menampilkan alamat rumah ASLI member yang emailnya kebetulan/sengaja cocok, meski member itu
-tidak pernah transaksi di toko ini. **Fix**: fallback HANYA jalan kalau `invoices.customerPhone`
-(nomor yang benar-benar diketik di transaksi ini) SAMA PERSIS dengan nomor HP tersimpan milik
-member yang match (`public.contacts.phone` via `members.contactId`) — kesamaan ini jadi bukti
-tidak langsung bahwa link memberId invoice ini datang dari jalur HP (satu-satunya jalur yang
-lolos gate OTP untuk bisa checkout sukses), bukan dari jalur email yang tidak diverifikasi.
-Kalau beda (match aslinya lewat email) atau member tidak punya `contactId`/HP tersimpan,
-fallback di-skip, alamat tetap kosong "—". **Limitasi yang diterima**: invoice historis dari
-SEBELUM gate OTP dibangun (commit `ed5ce17`) tidak bisa dibedakan dari cek ini — residual risk
-kecil (perlu kombinasi tamu tahu HP member lain PERSIS + shippingAddress kosong + invoice lama),
-diterima demi tidak membiarkan export benar-benar kosong untuk data historis (kekhawatiran user:
-*"sebelumnya checkout itu... tidak mewajibkan alamat, jadi kalau kita export tanpa alamat dari
-data takutnya benar2 kosong alamatnya ini bahaya jg"*).
+fitur checkout OTP sesi sebelumnya) sebelum `resolveIdentity()` dipanggil. Kalau kolom "Alamat
+User" ditampilkan buta-buta dari `memberId`, tamu yang emailnya kebetulan/sengaja cocok dengan
+member lain bisa membuat alamat rumah ASLI member itu ketampil ke admin toko, meski member itu
+tidak pernah transaksi di toko ini. **Fix**: kolom "Alamat User" HANYA terisi kalau
+`invoices.customerPhone` (nomor yang benar-benar diketik di transaksi ini) SAMA PERSIS dengan
+nomor HP tersimpan milik member yang match (`public.contacts.phone` via `members.contactId`) —
+kesamaan ini jadi bukti tidak langsung bahwa link `memberId` invoice ini datang dari jalur HP
+(satu-satunya jalur yang lolos gate OTP untuk bisa checkout sukses), bukan dari jalur email
+yang tidak diverifikasi. Kalau beda (match aslinya lewat email) atau member tidak punya
+`contactId`/HP tersimpan, kolom "Alamat User" tetap kosong "—". **Limitasi yang diterima**:
+invoice historis dari SEBELUM gate OTP dibangun (commit `ed5ce17`) tidak bisa dibedakan dari
+cek ini — residual risk kecil (perlu kombinasi tamu tahu HP member lain PERSIS + invoice lama),
+diterima demi tidak membiarkan kolom ini benar-benar kosong untuk semua data historis
+(kekhawatiran user: *"sebelumnya checkout itu... tidak mewajibkan alamat, jadi kalau kita
+export tanpa alamat dari data takutnya benar2 kosong alamatnya ini bahaya jg"*).
 
 **Kolom baru** (di `ProductBuyerRow`, tabel UI, dan export Excel — ketiganya, konsisten):
-1. **"Alamat Lengkap"** — string gabungan di atas (checkout snapshot, fallback data member).
-2. **"Ongkos Kirim"** — `invoice_shipping_lines.cost`, format Rupiah, `"Rp 0"` untuk pickup
+1. **"Alamat Checkout"** — snapshot transaksi (lihat di atas).
+2. **"Alamat User"** — alamat profil member, bersyarat anti-abuse (lihat di atas).
+3. **"Ongkos Kirim"** — `invoice_shipping_lines.cost`, format Rupiah, `"Rp 0"` untuk pickup
    (bukan dikosongkan — beda dari `totalDibayarkan` yang sengaja `""` untuk belum bayar, karena
    `cost` SELALU punya nilai pasti terlepas status bayar, `""` di sini justru salah makna).
 
@@ -1444,17 +1454,18 @@ apps/web/lib/product-buyers.server.ts
   → invoiceRows: tambah select shippingAddress, shippingCityName, memberId, customerPhone
     (customerPhone sudah ada sebelumnya)
   → shippingLines: tambah select cost
-  → ProductBuyerRow: tambah field fullAddress (string), shippingCost (number)
-  → fallback data member: query public.members.homeAddressId + contactId → public.contacts.phone
-    → composeAddress() HANYA kalau shippingAddress kosong, invoice.memberId ada, DAN HP
-    invoice=HP member tersimpan (anti-abuse, lihat di atas) — batch dengan Promise.all
-    (bukan N+1 query serial)
+  → ProductBuyerRow: tambah field checkoutAddress (string), memberAddress (string),
+    shippingCost (number) — checkoutAddress dan memberAddress DUA FIELD TERPISAH (bukan satu
+    fullAddress dengan fallback, revisi setelah masukan user)
+  → "Alamat User": query public.members.homeAddressId + contactId → public.contacts.phone →
+    composeAddress() untuk SEMUA invoice yang punya memberId, HANYA terisi kalau HP invoice=HP
+    member tersimpan (anti-abuse, lihat di atas) — batch dengan Promise.all (bukan N+1 serial)
 
 apps/web/app/api/products/[id]/export-buyers/route.ts
-  → tambah 2 header kolom ("Alamat Lengkap", "Ongkos Kirim") + mapping dataRows
+  → tambah 3 header kolom ("Alamat Checkout", "Alamat User", "Ongkos Kirim") + mapping dataRows
 
 apps/web/components/toko/product-buyer-list.tsx
-  → tambah 2 kolom tabel UI (konsisten dengan export — user tidak minta eksplisit tapi
+  → tambah 3 kolom tabel UI (konsisten dengan export — user tidak minta eksplisit tapi
     "3 atau 4 kolom" di pertanyaan awal mengindikasikan ingin lihat juga, bukan cuma export)
 ```
 

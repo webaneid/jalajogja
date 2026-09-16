@@ -2,11 +2,15 @@ export const dynamic = "force-dynamic";
 // GET /api/products/[id]/export-buyers?tenant={slug}&all=1
 // Export daftar pembeli satu produk ke Excel. Kolom: No. Invoice, Nama Pembeli, Telepon,
 // Jumlah, Varian/Ukuran, Harga Satuan, Subtotal, Diskon Voucher, Cara Pengiriman, Alamat
-// Lengkap, Ongkos Kirim, Status Pembayaran, Total Dibayarkan, Kode Voucher, Tanggal Pesan.
+// Checkout, Alamat User, Ongkos Kirim, Status Pembayaran, Total Dibayarkan, Kode Voucher,
+// Tanggal Pesan.
 //
-// "Alamat Lengkap" — checkout snapshot (shippingAddress+shippingCityName) diutamakan, fallback
-// alamat member tersimpan kalau snapshot kosong (docs/arsitektur-product.md § "Susulan —
-// Alamat Lengkap + Kode Pos + Ongkos Kirim"). "Ongkos Kirim" selalu Rp 0 untuk ambil sendiri.
+// "Alamat Checkout" — snapshot apa adanya dari transaksi ini (shippingAddress+shippingCityName).
+// "Alamat User" — alamat tersimpan di profil member (kalau invoice ini terhubung ke member DAN
+// nomor HP-nya terverifikasi cocok, lihat anti-abuse di lib/product-buyers.server.ts). Dua kolom
+// terpisah SENGAJA (docs/arsitektur-product.md § "Susulan — Alamat Lengkap + Kode Pos + Ongkos
+// Kirim") — admin lihat dua-duanya, bukan satu nilai gabungan yang menyembunyikan sumbernya.
+// "Ongkos Kirim" selalu Rp 0 untuk ambil sendiri.
 //
 // Satu baris = satu invoice_item (satu kali produk ini dibeli dalam satu invoice) — bukan satu
 // baris per pembeli, karena satu orang bisa membeli produk yang sama >1× di invoice berbeda,
@@ -69,8 +73,8 @@ export async function GET(
 
   const headers = [
     "No. Invoice", "Nama Pembeli", "Telepon", "Jumlah", "Varian/Ukuran", "Harga Satuan",
-    "Subtotal", "Diskon Voucher", "Cara Pengiriman", "Alamat Lengkap", "Ongkos Kirim",
-    "Status Pembayaran", "Total Dibayarkan", "Kode Voucher", "Tanggal Pesan",
+    "Subtotal", "Diskon Voucher", "Cara Pengiriman", "Alamat Checkout", "Alamat User",
+    "Ongkos Kirim", "Status Pembayaran", "Total Dibayarkan", "Kode Voucher", "Tanggal Pesan",
   ];
 
   const dataRows = rows.map((r) => [
@@ -83,7 +87,8 @@ export async function GET(
     r.lineTotal,
     r.discountAmount > 0 ? r.discountAmount : "",
     r.shippingLabel,
-    r.fullAddress || "-",
+    r.checkoutAddress || "-",
+    r.memberAddress || "-",
     r.shippingCost,
     r.paymentStatusLabel,
     r.totalDibayarkan,
