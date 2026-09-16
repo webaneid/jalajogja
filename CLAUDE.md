@@ -1067,7 +1067,16 @@ Logika: cari yang spesifik dulu → fallback ke `general`.
   error di log, tidak ada info terekspos ke pengunjung), bukan dari perubahan sesi 2026-09-13.
   **Belum diinvestigasi lebih lanjut** — perlu grep semua `page.tsx` publik yang panggil
   `createTenantDb`/`getSettings` tanpa didahului cek `tenants.isActive`, tambahkan guard yang sama
-  seperti di `layout.tsx`.
+  seperti di `layout.tsx`. **Catatan (2026-09-18)**: bug TERKAIT tapi BERBEDA ditemukan+difix —
+  lihat `docs/lessons-learned.md` [2026-09-18] "Segmen URL `[id]` mentah dipakai langsung di query
+  kolom UUID" (6 halaman `[tenant]/{modul}/[id]`, error `invalid input syntax for type uuid`,
+  bukan `relation does not exist`). Item INI (slug tenant palsu → `relation tenant_X.settings does
+  not exist`) masih genuinely belum diinvestigasi — jangan disangka sudah tertutup oleh fix di
+  atas, dua kelas bug beda meski sama-sama trafik bot ke route dinamis `[tenant]`/`[id]`. Sudah
+  dikonfirmasi aman: `getTenantSeoBase()` (`lib/tenant-seo.ts`) SELALU cek `tenants.isActive`
+  SEBELUM `createTenantDb()` — caller yang cuma pakai fungsi ini (banyak `generateMetadata`)
+  otomatis aman dari slug palsu, TIDAK perlu guard tambahan. Yang masih perlu diaudit: page/
+  route yang panggil `createTenantDb`/`getSettings` LANGSUNG tanpa lewat `getTenantSeoBase()`.
 - `getFirstTenantForUser()` loop O(n) — perlu tabel `public.user_tenant_index` saat tenant > 100
 - `check-slug` endpoint perlu rate limiting per-IP (saat ini hanya referer check)
 - `getTenantAccess()` dipanggil di layout DAN page — perlu `React.cache()` saat query makin banyak
@@ -1170,13 +1179,22 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 > Ini status singkat yang di-OVERWRITE tiap kali berubah, BUKAN log yang ditambah terus.
 > Riwayat detail tiap perbaikan ada di `docs/lessons-learned.md` dan `docs/arsitektur-*.md` masing-masing modul.
 
-- Commit terakhir per `git log`: `32e6bd7` (2026-09-13) — audit keamanan bertahap (4 fase) +
-  fix: identity-takeover klaim akun member (Critical), stored XSS render Tiptap, permission gap
-  toko/cron, plus upgrade dependency (bun audit 62→6 vulnerabilities, termasuk 1 Critical di
-  better-auth). Detail lengkap di `docs/lessons-learned.md` (6 entri baru) +
-  `docs/arsitektur-keamanan.md` § 4c + `docs/arsitektur-login-universal.md` § "Klaim Akun
-  Member". SUDAH di-commit — cross-check manual sebelum asumsi status deploy/verifikasi VPS,
-  jangan percaya klaim lama.
+- Commit terakhir per `git log`: `977b4e0` (2026-09-18) — validasi format UUID di 6 halaman
+  publik `[tenant]/{modul}/[id]` (cegah crash 500 dari bot/scanner, lihat
+  `docs/lessons-learned.md` [2026-09-18]). Beberapa commit terakhir (SUDAH di-push per `39edaa5`
+  ke atas, KECUALI 3 commit paling baru `00e15fb`/`38e8e26`/`977b4e0` yang baru saja diminta
+  push — cross-check `git log origin/main` kalau ragu):
+  - Fix GOWA reconnect setelah "Putuskan" (`88e3629`) + badge "Gratis Ongkir" checkout Step 2
+    (`39edaa5`).
+  - Admin dashboard forum — badge status (forum "Pending Claim" dkk + cabang/marhalah "Data
+    Belum Lengkap") + 4 aksi approve/reject/suspend/reactivate di `/members` (`6bcbb78`,
+    dokumentasi lengkap `docs/arsitektur-gabung-forum.md` § "Admin Dashboard Forum").
+  - Kolom "Alamat Checkout"/"Alamat User"/"Ongkos Kirim" di Daftar Pembeli & export produk
+    (`00e15fb`+`38e8e26`, `docs/arsitektur-product.md` § "Susulan — Alamat Lengkap...") — ada
+    fix keamanan (anti-abuse match-email tak terverifikasi) di tengah jalan, sudah ditutup.
+  - Fix crash UUID di atas (`977b4e0`).
+  Detail lengkap tiap fix ada di `docs/lessons-learned.md` dan dokumen arsitektur masing-masing
+  — jangan percaya ringkasan ini sebagai satu-satunya sumber, cross-check kode kalau perlu detail.
 - Backlog lama belum dikonfirmasi statusnya (perlu verifikasi manual apakah sudah dikerjakan di
   sesi lain atau masih tertunda): sertifikat PDF untuk donasi, fitur V8 (cek stok produk),
   Donasi Rutin (siklus R1-R7, termasuk subscriptions `/{slug}/akun/subscriptions`), dan Fase 5
