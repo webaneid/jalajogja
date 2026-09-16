@@ -99,6 +99,7 @@ export {
 // belakang gate OTP. Lihat docs/arsitektur-billing.md § 16.
 export {
   resolveCheckoutContact,
+  composeAddress,
   type CheckoutContactMatch,
 } from "./helpers/resolve-checkout-contact";
 

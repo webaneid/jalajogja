@@ -1,8 +1,12 @@
 export const dynamic = "force-dynamic";
 // GET /api/products/[id]/export-buyers?tenant={slug}&all=1
 // Export daftar pembeli satu produk ke Excel. Kolom: No. Invoice, Nama Pembeli, Telepon,
-// Jumlah, Varian/Ukuran, Harga Satuan, Subtotal, Diskon Voucher, Cara Pengiriman,
-// Status Pembayaran, Total Dibayarkan, Kode Voucher, Tanggal Pesan.
+// Jumlah, Varian/Ukuran, Harga Satuan, Subtotal, Diskon Voucher, Cara Pengiriman, Alamat
+// Lengkap, Ongkos Kirim, Status Pembayaran, Total Dibayarkan, Kode Voucher, Tanggal Pesan.
+//
+// "Alamat Lengkap" — checkout snapshot (shippingAddress+shippingCityName) diutamakan, fallback
+// alamat member tersimpan kalau snapshot kosong (docs/arsitektur-product.md § "Susulan —
+// Alamat Lengkap + Kode Pos + Ongkos Kirim"). "Ongkos Kirim" selalu Rp 0 untuk ambil sendiri.
 //
 // Satu baris = satu invoice_item (satu kali produk ini dibeli dalam satu invoice) — bukan satu
 // baris per pembeli, karena satu orang bisa membeli produk yang sama >1× di invoice berbeda,
@@ -65,8 +69,8 @@ export async function GET(
 
   const headers = [
     "No. Invoice", "Nama Pembeli", "Telepon", "Jumlah", "Varian/Ukuran", "Harga Satuan",
-    "Subtotal", "Diskon Voucher", "Cara Pengiriman", "Status Pembayaran", "Total Dibayarkan",
-    "Kode Voucher", "Tanggal Pesan",
+    "Subtotal", "Diskon Voucher", "Cara Pengiriman", "Alamat Lengkap", "Ongkos Kirim",
+    "Status Pembayaran", "Total Dibayarkan", "Kode Voucher", "Tanggal Pesan",
   ];
 
   const dataRows = rows.map((r) => [
@@ -79,6 +83,8 @@ export async function GET(
     r.lineTotal,
     r.discountAmount > 0 ? r.discountAmount : "",
     r.shippingLabel,
+    r.fullAddress || "-",
+    r.shippingCost,
     r.paymentStatusLabel,
     r.totalDibayarkan,
     r.voucherCode ?? "",

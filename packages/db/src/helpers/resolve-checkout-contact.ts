@@ -30,7 +30,11 @@ export type CheckoutContactMatch = {
   address?: string;
 };
 
-async function composeAddress(publicDb: PublicDb, addressId: string): Promise<string | undefined> {
+// Diekspor (bukan cuma internal resolveCheckoutContact) — dipakai ulang oleh
+// resolveProductBuyers() (apps/web/lib/product-buyers.server.ts) untuk fallback "Alamat
+// Lengkap" di Daftar Pembeli/export produk saat invoice.shippingAddress kosong. Lihat
+// docs/arsitektur-product.md § "Susulan — Alamat Lengkap + Kode Pos + Ongkos Kirim".
+export async function composeAddress(publicDb: PublicDb, addressId: string): Promise<string | undefined> {
   const addr = await publicDb.query.addresses.findFirst({ where: eq(addresses.id, addressId) });
   if (!addr) return undefined;
 

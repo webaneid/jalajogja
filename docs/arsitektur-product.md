@@ -1382,7 +1382,7 @@ md:overflow-y-auto` (bukan dihapus — triknya tetap jalan di desktop). Detail l
 di `docs/arsitektur-event.md` § "Susulan — Layout Create/Edit juga responsive", jangan
 diduplikasi di sini.
 
-### Susulan — Alamat Lengkap + Kode Pos + Ongkos Kirim di Daftar Pembeli/Export (RENCANA, 2026-09-17)
+### Susulan — Alamat Lengkap + Kode Pos + Ongkos Kirim di Daftar Pembeli/Export (✅ Kode SELESAI, 2026-09-17)
 
 > Diminta user setelah audit: *"selain status pembayaran saya butuh: 1. metode pengiriman...
 > 2. alamat lengkap orang itu, jika ada di pembelian waktu checkout ambil itu, dan kombinasikan
@@ -1400,17 +1400,31 @@ diduplikasi di sini.
 - `invoice_shipping_lines.cost` (numeric) — sudah di-`select` untuk hitung `shippingLabel`,
   cuma kolom `cost`-nya sendiri belum ikut di-`select`.
 
-**Fallback "kombinasikan dengan data member" — keputusan desain (belum dikonfirmasi eksplisit
-oleh user, diasumsikan default paling aman, TANDAI untuk direview)**: `invoices.memberId`
-(hasil `resolveIdentity()` saat checkout, sudah ada) dipakai untuk fallback ke alamat member
-tersimpan (`public.members.homeAddressId → public.addresses`, helper `composeAddress()` yang
-sudah ada di `packages/db/src/helpers/resolve-checkout-contact.ts`) **HANYA kalau
-`shippingAddress` kosong total** (mis. invoice lama sebelum fitur OTP auto-fill dibangun, atau
-kasus deliveryMethod="pickup" yang memang tidak pernah minta alamat kirim) — checkout snapshot
-SELALU diutamakan kalau ada, tidak pernah ditimpa data member yang mungkin sudah berubah sejak
-transaksi itu terjadi (prinsip "snapshot saat transaksi" yang sudah dikunci berkali-kali di
-project ini, sama seperti harga produk di invoice_items tidak ikut berubah kalau harga produk
-diedit belakangan).
+**Fallback "kombinasikan dengan data member" — DIKUNCI setelah security review (2026-09-17)**:
+`invoices.memberId` (hasil `resolveIdentity()` saat checkout) dipakai untuk fallback ke alamat
+member tersimpan (`public.members.homeAddressId → public.addresses`, helper `composeAddress()`,
+`packages/db/src/helpers/resolve-checkout-contact.ts`) HANYA kalau `shippingAddress` kosong
+total — checkout snapshot SELALU diutamakan kalau ada (prinsip "snapshot saat transaksi" yang
+sudah dikunci berkali-kali di project ini).
+
+**⚠️ Temuan security review + fix — celah kebocoran alamat via match email tak terverifikasi**:
+`resolveIdentity()` (dipanggil di `checkoutAction`) bisa me-link `invoices.memberId` lewat
+match EMAIL (`packages/db/src/helpers/resolve-identity.ts` baris 71-82) **tanpa verifikasi
+apa pun** — beda dari match HP yang WAJIB lolos gate OTP dulu (`cart/actions.ts:536-551`,
+fitur checkout OTP sesi sebelumnya) sebelum `resolveIdentity()` dipanggil. Fallback naif akan
+menampilkan alamat rumah ASLI member yang emailnya kebetulan/sengaja cocok, meski member itu
+tidak pernah transaksi di toko ini. **Fix**: fallback HANYA jalan kalau `invoices.customerPhone`
+(nomor yang benar-benar diketik di transaksi ini) SAMA PERSIS dengan nomor HP tersimpan milik
+member yang match (`public.contacts.phone` via `members.contactId`) — kesamaan ini jadi bukti
+tidak langsung bahwa link memberId invoice ini datang dari jalur HP (satu-satunya jalur yang
+lolos gate OTP untuk bisa checkout sukses), bukan dari jalur email yang tidak diverifikasi.
+Kalau beda (match aslinya lewat email) atau member tidak punya `contactId`/HP tersimpan,
+fallback di-skip, alamat tetap kosong "—". **Limitasi yang diterima**: invoice historis dari
+SEBELUM gate OTP dibangun (commit `ed5ce17`) tidak bisa dibedakan dari cek ini — residual risk
+kecil (perlu kombinasi tamu tahu HP member lain PERSIS + shippingAddress kosong + invoice lama),
+diterima demi tidak membiarkan export benar-benar kosong untuk data historis (kekhawatiran user:
+*"sebelumnya checkout itu... tidak mewajibkan alamat, jadi kalau kita export tanpa alamat dari
+data takutnya benar2 kosong alamatnya ini bahaya jg"*).
 
 **Kolom baru** (di `ProductBuyerRow`, tabel UI, dan export Excel — ketiganya, konsisten):
 1. **"Alamat Lengkap"** — string gabungan di atas (checkout snapshot, fallback data member).
@@ -1420,17 +1434,24 @@ diedit belakangan).
 
 **File yang disentuh:**
 ```
+packages/db/src/helpers/resolve-checkout-contact.ts
+  → composeAddress() jadi export (sebelumnya private ke resolveCheckoutContact saja)
+
+packages/db/src/index.ts
+  → re-export composeAddress
+
 apps/web/lib/product-buyers.server.ts
-  → invoiceRows: tambah select shippingAddress, shippingCityName, memberId
+  → invoiceRows: tambah select shippingAddress, shippingCityName, memberId, customerPhone
+    (customerPhone sudah ada sebelumnya)
   → shippingLines: tambah select cost
   → ProductBuyerRow: tambah field fullAddress (string), shippingCost (number)
-  → fallback data member: query public.members.homeAddressId → composeAddress() HANYA kalau
-    shippingAddress kosong DAN invoice.memberId ada (query tambahan per-row yang butuh
-    fallback — batch dengan Promise.all seperti pola checkMemberEligibility di fitur
-    /members sebelumnya, BUKAN N+1 query serial)
+  → fallback data member: query public.members.homeAddressId + contactId → public.contacts.phone
+    → composeAddress() HANYA kalau shippingAddress kosong, invoice.memberId ada, DAN HP
+    invoice=HP member tersimpan (anti-abuse, lihat di atas) — batch dengan Promise.all
+    (bukan N+1 query serial)
 
 apps/web/app/api/products/[id]/export-buyers/route.ts
-  → tambah 2 header kolom + mapping dataRows
+  → tambah 2 header kolom ("Alamat Lengkap", "Ongkos Kirim") + mapping dataRows
 
 apps/web/components/toko/product-buyer-list.tsx
   → tambah 2 kolom tabel UI (konsisten dengan export — user tidak minta eksplisit tapi
@@ -1441,12 +1462,11 @@ apps/web/components/toko/product-buyer-list.tsx
 dan kolom "Cara Pengiriman" yang sudah ada (poin 1, tidak disentuh), mode dua-export (lunas/
 semua) yang sudah ada.
 
-**Verifikasi sebelum dianggap selesai**: `bun run type-check` bersih, skill
-`jalakarta-security-review` (route export sudah baca file MinIO-scale, tapi field baru murni
-tambahan kolom text/angka — fokus review ke query fallback member baru: JOIN yang benar,
-tidak bocor data member tenant lain — meski `public.members` memang lintas-tenant by design,
-pastikan tidak ada kebocoran field SENSITIF di luar alamat, mis. NIK), verifikasi manual: 1
-produk dengan invoice yang punya `shippingAddress` lengkap → cek gabungan alamat benar; 1
-invoice pickup (tanpa alamat) yang linked ke member dengan alamat tersimpan → cek fallback
-jalan; 1 invoice guest tanpa member link sama sekali dan tanpa alamat → cek kolom kosong "—"
-dengan aman (tidak crash).
+**Verifikasi**: `bun run type-check` bersih (semua package). Skill `jalakarta-security-review`
+dijalankan — 1 temuan (kebocoran alamat via match email tak terverifikasi, lihat di atas),
+sudah diperbaiki sebelum dianggap selesai (bukan dicatat sebagai technical debt). Nol migrasi
+DB. **Belum di-commit/push (instruksi eksplisit user: "jangan push terlebih dahulu"), belum
+dijalankan di VPS, belum diverifikasi visual di browser** — perlu dicoba: 1 produk dengan
+invoice yang punya `shippingAddress` lengkap → cek gabungan alamat benar; 1 invoice pickup
+(tanpa alamat) yang linked ke member dengan alamat tersimpan DAN HP invoice = HP member →
+cek fallback jalan; 1 invoice guest tanpa member link/tanpa alamat → cek kolom kosong "—" aman.
