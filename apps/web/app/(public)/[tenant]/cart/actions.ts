@@ -17,7 +17,6 @@ import { normalizePhone } from "@/lib/phone";
 import { getTokoSettings } from "@/lib/toko-settings";
 import { isSafeExternalUrl } from "@/lib/safe-url";
 import { auth } from "@/lib/auth";
-import { getAkunIdentity } from "@/lib/akun-identity";
 import { resolveViewerTier } from "@/lib/session-type.server";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, anchorTodayUtc, todayInTz, formatInTz, tzLabel } from "@/lib/tenant-timezone.server";
@@ -541,23 +540,20 @@ export async function checkoutAction(
     const normalizedPhoneForCheck = normalizePhone(customer.phone) ?? customer.phone.trim();
     const session = await auth.api.getSession({ headers: await headers() });
 
-    // Pengecualian gate: user LOGIN yang nomor HP akunnya (phone/whatsapp) sama dengan nomor
-    // checkout — sesi login sudah membuktikan kepemilikan nomor itu, OTP cuma membuat pemilik
-    // akun diminta verifikasi data miliknya sendiri. Form checkout mengisi nomor ini otomatis
-    // dari akun (tanpa blur), jadi tanpa pengecualian ini mereka kena error "verifikasi OTP
-    // diperlukan" tanpa kolom OTP yang bisa diisi. Nomor yang DIGANTI ke nomor lain tetap kena gate.
-    let ownedBySession = false;
-    if (session?.user?.id) {
-      const akun = await getAkunIdentity(session.user.id);
-      const ownPhones = [akun?.phone, akun?.whatsapp]
-        .map((p) => (p ? normalizePhone(p) ?? p.trim() : null))
-        .filter((p): p is string => !!p);
-      ownedBySession = ownPhones.includes(normalizedPhoneForCheck);
-    }
+    // Record milik user yang LOGIN (id dari SESI, bukan dari nomor yang diketik) diabaikan saat
+    // mencocokkan nomor — pemilik akun tidak diminta OTP untuk datanya sendiri (form mengisi nomor
+    // ini otomatis dari akun tanpa blur, jadi tanpa ini mereka kena error OTP tanpa kolom OTP).
+    // JANGAN ganti jadi "nomor == nomor akun": phone/whatsapp akun bisa diubah user tanpa
+    // verifikasi, penyerang tinggal mengisi nomor korban. Nomor yang juga cocok dengan data ORANG
+    // LAIN tetap wajib OTP. Lihat docs/arsitektur-keamanan.md § 4c + arsitektur-billing.md § 16.x.
+    const sessionSelf = session?.user?.id
+      ? await resolveIdentity(db, { betterAuthUserId: session.user.id, phone: null, email: null })
+      : null;
 
-    const contactMatch = ownedBySession
-      ? { found: false as const }
-      : await resolveCheckoutContact(db, tdb, schema, normalizedPhoneForCheck);
+    const contactMatch = await resolveCheckoutContact(db, tdb, schema, normalizedPhoneForCheck, {
+      memberId:  sessionSelf?.memberId,
+      profileId: sessionSelf?.profileId,
+    });
     if (contactMatch.found) {
       if (!customer.verifyToken) {
         return { success: false, code: "otp_required", error: "Nomor HP ini terdaftar di sistem kami — verifikasi OTP diperlukan sebelum lanjut." };
@@ -702,19 +698,30 @@ export async function checkoutAction(
             // root cause bug yang ditutup (voucher tidak match + celah eksklusi mitra utk
             // produk bervariasi).
             const resolved = await resolveProductCartItem(tx, schema, item.itemId, priceTier);
-            if (resolved) {
-              unitPrice        = resolved.price;
-              mitraId          = resolved.mitraId;
-              voucherTargetId  = resolved.productId;
+            // Produk/variasi yang tidak ter-resolve (dihapus, variasi nonaktif, atau itemId karangan
+            // lewat addToCartAction yang menyimpan unitPrice dari client apa adanya) TIDAK BOLEH
+            // jatuh ke harga snapshot client — tolak, jangan tagih harga pilihan pembeli.
+            if (!resolved) {
+              return { error: `"${item.name}" sudah tidak tersedia. Hapus dari keranjang lalu coba lagi.` };
             }
+            unitPrice        = resolved.price;
+            mitraId          = resolved.mitraId;
+            voucherTargetId  = resolved.productId;
           } else if (item.itemType === "ticket") {
             const [ticket] = await tx
               .select({ price: schema.eventTickets.price, name: schema.eventTickets.name })
               .from(schema.eventTickets)
               .where(eq(schema.eventTickets.id, item.itemId))
               .limit(1);
-            if (ticket) { unitPrice = parseFloat(String(ticket.price)); }
+            // Sama seperti produk: tiket tak ditemukan → tolak, bukan pakai harga snapshot client.
+            if (!ticket) {
+              return { error: `Tiket "${item.name}" sudah tidak tersedia. Hapus dari keranjang lalu coba lagi.` };
+            }
+            unitPrice = parseFloat(String(ticket.price));
           }
+        } else if (item.itemType === "product" || item.itemType === "ticket") {
+          // Item produk/tiket tanpa itemId = tidak bisa divalidasi harganya → tolak.
+          return { error: `"${item.name}" tidak valid. Hapus dari keranjang lalu coba lagi.` };
         }
 
         resolvedItems.push({

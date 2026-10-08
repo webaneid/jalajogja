@@ -16,10 +16,19 @@
 
 ---
 
+## [2026-10-09] Security review pasca-deploy: 3 celah di perubahan sendiri (pengecualian OTP, modal bocor ke payload, harga client)
+**Masalah:** Review `1ec09d1`+`43ef926` setelah deploy menemukan: (1) pengecualian OTP "nomor == nomor akun" bisa dipakai penyerang — `phone`/`whatsapp` akun diubah user tanpa verifikasi (`member-contact`, `profile-data`), cukup isi nomor korban; (2) `ProductCardData.price`/`ProductVariationData.price` masih berisi HARGA DASAR (modal) dan dikirim sebagai props ke komponen client (detail produk, popup `/gabung`, carousel/arsip) — tidak tampil di layar tapi terbaca lewat view-source/flight data; (3) `checkoutAction` memakai `unitPrice` snapshot dari client kalau produk/tiket tidak ter-resolve (itemId karangan/variasi nonaktif/dihapus), padahal `addToCartAction` menyimpan harga client apa adanya.
+**Root cause:** (1) memperlakukan field self-asserted sebagai bukti kepemilikan (pelajaran sama dengan § 4c keamanan: bukti harus dari sesuatu yang diverifikasi). (2) "tidak ditampilkan di UI" ≠ "tidak ada di payload" — saya membersihkan UI tapi tidak data yang dikirim. (3) fallback "kalau tidak ter-resolve pakai harga snapshot" tidak pernah dipertanyakan.
+**Fix:** (1) `resolveCheckoutContact(..., self)` — abaikan record user login (id dari sesi). (2) `toPublicPriceFields()` (`product-price.ts`) dipakai di SEMUA pembangun data produk publik: `price` diganti harga publik efektif. (3) `checkoutAction` menolak item produk/tiket yang tidak ter-resolve / tanpa itemId.
+**Pencegahan:** (a) Jangan pernah jadikan field yang bisa diedit user sendiri tanpa verifikasi sebagai dasar pengecualian keamanan. (b) Data sensitif bisnis (modal) harus dibuang di SERVER sebelum jadi props client component, bukan sekadar tidak dirender — cek payload (view-source), bukan cuma layar. (c) Setiap fallback "pakai nilai dari client kalau lookup gagal" pada harga/uang = bug sampai terbukti sebaliknya. (d) Jalankan `jalakarta-security-review` SEBELUM commit, bukan sesudah deploy.
+**Belum ditutup (technical debt, sudah ada sebelum perubahan ini):** `checkoutAction` tanpa rate limit dan membalas "Nomor HP ini terdaftar di sistem kami" → bisa dipakai menebak nomor terdaftar (oracle; tiap tebakan yang tidak match membuat invoice). Perlu rate limit per-IP untuk `checkoutAction`/`addToCartAction`. Juga: aturan tiket event `requiresMembership` tidak cek `forum_status`.
+
+---
+
 ## [2026-10-09] Gate OTP checkout: client fail-open vs server fail-closed — error tanpa jalan keluar
 **Masalah:** Checkout donasi (user login) menampilkan "Nomor HP ini terdaftar di sistem kami — verifikasi OTP diperlukan" tanpa ada kolom OTP untuk diisi — user buntu.
 **Root cause:** Gate OTP dibangun asimetris. Client memicu cek via event blur dan menganggap SEMUA kegagalan (503/429/500) sebagai "nomor tidak terdaftar, lanjut"; server `checkoutAction` selalu menuntut OTP kalau nomor match. Nomor yang terisi otomatis dari akun login tidak pernah memicu blur sama sekali.
-**Fix:** Server skip gate untuk sesi login pemilik nomor; `send-otp` mengembalikan `found: true` di error pasca-match; `checkoutAction` mengembalikan `code: "otp_required"` yang membuat form membuka kolom OTP + kirim ulang. Detail: `docs/arsitektur-billing.md` § 16.x.
+**Fix:** Server mengabaikan record MILIK user login (id dari sesi) saat mencocokkan nomor — BUKAN "skip kalau nomor == nomor akun" (versi pertama, ditarik setelah security review: phone/whatsapp akun diubah user tanpa verifikasi, jadi bisa diisi nomor korban); `send-otp` mengembalikan `found: true` di error pasca-match; `checkoutAction` mengembalikan `code: "otp_required"` yang membuat form membuka kolom OTP + kirim ulang. Detail: `docs/arsitektur-billing.md` § 16.x.
 **Pencegahan:** Kalau server menolak sebuah aksi karena syarat X, client WAJIB punya jalan untuk memenuhi X dari kondisi error apa pun (bukan cuma jalur sukses) — response penolakan server harus membawa kode terstruktur yang dipetakan ke UI, bukan hanya string error. Pemicu UX berbasis event (blur) tidak boleh jadi satu-satunya jalur kalau nilai bisa terisi tanpa event itu (prefill/autofill).
 
 ---

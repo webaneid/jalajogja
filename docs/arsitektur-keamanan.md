@@ -117,6 +117,12 @@ project ini isolasi via **schema Postgres terpisah per tenant** (`tenant_{slug}`
   tanpa validasi" — analognya di sini: risiko rendah karena tidak ada identitas existing yang
   bisa diambil alih). Klaim ke identitas existing TIDAK BOLEH punya jalur skip serupa.
 
+- **Field kontak yang bisa diedit user sendiri BUKAN bukti kepemilikan.** `phone`/`whatsapp` di akun
+  (`member-contact`, `profile-data`) diubah tanpa verifikasi — jangan jadikan "nomor sama dengan nomor
+  akun" dasar pengecualian OTP/keamanan apa pun. Kalau perlu "ini data milik user login", pakai id
+  record dari SESI (`resolveIdentity` dengan `betterAuthUserId`), bukan kecocokan nomor. Kasus: gate OTP
+  checkout (`resolveCheckoutContact(..., self)`), lesson `[2026-10-09]`.
+
 ## 5. Frontend (Next.js App Router)
 - Server Components untuk data yang butuh filter tenant/permission — jangan fetch data
   sensitif di Client Component lalu filter di client (authorization logic harus di server).
@@ -130,6 +136,12 @@ project ini isolasi via **schema Postgres terpisah per tenant** (`tenant_{slug}`
   maupun `middleware.ts` saat ini. Bukan kategori Critical untuk urgensi sekarang (aplikasi
   admin butuh login, front-end publik tidak menerima input HTML mentah dari user secara luas),
   tapi dicatat sebagai gap yang layak ditutup — bukan diasumsikan sudah ada.
+
+- **Payload ke komponen client = publik.** Props Client Component ter-serialize ke HTML/flight data
+  dan terbaca lewat view-source. Data sensitif bisnis (mis. Harga Dasar/modal produk) harus dibuang di
+  server sebelum jadi props (`toPublicPriceFields()` di `product-price.ts`), bukan sekadar tidak
+  dirender. Harga yang ditagih HARUS selalu di-resolve ulang server-side; checkout menolak item yang
+  tidak ter-resolve, tidak pernah memakai harga snapshot client sebagai cadangan.
 
 ## 6. Pembayaran — Konfirmasi Manual (ADR-0002), BUKAN Webhook
 Beda penting dari asumsi checklist generik (yang biasanya soal verifikasi signature webhook):

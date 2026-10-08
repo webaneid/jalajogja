@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { and, eq, ne, or, isNull, desc } from "drizzle-orm";
 import type { PublicDb } from "../client";
 import type { TenantDb } from "../tenant-client";
 import { members, contacts, profiles, addresses, refProvinces, refRegencies, refDistricts, refVillages } from "../schema/public";
@@ -59,11 +59,20 @@ export async function composeAddress(publicDb: PublicDb, addressId: string): Pro
   return parts.length > 0 ? parts.join(", ") : undefined;
 }
 
+// `self` = id member/profile milik user yang SEDANG LOGIN (diturunkan dari sesi, BUKAN dari nomor
+// HP yang diketik) — record miliknya sendiri diabaikan saat mencocokkan, jadi pemilik akun asli
+// tidak diminta OTP untuk data dirinya sendiri, TAPI nomor yang juga cocok dengan data ORANG LAIN
+// tetap `found` (wajib OTP). Kenapa bukan "nomor == nomor akun": phone/whatsapp di akun bisa diubah
+// user sendiri TANPA verifikasi (member-contact / profile-data) — penyerang cukup mengisi nomor
+// korban ke akunnya sendiri lalu lolos gate. Lihat docs/arsitektur-keamanan.md § 4c.
+export type CheckoutContactSelf = { memberId?: string | null; profileId?: string | null };
+
 export async function resolveCheckoutContact(
   publicDb: PublicDb,
   tenantDb: TenantDb["db"],
   schema:   TenantDb["schema"],
   phone:    string,
+  self?:    CheckoutContactSelf,
 ): Promise<CheckoutContactMatch> {
   let name:    string | undefined;
   let email:   string | undefined;
@@ -78,7 +87,10 @@ export async function resolveCheckoutContact(
     })
     .from(members)
     .innerJoin(contacts, eq(contacts.id, members.contactId))
-    .where(eq(contacts.phone, phone))
+    .where(and(
+      eq(contacts.phone, phone),
+      self?.memberId ? ne(members.id, self.memberId) : undefined,
+    ))
     .limit(1)
     .then((r) => r[0]);
 
@@ -93,7 +105,10 @@ export async function resolveCheckoutContact(
   // ── 2. public.profiles (lintas semua tenant) ────────────────────────────────
   if (!name || !email || !address) {
     const profileRow = await publicDb.query.profiles.findFirst({
-      where:   eq(profiles.phone, phone),
+      where:   and(
+        eq(profiles.phone, phone),
+        self?.profileId ? ne(profiles.id, self.profileId) : undefined,
+      ),
       columns: { name: true, email: true, addressDetail: true, deletedAt: true },
     });
     if (profileRow && !profileRow.deletedAt) {
@@ -112,7 +127,12 @@ export async function resolveCheckoutContact(
         address: schema.invoices.shippingAddress,
       })
       .from(schema.invoices)
-      .where(eq(schema.invoices.customerPhone, phone))
+      .where(and(
+        eq(schema.invoices.customerPhone, phone),
+        // Invoice yang sudah ter-link ke user ini sendiri tidak dihitung (NULL = tamu → tetap dihitung)
+        self?.memberId  ? or(isNull(schema.invoices.memberId),  ne(schema.invoices.memberId,  self.memberId))  : undefined,
+        self?.profileId ? or(isNull(schema.invoices.profileId), ne(schema.invoices.profileId, self.profileId)) : undefined,
+      ))
       .orderBy(desc(schema.invoices.createdAt))
       .limit(1)
       .then((r) => r[0]);

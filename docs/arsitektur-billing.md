@@ -2511,11 +2511,16 @@ berasal dari gate yang tidak simetris antara client dan server:
    (WA gateway mati / toggle "OTP Verifikasi Checkout" OFF → 503, rate limit → 429), client
    menganggapnya "tidak terdaftar" (idle, kolom OTP tidak muncul), sementara `checkoutAction`
    tetap menolak.
-**Fix**: (a) `checkoutAction` melewati gate OTP kalau sesi login punya nomor (phone/whatsapp)
-yang sama dengan nomor checkout — sesi sudah membuktikan kepemilikan; nomor yang diganti ke
-nomor lain tetap kena gate. (b) `send-otp` (type `checkout_verify`) menyertakan `found: true` di
-semua response error setelah nomor match; client menampilkan kolom OTP + alasan + tombol "Kirim
-ulang kode". (c) `checkoutAction` mengembalikan `code: "otp_required"`; form merespons dengan
-kembali ke Step 1, membuka kolom OTP dan mengirim kode baru. Cakupan: SEMUA tipe item (produk,
+**Fix** (direvisi setelah security review 2026-10-09 — versi pertama "skip gate kalau nomor == nomor akun"
+DITARIK karena `phone`/`whatsapp` akun bisa diubah user TANPA verifikasi, penyerang tinggal mengisi
+nomor korban lalu lolos gate): (a) `resolveCheckoutContact(..., self)` mengabaikan record milik user
+yang SEDANG LOGIN (`memberId`/`profileId` dari SESI via `resolveIdentity`, bukan dari nomor yang
+diketik) saat mencocokkan nomor — pemilik akun asli tidak diminta OTP untuk datanya sendiri, tapi nomor
+yang juga cocok dengan data ORANG LAIN tetap `found` → wajib OTP. Invoice tamu (NULL) tetap dihitung.
+(b) `send-otp` (type `checkout_verify`) menyertakan `found: true` di semua response error setelah nomor
+match; client menampilkan kolom OTP + alasan + tombol "Kirim ulang kode". (c) `checkoutAction`
+mengembalikan `code: "otp_required"`; form merespons dengan kembali ke Step 1, membuka kolom OTP dan
+mengirim kode baru. Cakupan: SEMUA tipe item (produk, donasi, tiket) — hanya ada satu
+`checkout-form.tsx` + satu `checkoutAction`, tidak ada komponen checkout terpisah per modul.
 donasi, tiket) — hanya ada satu `checkout-form.tsx` + satu `checkoutAction`, tidak ada komponen
 checkout terpisah per modul.

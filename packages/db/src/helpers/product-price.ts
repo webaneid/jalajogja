@@ -63,3 +63,14 @@ export function minMax(values: number[]): { min: number; max: number } | null {
   if (values.length === 0) return null;
   return { min: Math.min(...values), max: Math.max(...values) };
 }
+
+// Bentuk harga yang BOLEH dikirim ke komponen client publik / payload RSC. Harga Dasar (modal)
+// TIDAK BOLEH ikut — props komponen client ter-serialize ke HTML/flight data dan terbaca siapa
+// pun lewat view-source, walau tidak dirender di layar. `price` DIGANTI harga publik efektif
+// (bukan dihapus: tipe ProductCardData mewajibkannya, dan fallback produk lama tetap benar).
+// Pakai di SEMUA pembangun ProductCardData / ProductVariationData untuk halaman publik.
+export function toPublicPriceFields(set: PriceSet): { price: string; publicPrice: string; memberPrice: string | null } {
+  const pub = String(publicSellingPrice(set));
+  const m   = num(set.memberPrice);
+  return { price: pub, publicPrice: pub, memberPrice: m != null ? String(m) : null };
+}

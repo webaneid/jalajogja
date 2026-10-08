@@ -2,7 +2,7 @@ import { notFound }                      from "next/navigation";
 import { eq, desc, and, inArray, ilike, sql } from "drizzle-orm";
 import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
 import { resolveViewerTier } from "@/lib/session-type.server";
-import { createTenantDb, db, tenants, members, memberBusinesses, getSettings, publicSellingPrice } from "@jalajogja/db";
+import { createTenantDb, db, tenants, members, memberBusinesses, getSettings, publicSellingPrice, toPublicPriceFields } from "@jalajogja/db";
 import { auth }                          from "@/lib/auth";
 import { headers }                       from "next/headers";
 import { ProductArchiveCards }           from "@/components/website/public/product-cards/product-archive-cards";
@@ -165,9 +165,8 @@ export default async function ProdukKategoriPage({
       name:         r.name,
       slug:         r.slug,
       description:  r.description,
-      price:        String(r.price),
-      publicPrice:  r.publicPrice != null ? String(r.publicPrice) : null,
-      memberPrice:  r.memberPrice != null ? String(r.memberPrice) : null,
+      // Harga Dasar (modal) TIDAK ikut ke payload publik — lihat toPublicPriceFields()
+      ...toPublicPriceFields(r),
       memberPriceTenantOnly: r.memberPriceTenantOnly,
       productType:  (r.productType ?? "simple") as "simple" | "variable",
       priceMin,

@@ -2,7 +2,7 @@ import { notFound }                from "next/navigation";
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
 import { resolveViewerTier } from "@/lib/session-type.server";
-import { createTenantDb, db, tenants, members, memberBusinesses, getSettings, getAvailableStock, mergeVariationPrices, resolveSellingPrice, publicSellingPrice } from "@jalajogja/db";
+import { createTenantDb, db, tenants, members, memberBusinesses, getSettings, getAvailableStock, mergeVariationPrices, resolveSellingPrice, publicSellingPrice, toPublicPriceFields } from "@jalajogja/db";
 import { auth }                   from "@/lib/auth";
 import { headers }                from "next/headers";
 import { renderBody }             from "@/lib/letter-render";
@@ -181,9 +181,7 @@ export default async function ProdukDetailPage({
       return {
         id:             v.id,
         sku:            v.sku ?? row.sku,
-        price:          String(merged.price),
-        publicPrice:    merged.publicPrice != null ? String(merged.publicPrice) : null,
-        memberPrice:    merged.memberPrice != null ? String(merged.memberPrice) : null,
+        ...toPublicPriceFields(merged),
         stock:          await getAvailableStock(tenantDb, schema, v.id) ?? v.stock,
         images:         (Array.isArray(v.images) ? v.images : []) as ProductVariationData["images"],
         attributeCombo: (v.attributeCombo ?? {}) as Record<string, string>,
@@ -228,9 +226,9 @@ export default async function ProdukDetailPage({
     name:         row.name,
     slug:         row.slug,
     description:  row.description,
-    price:        String(row.price),
-    publicPrice:  row.publicPrice != null ? String(row.publicPrice) : null,
-    memberPrice:  row.memberPrice != null ? String(row.memberPrice) : null,
+    // Harga Dasar (modal) TIDAK ikut ke payload publik — props client component ter-serialize
+    // ke HTML; lihat toPublicPriceFields().
+    ...toPublicPriceFields(row),
     memberPriceTenantOnly: row.memberPriceTenantOnly,
     productType:  (row.productType ?? "simple") as "simple" | "variable",
     priceMin,
@@ -300,9 +298,7 @@ export default async function ProdukDetailPage({
         name:         r.name,
         slug:         r.slug,
         description:  r.description,
-        price:        String(r.price),
-        publicPrice:  r.publicPrice != null ? String(r.publicPrice) : null,
-        memberPrice:  r.memberPrice != null ? String(r.memberPrice) : null,
+        ...toPublicPriceFields(r),
       memberPriceTenantOnly: r.memberPriceTenantOnly,
         productType:  (r.productType ?? "simple") as "simple" | "variable",
         priceMin:     range?.min ?? String(publicSellingPrice(r)),

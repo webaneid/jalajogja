@@ -3,7 +3,7 @@ import { headers, cookies } from "next/headers";
 import { eq, and }       from "drizzle-orm";
 import { auth }          from "@/lib/auth";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
-import { db, tenants, tenantMemberships, createTenantDb, getSetting, getSettings, mergeVariationPrices, resolveSellingPrice, isMemberPriceEligible } from "@jalajogja/db";
+import { db, tenants, tenantMemberships, createTenantDb, getSetting, getSettings, mergeVariationPrices, resolveSellingPrice, isMemberPriceEligible, toPublicPriceFields } from "@jalajogja/db";
 import { resolveViewerTier } from "@/lib/session-type.server";
 import { getAkunIdentity } from "@/lib/akun-identity";
 import {
@@ -178,9 +178,9 @@ export default async function GabungPage({ params }: { params: Params }) {
             );
             return {
               id: v.id, sku: v.sku ?? null,
-              price: String(m.price),
-              publicPrice: m.publicPrice != null ? String(m.publicPrice) : null,
-              memberPrice: memberEligible && m.memberPrice != null ? String(m.memberPrice) : null,
+              ...toPublicPriceFields(m),
+              // Harga Anggota dibuang kalau pembeli tidak berhak (flag khusus anggota tenant)
+              memberPrice: memberEligible ? toPublicPriceFields(m).memberPrice : null,
               stock: v.stock,
               images: (Array.isArray(v.images) ? v.images : []) as ProductVariationData["images"],
               attributeCombo: (v.attributeCombo ?? {}) as Record<string, string>,

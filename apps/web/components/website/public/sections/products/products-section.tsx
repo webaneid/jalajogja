@@ -1,5 +1,5 @@
 import { eq, desc, and, inArray } from "drizzle-orm";
-import { getSettings, publicSellingPrice, type TenantDb } from "@jalajogja/db";
+import { getSettings, publicSellingPrice, toPublicPriceFields, type TenantDb } from "@jalajogja/db";
 import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
 import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/products-section-designs";
 import type { ProductCardData } from "@/lib/product-card-templates";
@@ -117,9 +117,8 @@ async function fetchProducts(
       name:         r.name,
       slug:         r.slug,
       description:  r.description,
-      price:        String(r.price),
-      publicPrice:  r.publicPrice != null ? String(r.publicPrice) : null,
-      memberPrice:  r.memberPrice != null ? String(r.memberPrice) : null,
+      // Harga Dasar (modal) TIDAK ikut ke payload publik — lihat toPublicPriceFields()
+      ...toPublicPriceFields(r),
       memberPriceTenantOnly: r.memberPriceTenantOnly,
       productType:  (r.productType ?? "simple") as "simple" | "variable",
       priceMin,
