@@ -44,9 +44,6 @@ export type ResolvedProductCartItem = {
   // pembeli berhak; per field variasi ikut produk induk kalau kosong. Lihat product-price.ts.
   price:     number;
   mitraId:   string | null;
-  // MODAL per unit (Harga Dasar produk, atau variasi kalau diisi — kosong ikut induk) untuk
-  // snapshot `invoice_items.unit_cost`. null untuk produk mitra (harga mitra dibahas terpisah).
-  unitCost:  number | null;
 };
 
 export async function resolveProductCartItem(
@@ -72,7 +69,6 @@ export async function resolveProductCartItem(
       productId: prod.id,
       price:     resolveSellingPrice(prod, tier, prod.tenantOnly),
       mitraId:   prod.mitraId ?? null,
-      unitCost:  prod.mitraId ? null : (parseFloat(String(prod.price)) || 0),
     };
   }
 
@@ -106,10 +102,5 @@ export async function resolveProductCartItem(
   );
   const price = resolveSellingPrice(merged, tier, variation.tenantOnly);
 
-  return {
-    productId: variation.productId,
-    price,
-    mitraId:   variation.mitraId ?? null,
-    unitCost:  variation.mitraId ? null : (parseFloat(String(merged.price)) || 0),
-  };
+  return { productId: variation.productId, price, mitraId: variation.mitraId ?? null };
 }

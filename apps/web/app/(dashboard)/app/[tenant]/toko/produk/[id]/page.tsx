@@ -79,7 +79,7 @@ export default async function ProdukDetailPage({
   // ProductBuyerList = client component → props ter-serialize ke browser. Daftar tidak menampilkan modal,
   // jadi MODAL per baris dikosongkan untuk SEMUA pengguna sebelum dikirim (jangan bocor lewat view-source,
   // pelajaran sama dengan Harga Dasar di payload publik — lessons-learned [2026-10-09]).
-  const listRows = rows.map((r) => ({ ...r, unitCost: null, costIsEstimate: false }));
+  const listRows = rows.map((r) => ({ ...r, unitCost: null }));
 
   return (
     <div className="flex flex-col h-full">

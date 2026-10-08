@@ -309,14 +309,6 @@ export async function createInvoiceAction(
           customerPhone: schema.invoices.customerPhone,
         });
 
-      // Snapshot modal per item produk (Harga Dasar) → invoice_items.unit_cost, untuk laporan
-        // keuntungan produk. Item non-produk / produk mitra / tak ter-resolve → null.
-      const unitCosts = await Promise.all(data.items.map(async (item) => {
-        if (item.itemType !== "product" || !item.itemId) return null;
-        const resolved = await resolveProductCartItem(tx, schema, item.itemId);
-        return resolved?.unitCost ?? null;
-      }));
-
       // Insert items (dengan diskon per baris kalau voucher diterapkan)
       await tx.insert(schema.invoiceItems).values(
         data.items.map((item, i) => {
@@ -334,7 +326,6 @@ export async function createInvoiceAction(
             sortOrder:      i,
             discountAmount: discountAmount.toFixed(2),
             voucherId:      discountAmount > 0 ? (voucherApplication?.voucher.id ?? null) : null,
-            unitCost:       unitCosts[i] != null ? (unitCosts[i] as number).toFixed(2) : null,
           };
         })
       );

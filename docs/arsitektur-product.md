@@ -1589,63 +1589,35 @@ Harga Publik ditolak.
 
 ## Laporan Produk — Keuntungan, Uang Masuk, Ongkir Terpisah (2026-10-09) — ✅ KODE SELESAI (belum di-deploy)
 
-**Permintaan user**: di halaman admin produk (`/app/{slug}/toko/produk/{id}`) tampilkan laporan yang
-memisahkan **keuntungan**, **uang masuk**, dan **ongkos kirim**, lengkap dengan **kesimpulan**; export
-juga memisahkan **harga dasar (modal)**, **uang masuk dari client**, dan **ongkos kirim** per kolom.
+**Permintaan user**: di halaman admin produk (`/app/{slug}/toko/produk/{id}`) tampilkan laporan yang memisahkan
+**keuntungan**, **uang masuk**, dan **ongkos kirim**, lengkap dengan **kesimpulan**; export juga memisahkan
+**harga dasar (modal)**, **uang masuk dari client**, dan **ongkos kirim** per kolom.
 
 **Definisi (keputusan user)**:
-- **Modal** = Harga Dasar (`price`), yang ditransfer ke produsen — BUKAN harga jual.
-- **Pendapatan produk** = `invoice_items.total` (harga yang benar-benar ditagih: Harga Publik atau Harga
-  Anggota sesuai pembeli saat checkout, SUDAH dikurangi voucher). Tidak ada perhitungan harga baru.
-- **Keuntungan** = pendapatan produk − (modal × qty). Hanya untuk invoice **Lunas**; Sebagian & Belum Bayar
-  tampil terpisah sebagai **piutang** (bagian produknya), tidak dihitung laba.
-- **Ongkir** dipisah (hanya ada kalau ada baris pengiriman kurir; pickup = 0): uang yang diteruskan ke kurir,
-  BUKAN laba. Nominal "hemat gratis ongkir" hanya info (tidak mengurangi laba).
-- **Kode unik** (Rp100–999) kolom terpisah — bukan pendapatan produk, bukan laba.
-- **Total dibayar client** (`invoices.paid_amount`) = produk + ongkir + kode unik dalam SATU invoice; di export
-  ditampilkan sendiri supaya admin bisa merekonsiliasi dengan 3 komponen di atas.
+- **Modal** = Harga Dasar (`price`) yang ditransfer ke produsen — dibaca LANGSUNG dari produk (variasi kosong → ikut
+  induk). **Tidak ada snapshot dan tidak ada aturan khusus untuk data lama** (user 2026-10-09: "tidak perlu kamu pikirkan
+  produk lama... kalau admin input harga dasar dan harga jual sama, biarkan"). Apa pun yang diisi admin = yang dipakai;
+  Harga Dasar = harga jual otomatis berarti keuntungan 0 lewat hitungan biasa. Konsekuensi yang diterima: mengedit Harga
+  Dasar kemudian ikut mengubah angka laporan pesanan lama (kalau kelak butuh dibekukan per transaksi = tambahan terpisah).
+- **Pendapatan produk** = `invoice_items.total` (harga yang benar-benar ditagih: Harga Publik/Anggota sesuai pembeli saat
+  checkout, sudah net voucher). Tidak ada perhitungan harga baru.
+- **Keuntungan** = pendapatan produk − (modal × qty), hanya invoice **Lunas** (status invoice yang sudah ada). Sebagian &
+  Belum Bayar tampil terpisah sebagai **piutang**.
+- **Ongkir** dipisah (hanya ada kalau ada baris pengiriman; pickup = 0): uang yang diteruskan ke kurir, BUKAN laba.
+  "Hemat gratis ongkir" hanya info. **Kode unik** kolom terpisah. **Total dibayar client** (`invoices.paid_amount`) =
+  produk + ongkir + kode unik per invoice, ditampilkan sendiri untuk rekonsiliasi.
+- Ongkir tercatat per (invoice, penjual), bukan per produk → dijumlah SEKALI per invoice (di export: hanya baris pertama
+  tiap invoice untuk Ongkos Kirim / Kode Unik / Total Dibayar, supaya jumlah kolom di Excel tidak dobel).
+- Produk mitra tidak ikut hitungan laba (harga mitra dibahas terpisah). Modal & laba hanya `hasFullAccess(toko)`.
 
-**Keputusan teknis (Claude, user tidak keberatan)**: modal DIBEKUKAN saat transaksi — kolom baru
-`invoice_items.unit_cost` (nullable) disalin saat invoice produk dibuat, supaya mengedit Harga Dasar kemudian
-TIDAK mengubah laba transaksi lama. Baris lama (tanpa snapshot) **dibiarkan apa adanya**: modal dianggap = harga jual yang
-ditagih → **keuntungan 0**, dan TIDAK berubah walau Harga Dasar diedit kemudian (keputusan user 2026-10-09; versi
-pertama sempat memakai "modal saat ini" sebagai estimasi — itu SALAH, labanya acak dan bergeser tiap edit modal, sudah diganti). Produk mitra (`seller_type = mitra`) TIDAK ikut hitungan laba (harga mitra dibahas terpisah).
-Snapshot dipasang di 3 jalur invoice produk: `checkoutAction`, pesanan manual admin (`toko/actions.ts`), invoice
-manual keuangan (`finance/billing/actions.ts`). `createLinkedInvoice` (donasi/event) tidak menyentuh produk.
+**Implementasi** (type-check + `bun run build` bersih, ringkasan diuji): `lib/product-buyers.server.ts` (`unitCost` =
+Harga Dasar, `uniqueCode`, `freeShippingDiscount`, `invoiceKey`), `lib/product-report.ts` (`buildProductReport`,
+`buildProductConclusion` — murni), `components/toko/product-report-card.tsx` (kartu + kesimpulan di halaman produk),
+`/api/products/[id]/export-buyers` (kolom Harga Dasar/Unit, Total Modal, Uang Masuk Produk, Keuntungan, Ongkos Kirim,
+Kode Unik, Total Dibayar Client + sheet "Ringkasan"). Modal dikosongkan dari props `ProductBuyerList` (client component)
+supaya tidak bocor ke payload. **Tanpa migration baru.**
 
-**Ongkir per invoice, bukan per produk**: `invoice_shipping_lines` satu baris per (invoice, penjual). Di ringkasan
-dijumlahkan SEKALI per invoice (tidak dobel walau produk ini muncul di >1 baris invoice yang sama) dan diberi
-label "ongkir invoice terkait". Di export, kolom tingkat-invoice (Ongkos Kirim, Kode Unik, Total Dibayar) hanya
-diisi di BARIS PERTAMA tiap invoice supaya penjumlahan kolom di Excel tidak dobel.
-
-**Akses**: kartu laporan + kolom modal/laba hanya untuk pengguna `hasFullAccess(toko)`; akses baca-saja tetap
-melihat Daftar Pembeli seperti sekarang tapi tanpa modal/laba (modal = rahasia bisnis).
-
-**Migration**: `0070_invoice_item_unit_cost.sql` (kolom nullable di tiap tenant) — wajib jalan di VPS sebelum deploy.
-
-**Implementasi (selesai, type-check + `bun run build` bersih, ringkasan diuji 15 skenario)**:
-- Skema: `invoice_items.unit_cost` (Drizzle `billing.ts` + DDL `create-tenant-schema.ts` + migration `0070`).
-- Snapshot modal: `resolveProductCartItem()` kini mengembalikan `unitCost` (Harga Dasar variasi kalau diisi, else
-  induk; `null` untuk produk mitra) → disalin ke `invoice_items.unit_cost` di `checkoutAction`, pesanan manual
-  admin (`toko/actions.ts`), dan invoice manual keuangan (`finance/billing/actions.ts`).
-- Data: `resolveProductBuyers()` menambah `unitCost`, `costIsEstimate`, `sellerType`, `uniqueCode`,
-  `freeShippingDiscount`, `invoiceKey`, dan `product.cost`. Ringkasan: `lib/product-report.ts`
-  (`buildProductReport`, `buildProductConclusion`) — murni, dijumlah SEKALI per invoice untuk ongkir/kode unik.
-- UI: `components/toko/product-report-card.tsx` di `/toko/produk/[id]` (hanya `hasFullAccess(toko)`).
-- Export: `/api/products/[id]/export-buyers` — kolom Harga Dasar/Unit, Total Modal, Uang Masuk Produk, Keuntungan,
-  Modal Belum Tercatat (hanya akses penuh); Ongkos Kirim / Kode Unik / Total Dibayar Client per invoice di baris pertama
-  saja; sheet "Ringkasan" berisi total + kesimpulan.
-- Keamanan: `ProductBuyerList` adalah client component → modal per baris DIKOSONGKAN sebelum jadi props
-  (`listRows`); modal & laba tidak ada di payload pengguna tanpa akses penuh.
-
-**Wajib di VPS sebelum deploy**: `docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/0070_invoice_item_unit_cost.sql`.
-
-**Cara tes manual**: (1) buka produk yang sudah punya pesanan lunas → kartu Laporan Produk muncul di atas Daftar
-Pembeli; pendapatan − modal = keuntungan; ongkir/kode unik/total dibayar/piutang tampil terpisah + kesimpulan.
-(2) Pesanan LAMA tampil keuntungan Rp0 (modal = harga jual) dan tetap Rp0 walau Harga Dasar diedit. Buat pesanan BARU
-lalu lunasi → modal tersnapshot, keuntungan = harga jual − Harga Dasar saat itu; ubah Harga Dasar produk → laba
-pesanan tadi TIDAK berubah. (3) Export → kolom terpisah, ongkir tidak dobel untuk invoice berisi >1 baris,
-sheet "Ringkasan" ada. (4) Login sebagai pengguna akses baca-saja → kartu tidak muncul, export tanpa kolom modal/laba.
-
-**Keterbatasan**: pesanan lama = keuntungan 0 (modal belum tercatat — sesuai keputusan user, "kita menatap ke depan"); ongkir adalah ongkir INVOICE (bisa memuat produk lain);
-"Total Dibayar Client" juga per invoice; produk mitra tidak masuk laba.
+**Cara tes manual**: (1) produk dengan pesanan lunas → kartu Laporan Produk di atas Daftar Pembeli: pendapatan − modal =
+keuntungan; ongkir/kode unik/total dibayar/piutang terpisah + kesimpulan. (2) Export → kolom terpisah, ongkir tidak dobel,
+sheet "Ringkasan". (3) Pengguna akses baca-saja → kartu tidak muncul, export tanpa kolom modal/laba.
+**Keterbatasan**: ongkir & total dibayar adalah angka INVOICE (bisa memuat produk lain); produk mitra tidak masuk laba.

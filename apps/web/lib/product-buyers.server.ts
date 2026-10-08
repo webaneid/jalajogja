@@ -55,8 +55,7 @@ export type ProductBuyerRow = {
   // ── Laporan Produk (docs/arsitektur-product.md § "Laporan Produk") ──────────────────────
   // JANGAN diteruskan ke tampilan/export untuk pengguna tanpa hasFullAccess(toko): modal = rahasia bisnis.
   sellerType:          "tenant" | "mitra";
-  unitCost:            number | null;  // MODAL per unit: snapshot saat transaksi. Pesanan LAMA (tanpa snapshot) → = harga jual yang ditagih (keuntungan 0). null = produk mitra
-  costIsEstimate:      boolean;        // true = pesanan lama, modal BELUM tercatat → dianggap = harga jual (keuntungan 0, tidak berubah walau Harga Dasar diedit)
+  unitCost:            number | null;  // MODAL per unit = Harga Dasar produk/variasi (variasi kosong → ikut induk). null = produk mitra
   uniqueCode:          number;         // kode unik invoice (tingkat INVOICE, bukan per baris)
   freeShippingDiscount: number;        // "hemat gratis ongkir" pada baris pengiriman (info saja)
   invoiceKey:          string;         // `${invoiceId}|${sellerType}|${sellerId}` — kunci dedupe nilai tingkat-invoice (ongkir)
@@ -98,10 +97,13 @@ export async function resolveProductBuyers(
 
   // Semua id yang mungkin muncul sebagai invoice_items.itemId untuk produk ini.
   const variations = await db
-    .select({ id: schema.productVariations.id, attributeCombo: schema.productVariations.attributeCombo })
+    .select({ id: schema.productVariations.id, attributeCombo: schema.productVariations.attributeCombo, price: schema.productVariations.price })
     .from(schema.productVariations)
     .where(eq(schema.productVariations.productId, productId));
   const variationMap = new Map(variations.map((v) => [v.id, v.attributeCombo as Record<string, string>]));
+  // Modal = Harga Dasar per variasi (kosong → ikut produk induk), sama dengan aturan harga variasi.
+  const baseCost         = parseFloat(String(product.price)) || 0;
+  const variationCostMap = new Map(variations.map((v) => [v.id, v.price != null ? (parseFloat(String(v.price)) || 0) : baseCost]));
   const matchIds = [product.id, ...variations.map((v) => v.id)];
 
   const items = await db
@@ -113,7 +115,6 @@ export async function resolveProductBuyers(
       unitPrice:      schema.invoiceItems.unitPrice,
       total:          schema.invoiceItems.total,
       discountAmount: schema.invoiceItems.discountAmount,
-      unitCost:       schema.invoiceItems.unitCost,
       sellerType:     schema.invoiceItems.sellerType,
       sellerId:       schema.invoiceItems.sellerId,
     })
@@ -246,16 +247,13 @@ export async function resolveProductBuyers(
       .join(", ");
     const memberAddress = memberAddressMap.get(invoice.id) ?? "";
 
-    // Modal: snapshot saat transaksi (invoice_items.unit_cost). Pesanan LAMA tanpa snapshot TIDAK
-    // memakai Harga Dasar produk saat ini (itu berubah-ubah dan sebelum model harga baru artinya
-    // harga jual) — keputusan user 2026-10-09: pesanan lama dibiarkan, keuntungannya 0 → modal
-    // dianggap = harga jual yang ditagih (lineTotal/qty). Produk mitra tidak punya modal.
-    const isMitraRow     = item.sellerType === "mitra";
-    const hasSnapshot    = item.unitCost != null;
-    const lineTotalNum   = parseFloat(String(item.total));
-    const unitCost       = isMitraRow
+    // Modal = Harga Dasar produk/variasi, dibaca langsung (keputusan user 2026-10-09: tidak ada snapshot
+    // dan tidak ada aturan khusus untuk data lama — apa pun yang diisi admin di Harga Dasar itulah yang
+    // dipakai). Produk mitra tidak punya modal (harga mitra dibahas terpisah).
+    const isMitraRow = item.sellerType === "mitra";
+    const unitCost   = isMitraRow
       ? null
-      : (hasSnapshot ? parseFloat(String(item.unitCost)) : (item.quantity > 0 ? lineTotalNum / item.quantity : 0));
+      : (item.itemId === product.id ? baseCost : (variationCostMap.get(item.itemId ?? "") ?? baseCost));
 
     rows.push({
       invoiceId:          invoice.id,
@@ -278,7 +276,6 @@ export async function resolveProductBuyers(
       createdAt:          invoice.createdAt,
       sellerType:         isMitraRow ? "mitra" : "tenant",
       unitCost,
-      costIsEstimate:     !isMitraRow && !hasSnapshot,
       uniqueCode:         invoice.uniqueCode ?? 0,
       freeShippingDiscount: shipping ? parseFloat(String(shipping.freeShippingDiscount ?? "0")) : 0,
       invoiceKey:         `${item.invoiceId}|${item.sellerType}|${item.sellerId ?? ""}`,

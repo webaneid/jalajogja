@@ -169,11 +169,6 @@ export function createInvoiceItemsTable(s: ReturnType<typeof pgSchema>) {
     // docs/arsitektur-voucher.md. total = (unitPrice*quantity) - discountAmount, di-clamp >= 0.
     discountAmount: numeric("discount_amount", { precision: 15, scale: 2 }).notNull().default("0"),
     voucherId:      uuid("voucher_id"), // FK → vouchers.id via SQL
-    // Snapshot MODAL per unit (Harga Dasar produk/variasi) saat invoice dibuat — dasar laporan
-    // keuntungan produk; dibekukan supaya edit Harga Dasar kemudian tidak mengubah laba transaksi
-    // lama. NULL = tidak diketahui (invoice lama, item non-produk, produk mitra). Lihat
-    // docs/arsitektur-product.md § "Laporan Produk".
-    unitCost:       numeric("unit_cost", { precision: 15, scale: 2 }),
     // Disalin dari cart_items.for_gabung_registration saat checkout — lihat komentar di
     // createCartItemsTable() untuk penjelasan lengkap.
     forGabungRegistration: boolean("for_gabung_registration").notNull().default(false),

@@ -1184,9 +1184,9 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
   (`docs/arsitektur-product.md` § "Model Harga Baru", migration `0069` sudah jalan di 5 tenant).
   Harga konsisten di semua halaman termasuk beranda (landing ikut `resolveViewerTier`).
 - **Laporan Produk (keuntungan/uang masuk/ongkir terpisah + export) — kode SELESAI, BELUM deploy**:
-  `docs/arsitektur-product.md` § "Laporan Produk". Migration `0070_invoice_item_unit_cost.sql` WAJIB jalan di VPS
-  dulu. Belum dikerjakan: produk mitra / stok variasi / rate limit `checkoutAction`. `jalakarta-security-review` belum dijalankan
-  untuk dua commit ini.
+  `docs/arsitektur-product.md` § "Laporan Produk". Modal = Harga Dasar dibaca langsung (tanpa snapshot, tanpa migration
+  baru, tanpa aturan khusus data lama — keputusan user). Belum dikerjakan: produk mitra / stok variasi / rate limit
+  `checkoutAction`.
 - Commit terakhir per `git log`: `977b4e0` (2026-09-18) — validasi format UUID di 6 halaman
   publik `[tenant]/{modul}/[id]` (cegah crash 500 dari bot/scanner, lihat
   `docs/lessons-learned.md` [2026-09-18]). Beberapa commit terakhir (SUDAH di-push per `39edaa5`

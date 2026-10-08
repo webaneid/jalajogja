@@ -679,8 +679,6 @@ export async function checkoutAction(
         unitPrice: number;
         quantity:  number;
         mitraId:   string | null;
-        // Snapshot modal/unit → invoice_items.unit_cost (laporan keuntungan produk). null selain produk tenant.
-        unitCost:  number | null;
         forGabungRegistration: boolean;
         // ID PRODUK INDUK untuk cocokkan voucher.targetItemIds — beda dari itemId di atas kalau
         // item ini variasi produk (itemId = product_variations.id, VoucherTargetPicker cuma
@@ -691,7 +689,6 @@ export async function checkoutAction(
       for (const item of cartItems) {
         let unitPrice = parseFloat(String(item.unitPrice));
         let mitraId: string | null = null;
-        let unitCost: number | null = null;
         let voucherTargetId = item.itemId;
 
         if (item.itemId) {
@@ -709,7 +706,6 @@ export async function checkoutAction(
             }
             unitPrice        = resolved.price;
             mitraId          = resolved.mitraId;
-            unitCost         = resolved.unitCost;
             voucherTargetId  = resolved.productId;
           } else if (item.itemType === "ticket") {
             const [ticket] = await tx
@@ -736,7 +732,6 @@ export async function checkoutAction(
           unitPrice,
           quantity:  item.quantity,
           mitraId,
-          unitCost,
           forGabungRegistration: item.forGabungRegistration,
           voucherTargetId,
         });
@@ -867,7 +862,6 @@ export async function checkoutAction(
             sellerId:    item.mitraId ?? null,
             discountAmount: discountAmount.toFixed(2),
             voucherId:      discountAmount > 0 ? (voucherApplication?.voucher.id ?? null) : null,
-            unitCost:       item.unitCost != null ? item.unitCost.toFixed(2) : null,
             forGabungRegistration: item.forGabungRegistration,
           };
         })

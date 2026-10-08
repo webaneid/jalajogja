@@ -1276,9 +1276,7 @@ export async function createTenantSchemaInDb(
         discount_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
         voucher_id      UUID          REFERENCES "${s}".vouchers(id) ON DELETE SET NULL,
         -- Disalin dari cart_items.for_gabung_registration saat checkout
-        for_gabung_registration BOOLEAN NOT NULL DEFAULT false,
-        -- Snapshot modal/unit (Harga Dasar) saat invoice dibuat — dasar laporan laba produk. NULL = tidak diketahui
-        unit_cost       NUMERIC(15,2)
+        for_gabung_registration BOOLEAN NOT NULL DEFAULT false
       )
     `));
 
