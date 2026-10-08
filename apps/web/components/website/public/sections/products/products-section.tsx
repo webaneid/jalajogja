@@ -1,5 +1,5 @@
 import { eq, desc, and, inArray } from "drizzle-orm";
-import { getSettings, type TenantDb } from "@jalajogja/db";
+import { getSettings, publicSellingPrice, type TenantDb } from "@jalajogja/db";
 import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
 import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/products-section-designs";
 import type { ProductCardData } from "@/lib/product-card-templates";
@@ -50,6 +50,7 @@ async function fetchProducts(
       price:       schema.products.price,
       publicPrice: schema.products.publicPrice,
       memberPrice: schema.products.memberPrice,
+      memberPriceTenantOnly: schema.products.memberPriceTenantOnly,
       productType: schema.products.productType,
       images:      schema.products.images,
       categoryId:  schema.products.categoryId,
@@ -108,7 +109,7 @@ async function fetchProducts(
     const { coverUrl, coverVariants } = extractCover(r.images);
     const isVariable = r.productType === "variable";
     const range      = isVariable ? priceRangeMap.get(r.id) : null;
-    const priceMin   = range?.min ?? String(r.price);
+    const priceMin   = range?.min ?? String(publicSellingPrice(r));
     const priceMax   = range && range.max !== range.min ? range.max : null;
 
     return {
@@ -119,6 +120,7 @@ async function fetchProducts(
       price:        String(r.price),
       publicPrice:  r.publicPrice != null ? String(r.publicPrice) : null,
       memberPrice:  r.memberPrice != null ? String(r.memberPrice) : null,
+      memberPriceTenantOnly: r.memberPriceTenantOnly,
       productType:  (r.productType ?? "simple") as "simple" | "variable",
       priceMin,
       priceMax,

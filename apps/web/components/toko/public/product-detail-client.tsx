@@ -5,7 +5,7 @@ import { ShoppingCart, Minus, Plus, Store, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProductImageViewer } from "./product-image-viewer";
 import { addToCartAction } from "@/app/(public)/[tenant]/cart/actions";
-import { resolvePrice, formatPrice, priceLabel } from "@/lib/product-card-templates";
+import { priceDisplay, formatPrice, priceLabel } from "@/lib/product-card-templates";
 import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
 import { isFreeShippingMatch } from "@/lib/free-shipping-match";
 import type { NavItem } from "@/lib/nav-menu";
@@ -167,8 +167,10 @@ export function ProductDetailClient({
       ? activeVariation.images
       : productImages;
 
-  // Harga display
-  const displayPrice: string = (() => {
+  // Harga display — SATU jalur (priceDisplay) untuk simple maupun variasi terpilih. Data variasi
+  // dari server SUDAH di-merge dengan produk induk per field (kosong → ikut induk), jadi di sini
+  // tinggal dibungkus jadi ProductCardData "simple". Harga Dasar (modal) tidak pernah dipakai.
+  const priceInfo = (() => {
     if (isVariable) {
       if (activeVariation) {
         const vProduct: ProductCardData = {
@@ -177,21 +179,18 @@ export function ProductDetailClient({
           publicPrice: activeVariation.publicPrice,
           memberPrice: activeVariation.memberPrice,
           productType: "simple",
-          priceMin:    activeVariation.price,
+          priceMin:    activeVariation.publicPrice ?? activeVariation.price,
           priceMax:    null,
         };
-        return resolvePrice(vProduct, sessionType);
+        return priceDisplay(vProduct, sessionType);
       }
-      return product.priceMin; // sebelum pilih variasi
+      return { display: product.priceMin, original: null, isMemberPrice: false }; // sebelum pilih variasi
     }
-    return resolvePrice(product, sessionType);
+    return priceDisplay(product, sessionType);
   })();
-
-  const originalPrice = isVariable
-    ? (activeVariation?.price ?? null)
-    : product.price;
-
-  const hasDiscount = !isVariable && displayPrice !== originalPrice;
+  const displayPrice: string = priceInfo.display;
+  const originalPrice        = priceInfo.original;
+  const hasDiscount          = originalPrice !== null;
 
   // Stok — untuk simple product, `product.availableStock` (stok fisik dikurangi reservasi
   // invoice pending lain, dihitung server-side) SEBELUMNYA tidak pernah ada sama sekali di tipe
@@ -259,9 +258,9 @@ export function ProductDetailClient({
           {hasDiscount && originalPrice && (
             <p className="text-sm text-muted-foreground line-through">{formatPrice(originalPrice)}</p>
           )}
-          {sessionType === "member" && (activeVariation?.memberPrice ?? product.memberPrice) && (
+          {priceInfo.isMemberPrice && (
             <span className="inline-block text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
-              Harga Anggota IKPM
+              {sessionType === "tenant" ? "Harga Anggota" : "Harga Anggota IKPM"}
             </span>
           )}
         </>

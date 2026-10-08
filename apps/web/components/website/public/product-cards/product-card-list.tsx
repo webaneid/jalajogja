@@ -1,11 +1,11 @@
 import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
-import { pickProductCover, formatPrice, resolvePrice } from "@/lib/product-card-templates";
+import { pickProductCover, formatPrice, priceDisplay } from "@/lib/product-card-templates";
 import { Store } from "lucide-react";
 
 export function ProductCardList({
   product,
   tenantSlug,
-  sessionType = "none",
+  sessionType = "public",
 }: {
   product:      ProductCardData;
   tenantSlug:   string;
@@ -13,8 +13,8 @@ export function ProductCardList({
 }) {
   const cover        = pickProductCover(product, "square");
   const isMitra      = product.sellerType === "mitra";
-  const displayPrice = resolvePrice(product, sessionType);
-  const hasDiscount  = displayPrice !== product.price;
+  const { display: displayPrice, original: originalPrice } = priceDisplay(product, sessionType);
+  const hasDiscount  = originalPrice !== null;
 
   return (
     <a
@@ -68,10 +68,10 @@ export function ProductCardList({
         {hasDiscount ? (
           <div className="flex items-baseline gap-2">
             <p className="text-sm font-bold text-primary">{formatPrice(displayPrice)}</p>
-            <p className="text-xs text-muted-foreground line-through">{formatPrice(product.price)}</p>
+            <p className="text-xs text-muted-foreground line-through">{formatPrice(originalPrice ?? displayPrice)}</p>
           </div>
         ) : (
-          <p className="text-sm font-bold">{formatPrice(product.price)}</p>
+          <p className="text-sm font-bold">{formatPrice(displayPrice)}</p>
         )}
       </div>
     </a>

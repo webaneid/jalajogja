@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { db, tenants, getSettings, type TenantDb } from "@jalajogja/db";
+import { db, tenants, getSettings, publicSellingPrice, type TenantDb } from "@jalajogja/db";
 import { eq, inArray, and } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
 import { CartClient } from "@/components/billing/cart-client";
@@ -307,6 +307,7 @@ export default async function KeranjangPage({ params }: Props) {
                 images:      schema.products.images,
                 productType: schema.products.productType,
                 price:       schema.products.price,
+                publicPrice: schema.products.publicPrice,
               })
               .from(schema.products)
               .where(
@@ -324,10 +325,10 @@ export default async function KeranjangPage({ params }: Props) {
                 productSlug:  product.slug,
                 productType:  product.productType as "simple" | "variable",
                 coverUrl:     extractCoverUrl(product.images),
-                // Harga dasar (sama seperti yang dipakai checkoutAction saat re-validasi) —
+                // Harga Publik (harga jual; BUKAN Harga Dasar/modal) — perkiraan, checkoutAction tetap re-validasi —
                 // hanya relevan untuk produk simple, produk variable harganya baru pasti
                 // setelah variasi dipilih di halaman produk.
-                unitPrice:    parseFloat(String(product.price)),
+                unitPrice:    publicSellingPrice(product),
               };
             }
           }

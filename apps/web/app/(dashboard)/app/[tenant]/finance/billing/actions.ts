@@ -3,7 +3,7 @@
 import { eq, and, desc, sql, count, inArray, ilike, or } from "drizzle-orm";
 import type { InvoiceStatus } from "@jalajogja/db";
 import { revalidatePath } from "next/cache";
-import { createTenantDb, generateFinancialNumber, settleInstallmentSchedules } from "@jalajogja/db";
+import { createTenantDb, generateFinancialNumber, settleInstallmentSchedules, publicSellingPrice } from "@jalajogja/db";
 import { db as publicDb, tenants, tenantMemberships, getSetting } from "@jalajogja/db";
 import {
   findVoucherByCode,
@@ -788,6 +788,7 @@ export async function searchBillingProductsAction(
         id:    schema.products.id,
         name:  schema.products.name,
         price: schema.products.price,
+        publicPrice: schema.products.publicPrice,
         sku:   schema.products.sku,
       })
       .from(schema.products)
@@ -804,7 +805,8 @@ export async function searchBillingProductsAction(
       data: rows.map((r) => ({
         id:    r.id,
         name:  r.name,
-        price: parseFloat(String(r.price)),
+        // Harga Publik (harga jual), bukan Harga Dasar/modal
+        price: publicSellingPrice(r),
         sku:   r.sku ?? null,
       })),
     };
@@ -3040,13 +3042,13 @@ export async function getVoucherTargetOptionsAction(
 
   if (targetType === "product") {
     const rows = await db
-      .select({ id: schema.products.id, name: schema.products.name, price: schema.products.price })
+      .select({ id: schema.products.id, name: schema.products.name, price: schema.products.price, publicPrice: schema.products.publicPrice })
       .from(schema.products)
       .where(and(eq(schema.products.status, "active"), sql`${schema.products.mitraId} IS NULL`))
       .orderBy(desc(schema.products.createdAt));
     return {
       success: true,
-      data: rows.map((r) => ({ value: r.id, label: r.name, price: parseFloat(String(r.price)) })),
+      data: rows.map((r) => ({ value: r.id, label: r.name, price: publicSellingPrice(r) })),
     };
   }
 

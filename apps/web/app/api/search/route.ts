@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextResponse }             from "next/server";
 import { eq, ilike, or, and }       from "drizzle-orm";
-import { db, tenants, members, tenantMemberships, createTenantDb } from "@jalajogja/db";
+import { db, tenants, members, tenantMemberships, createTenantDb, publicSellingPrice } from "@jalajogja/db";
 import { resolvePostHrefs } from "@/lib/post-permalink.server";
 
 export async function GET(req: Request) {
@@ -74,7 +74,7 @@ export async function GET(req: Request) {
 
     // Products (active)
     tenantDb
-      .select({ name: schema.products.name, slug: schema.products.slug, price: schema.products.price })
+      .select({ name: schema.products.name, slug: schema.products.slug, price: schema.products.price, publicPrice: schema.products.publicPrice })
       .from(schema.products)
       .where(and(
         eq(schema.products.status, "active"),
@@ -103,7 +103,8 @@ export async function GET(req: Request) {
     posts:    postsWithHref,
     pages:    pages,
     events:   events,
-    products: products.map((p) => ({ ...p, price: Number(p.price) })),
+    // Harga tampil = Harga Publik (Harga Dasar = modal, tidak boleh bocor ke pengunjung)
+    products: products.map((p) => ({ name: p.name, slug: p.slug, price: publicSellingPrice(p) })),
     members:  memberResults,
   });
 }

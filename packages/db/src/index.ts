@@ -63,6 +63,7 @@ export {
   resolveProductCartItem,
   type ResolvedProductCartItem,
 } from "./helpers/resolve-product-item";
+export * from "./helpers/product-price";
 
 // Stok produk — SATU-SATUNYA tempat baca/ubah products.stock / product_variations.stock dari
 // alur cart→invoice. Lihat docs/arsitektur-stok.md untuk desain lengkap.

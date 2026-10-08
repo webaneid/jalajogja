@@ -85,6 +85,9 @@ export function createProductsTable(s: ReturnType<typeof pgSchema>) {
     // Harga berlapis — berlaku untuk tenant dan mitra (untuk simple product)
     publicPrice: numeric("public_price", { precision: 15, scale: 2 }),
     memberPrice: numeric("member_price", { precision: 15, scale: 2 }),
+    // true = Harga Anggota HANYA untuk anggota tenant ini; false = semua anggota IKPM terdaftar.
+    // Satu flag per produk — variasi mewarisi. Lihat docs/arsitektur-product.md § "Model Harga Baru".
+    memberPriceTenantOnly: boolean("member_price_tenant_only").notNull().default(false),
     // Variasi produk
     productType:     text("product_type",     { enum: PRODUCT_TYPES }).notNull().default("simple"),
     attributeGroups: jsonb("attribute_groups").$type<AttributeGroup[]>(),  // null jika simple

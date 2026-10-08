@@ -1,11 +1,11 @@
 import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
-import { pickProductCover, formatPrice, resolvePrice, priceLabel } from "@/lib/product-card-templates";
+import { pickProductCover, formatPrice, priceDisplay, priceLabel } from "@/lib/product-card-templates";
 import { Store } from "lucide-react";
 
 export function ProductCardGrid({
   product,
   tenantSlug,
-  sessionType = "none",
+  sessionType = "public",
 }: {
   product:      ProductCardData;
   tenantSlug:   string;
@@ -14,8 +14,8 @@ export function ProductCardGrid({
   const cover        = pickProductCover(product, "square-large");
   const isMitra      = product.sellerType === "mitra";
   const isVariable   = product.productType === "variable";
-  const displayPrice = resolvePrice(product, sessionType);
-  const hasDiscount  = !isVariable && displayPrice !== product.price;
+  const { display: displayPrice, original: originalPrice, isMemberPrice } = priceDisplay(product, sessionType);
+  const hasDiscount  = !isVariable && originalPrice !== null;
 
   return (
     <a
@@ -74,9 +74,9 @@ export function ProductCardGrid({
             <p className="text-sm font-bold text-foreground">{priceLabel(product, sessionType)}</p>
           ) : hasDiscount ? (
             <div>
-              <p className="text-xs text-muted-foreground line-through">{formatPrice(product.price)}</p>
+              <p className="text-xs text-muted-foreground line-through">{formatPrice(originalPrice ?? displayPrice)}</p>
               <p className="text-sm font-bold text-primary">{formatPrice(displayPrice)}</p>
-              {sessionType === "member" && (
+              {isMemberPrice && (
                 <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
                   Harga Anggota
                 </span>

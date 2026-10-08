@@ -18,6 +18,7 @@ import { getTokoSettings } from "@/lib/toko-settings";
 import { isSafeExternalUrl } from "@/lib/safe-url";
 import { auth } from "@/lib/auth";
 import { getAkunIdentity } from "@/lib/akun-identity";
+import { resolveViewerTier } from "@/lib/session-type.server";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, anchorTodayUtc, todayInTz, formatInTz, tzLabel } from "@/lib/tenant-timezone.server";
 import { createEventRegistrationsFromInvoiceTickets } from "@/lib/event-registration-sync.server";
@@ -309,6 +310,10 @@ export async function previewVoucherAction(
     // Re-fetch harga + mitraId per item (SAMA seperti loop resolusi di checkoutAction) — supaya
     // preview TIDAK pernah menampilkan diskon untuk produk mitra yang nanti dikecualikan saat
     // checkout sungguhan (staleness harga boleh, staleness "berlaku/tidaknya diskon" tidak boleh).
+    // Tier harga dari SESI (bukan dari client) — sama dengan checkoutAction supaya diskon voucher
+    // dihitung dari harga yang sama dengan yang nanti ditagih.
+    const previewSession = await auth.api.getSession({ headers: await headers() });
+    const priceTier      = await resolveViewerTier(previewSession?.user?.id, slug);
     const voucherResolvedItems: ResolvedCartItemForVoucher[] = [];
     for (const item of cartItems) {
       let unitPrice = parseFloat(String(item.unitPrice));
@@ -318,7 +323,7 @@ export async function previewVoucherAction(
       let voucherTargetId = item.itemId;
       if (item.itemId) {
         if (item.itemType === "product") {
-          const resolved = await resolveProductCartItem(tenantDb, schema, item.itemId);
+          const resolved = await resolveProductCartItem(tenantDb, schema, item.itemId, priceTier);
           if (resolved) { unitPrice = resolved.price; mitraId = resolved.mitraId; voucherTargetId = resolved.productId; }
         } else if (item.itemType === "ticket") {
           const [ticket] = await tenantDb
@@ -572,6 +577,11 @@ export async function checkoutAction(
     // ── Lookup identitas via resolveIdentity ─────────────────────────────────
     // Urutan: session login → public.profiles → public.members → guest
     // Query ke public schema — di luar transaction tenant di bawah (koneksi/DB berbeda).
+    // Tier harga pembeli dari SESI login (tamu/login/anggota) — dipakai resolveProductCartItem
+    // supaya harga yang ditagih = harga tier yang tampil di halaman produk. Lihat
+    // docs/arsitektur-product.md § "Harga Berlapis — Enforcement Server-side di Checkout".
+    const priceTier = await resolveViewerTier(session?.user?.id, slug);
+
     const identity = await resolveIdentity(db, {
       betterAuthUserId: session?.user?.id ?? null,
       phone: normalizePhone(customer.phone),
@@ -691,7 +701,7 @@ export async function checkoutAction(
             // ATAU product_variations.id (bervariasi) — lihat resolve-product-item.ts untuk
             // root cause bug yang ditutup (voucher tidak match + celah eksklusi mitra utk
             // produk bervariasi).
-            const resolved = await resolveProductCartItem(tx, schema, item.itemId);
+            const resolved = await resolveProductCartItem(tx, schema, item.itemId, priceTier);
             if (resolved) {
               unitPrice        = resolved.price;
               mitraId          = resolved.mitraId;

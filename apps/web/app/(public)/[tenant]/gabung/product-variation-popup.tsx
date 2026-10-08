@@ -41,8 +41,10 @@ function isValueAvailable(
   );
 }
 
-// sessionType selalu "member" di konteks /gabung (halaman ini hanya bisa diakses anggota IKPM
-// yang sudah lolos eligibility) — prioritas harga: memberPrice ?? publicPrice ?? price.
+// Konteks /gabung: pembeli anggota IKPM. Server (gabung/page.tsx) sudah merge ketiga harga dengan
+// produk induk dan mengosongkan memberPrice kalau pembeli tidak berhak (flag khusus anggota
+// tenant) — jadi aturan di sini cukup memberPrice ?? publicPrice ?? price (sama dengan
+// resolveSellingPrice di checkout).
 function resolveMemberPrice(v: ProductVariationData): string {
   return v.memberPrice ?? v.publicPrice ?? v.price;
 }

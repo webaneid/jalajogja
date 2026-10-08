@@ -1,4 +1,4 @@
-import { createTenantDb } from "@jalajogja/db";
+import { createTenantDb, publicSellingPrice } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
 import { sql, ilike } from "drizzle-orm";
@@ -61,6 +61,7 @@ export default async function ProdukPage({
         slug:        schema.products.slug,
         sku:         schema.products.sku,
         price:       schema.products.price,
+        publicPrice: schema.products.publicPrice,
         stock:       schema.products.stock,
         status:      schema.products.status,
         productType: schema.products.productType,
@@ -111,7 +112,7 @@ export default async function ProdukPage({
         ? formatRupiah(range.min)
         : `${formatRupiah(range.min)} – ${formatRupiah(range.max)}`;
     } else {
-      priceLabel = formatRupiah(product.price);
+      priceLabel = formatRupiah(publicSellingPrice(product));
     }
     return {
       id:          product.id,

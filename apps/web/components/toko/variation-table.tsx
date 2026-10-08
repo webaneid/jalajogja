@@ -32,7 +32,9 @@ type Props = {
   // Nilai produk induk — dipakai sebagai fallback tampilan (bukan disalin ke DB) untuk
   // variasi yang tidak mengisi harga/berat/SKU sendiri. Lihat docs/arsitektur-billing.md
   // § "Fallback Harga/Berat/SKU per Variasi".
-  productPrice:       string;
+  productPrice:       string;   // Harga Dasar (modal) produk induk
+  productPublicPrice: string;   // Harga Publik produk induk
+  productMemberPrice: string;   // Harga Anggota produk induk
   productWeightGram:  string;
   productSku:         string;
 };
@@ -43,7 +45,7 @@ function formatRp(n: number) {
 
 export function VariationTable({
   slug, variations, attributeGroups, onChange, minKomisi,
-  productPrice, productWeightGram, productSku,
+  productPrice, productPublicPrice, productMemberPrice, productWeightGram, productSku,
 }: Props) {
   const [pickerKey, setPickerKey]   = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -88,7 +90,9 @@ export function VariationTable({
   }
 
   const editingVariation = variations.find(v => v._key === editingKey) ?? null;
-  const productPriceNum  = parseFloat(productPrice) || 0;
+  // Harga yang tampil di daftar = harga JUAL (Publik), bukan modal. Kosong di variasi → ikut
+  // produk induk; produk lama tanpa Harga Publik → ikut Harga Dasar (sama dengan resolver server).
+  const parentSellingNum = parseFloat(productPublicPrice) || parseFloat(productPrice) || 0;
 
   return (
     <div className="space-y-2">
@@ -100,8 +104,8 @@ export function VariationTable({
           .join(" · ");
 
         // Harga & berat EFEKTIF — kosong di variasi berarti pakai nilai produk induk.
-        const priceIsFallback = !v.price.trim();
-        const priceNum        = priceIsFallback ? productPriceNum : (parseFloat(v.price) || 0);
+        const priceIsFallback = !v.publicPrice.trim();
+        const priceNum        = priceIsFallback ? parentSellingNum : (parseFloat(v.publicPrice) || 0);
         const weightEffective = v.weightGram.trim() || productWeightGram.trim();
 
         return (
@@ -209,6 +213,8 @@ export function VariationTable({
               attributeGroups={attributeGroups}
               minKomisi={minKomisi}
               productPrice={productPrice}
+              productPublicPrice={productPublicPrice}
+              productMemberPrice={productMemberPrice}
               productWeightGram={productWeightGram}
               productSku={productSku}
               onChange={(patch) => updateVariation(editingVariation._key, patch)}
@@ -223,13 +229,15 @@ export function VariationTable({
 }
 
 function VariationEditForm({
-  variation, attributeGroups, minKomisi, productPrice, productWeightGram, productSku,
+  variation, attributeGroups, minKomisi, productPrice, productPublicPrice, productMemberPrice, productWeightGram, productSku,
   onChange, onOpenPicker, onRemoveImage,
 }: {
   variation:         VariationLocal;
   attributeGroups:   AttributeGroup[];
   minKomisi?:        number;
   productPrice:      string;
+  productPublicPrice: string;
+  productMemberPrice: string;
   productWeightGram: string;
   productSku:        string;
   onChange:          (patch: Partial<VariationLocal>) => void;
@@ -244,18 +252,27 @@ function VariationEditForm({
   const maxMember = minKomisi != null && effectivePriceNum > 0
     ? effectivePriceNum * (1 - minKomisi / 100)
     : null;
-  const memberInvalid = maxMember != null && variation.memberPrice
+  const memberInvalidKomisi = maxMember != null && variation.memberPrice
     ? parseFloat(variation.memberPrice) > maxMember
     : false;
+  // Harga Anggota tidak boleh melebihi Harga Publik efektif variasi (publik variasi → publik
+  // produk → Harga Dasar untuk produk lama). Server memvalidasi ulang di saveVariationsAction.
+  const effectivePublicNum = variation.publicPrice.trim()
+    ? (parseFloat(variation.publicPrice) || 0)
+    : (parseFloat(productPublicPrice) || parseFloat(productPrice) || 0);
+  const memberAbovePublic = !!variation.memberPrice && effectivePublicNum > 0
+    && parseFloat(variation.memberPrice) > effectivePublicNum;
+  const memberInvalid = memberInvalidKomisi || memberAbovePublic;
 
   const comboLabel = attributeGroups
     .map(g => variation.attributeCombo[g.name])
     .filter(Boolean)
     .join(" · ") || "Tanpa atribut";
 
-  const pricePlaceholder = productPrice
-    ? `${(parseFloat(productPrice) || 0).toLocaleString("id-ID")} (dari produk)`
-    : "0";
+  const fromParent = (v: string) => v ? `${(parseFloat(v) || 0).toLocaleString("id-ID")} (dari produk)` : "Ikut produk";
+  const pricePlaceholder  = fromParent(productPrice);
+  const publicPlaceholder = fromParent(productPublicPrice);
+  const memberPlaceholder = fromParent(productMemberPrice);
   const weightPlaceholder = productWeightGram
     ? `${productWeightGram} (dari produk)`
     : "Ikut produk";
@@ -299,7 +316,7 @@ function VariationEditForm({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="var-price">Harga Dasar</Label>
+            <Label htmlFor="var-price">Harga Dasar (modal)</Label>
             <Input id="var-price" type="number" min={0} value={variation.price}
               onChange={e => onChange({ price: e.target.value })} placeholder={pricePlaceholder} />
           </div>
@@ -311,7 +328,7 @@ function VariationEditForm({
           <div>
             <Label htmlFor="var-public">Harga Publik</Label>
             <Input id="var-public" type="number" min={0} value={variation.publicPrice}
-              onChange={e => onChange({ publicPrice: e.target.value })} placeholder="—" />
+              onChange={e => onChange({ publicPrice: e.target.value })} placeholder={publicPlaceholder} />
           </div>
           <div>
             <Label htmlFor="var-weight">Berat (gram)</Label>
@@ -322,10 +339,15 @@ function VariationEditForm({
             <Label htmlFor="var-member">Harga Anggota</Label>
             <Input id="var-member" type="number" min={0} value={variation.memberPrice}
               onChange={e => onChange({ memberPrice: e.target.value })}
-              placeholder="—" className={memberInvalid ? "border-destructive" : ""} />
-            {memberInvalid && maxMember != null && (
+              placeholder={memberPlaceholder} className={memberInvalid ? "border-destructive" : ""} />
+            {memberInvalidKomisi && maxMember != null && (
               <p className="text-xs text-destructive mt-1">
                 Maks {Math.floor(maxMember).toLocaleString("id-ID")}
+              </p>
+            )}
+            {memberAbovePublic && (
+              <p className="text-xs text-destructive mt-1">
+                Tidak boleh lebih tinggi dari Harga Publik ({effectivePublicNum.toLocaleString("id-ID")})
               </p>
             )}
           </div>
@@ -337,8 +359,8 @@ function VariationEditForm({
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Harga, berat, dan SKU yang dikosongkan otomatis mengikuti data produk induk (bukan
-          jadi 0/kosong). Isi di sini hanya kalau varian ini memang berbeda dari produk.
+          Harga Dasar, Harga Publik, Harga Anggota, berat, dan SKU yang dikosongkan otomatis
+          mengikuti data produk induk (bukan jadi 0/kosong). Isi di sini hanya kalau varian ini memang berbeda dari produk.
         </p>
       </div>
     </>

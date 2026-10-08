@@ -8,6 +8,14 @@
 
 ---
 
+## [2026-10-09] Harga tier hanya tampilan — checkout menagih `price`; DAN arti field harga ternyata salah kaprah
+**Masalah:** (1) Anggota melihat `member_price` di halaman produk, tapi invoice ditagih `price`. (2) Saat dibahas, ternyata label/arti field memang beda dari maksud pemilik produk: "Harga Dasar" di kode = harga tamu, padahal maksudnya modal/harga produsen; harga jual sebenarnya = Harga Publik untuk semua orang.
+**Root cause:** Aturan harga ditulis DUA kali, terpisah (`resolvePrice()` sisi tampilan vs `resolveProductCartItem()` sisi server yang hanya baca `price`) dan tidak pernah disamakan. Arti field tidak pernah divalidasi ke pemilik bisnis — label "Tdk login / Akun login / Alumni Gontor" dibangun dari asumsi, lalu terbawa ke ~25 file.
+**Fix:** Satu fungsi murni `resolveSellingPrice()` (`packages/db/src/helpers/product-price.ts`, juga subpath `@jalajogja/db/product-price` untuk client) dipakai tampilan DAN server; tier pembeli dihitung server dari sesi + keanggotaan (`lib/session-type.server.ts`). Detail: `docs/arsitektur-product.md` § "Model Harga Baru".
+**Pencegahan:** (a) Aturan bisnis yang menentukan UANG = satu implementasi, dipakai tampilan dan server. Menambah tier/diskon → ubah `product-price.ts` saja. (b) Sebelum membangun fitur harga/komisi/laporan, konfirmasi ke pemilik bisnis ARTI tiap field dengan contoh angka nyata, jangan menamai field dari asumsi. (c) Field "modal" tidak boleh sampai ke payload publik (card/detail/search) — jangan jadikan "harga asli yang dicoret".
+
+---
+
 ## [2026-10-09] Gate OTP checkout: client fail-open vs server fail-closed — error tanpa jalan keluar
 **Masalah:** Checkout donasi (user login) menampilkan "Nomor HP ini terdaftar di sistem kami — verifikasi OTP diperlukan" tanpa ada kolom OTP untuk diisi — user buntu.
 **Root cause:** Gate OTP dibangun asimetris. Client memicu cek via event blur dan menganggap SEMUA kegagalan (503/429/500) sebagai "nomor tidak terdaftar, lanjut"; server `checkoutAction` selalu menuntut OTP kalau nomor match. Nomor yang terisi otomatis dari akun login tidak pernah memicu blur sama sekali.

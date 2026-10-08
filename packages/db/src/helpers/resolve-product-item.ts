@@ -25,6 +25,7 @@ import { eq, and, type ExtractTablesWithRelations } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 import type { TenantDb } from "../tenant-client";
+import { mergeVariationPrices, resolveSellingPrice, type ViewerTier } from "./product-price";
 
 type TenantTx = PgTransaction<
   PostgresJsQueryResultHKT,
@@ -39,7 +40,9 @@ export type ResolvedProductCartItem = {
   // pernah menyimpan products.id, tidak pernah variasi). BEDA dari cart_items.itemId asli, yang
   // tetap dipertahankan apa adanya (variasi) di invoice_items untuk keperluan fulfillment/SKU.
   productId: string;
-  price:     number;   // harga EFEKTIF: variation.price kalau terisi, else harga produk induk
+  // Harga JUAL efektif untuk pembeli ini (bukan modal) — Harga Publik, atau Harga Anggota kalau
+  // pembeli berhak; per field variasi ikut produk induk kalau kosong. Lihat product-price.ts.
+  price:     number;
   mitraId:   string | null;
 };
 
@@ -47,15 +50,26 @@ export async function resolveProductCartItem(
   db: TenantDbOrTx,
   schema: TenantDb["schema"],
   itemId: string,
+  // Default "public" = Harga Publik — pemanggil admin (invoice manual) menagih harga publik.
+  // Checkout/preview publik WAJIB mengirim tier hasil sesi (server-side, bukan dari client).
+  tier: ViewerTier = "public",
 ): Promise<ResolvedProductCartItem | null> {
   // 1) Coba sebagai produk simple dulu — kasus paling umum.
   const [prod] = await db
-    .select({ id: schema.products.id, price: schema.products.price, mitraId: schema.products.mitraId })
+    .select({
+      id: schema.products.id, price: schema.products.price, mitraId: schema.products.mitraId,
+      publicPrice: schema.products.publicPrice, memberPrice: schema.products.memberPrice,
+      tenantOnly: schema.products.memberPriceTenantOnly,
+    })
     .from(schema.products)
     .where(eq(schema.products.id, itemId))
     .limit(1);
   if (prod) {
-    return { productId: prod.id, price: parseFloat(String(prod.price)), mitraId: prod.mitraId ?? null };
+    return {
+      productId: prod.id,
+      price:     resolveSellingPrice(prod, tier, prod.tenantOnly),
+      mitraId:   prod.mitraId ?? null,
+    };
   }
 
   // 2) Fallback: itemId adalah product_variations.id — JOIN ke produk induk untuk mitraId +
@@ -64,8 +78,13 @@ export async function resolveProductCartItem(
   const [variation] = await db
     .select({
       productId:      schema.productVariations.productId,
-      variationPrice: schema.productVariations.price,
-      productPrice:   schema.products.price,
+      variationPrice:       schema.productVariations.price,
+      variationPublicPrice: schema.productVariations.publicPrice,
+      variationMemberPrice: schema.productVariations.memberPrice,
+      productPrice:         schema.products.price,
+      productPublicPrice:   schema.products.publicPrice,
+      productMemberPrice:   schema.products.memberPrice,
+      tenantOnly:           schema.products.memberPriceTenantOnly,
       mitraId:        schema.products.mitraId,
     })
     .from(schema.productVariations)
@@ -77,9 +96,11 @@ export async function resolveProductCartItem(
     .limit(1);
   if (!variation) return null;
 
-  const price = variation.variationPrice != null
-    ? parseFloat(String(variation.variationPrice))
-    : parseFloat(String(variation.productPrice));
+  const merged = mergeVariationPrices(
+    { price: variation.productPrice, publicPrice: variation.productPublicPrice, memberPrice: variation.productMemberPrice },
+    { price: variation.variationPrice, publicPrice: variation.variationPublicPrice, memberPrice: variation.variationMemberPrice },
+  );
+  const price = resolveSellingPrice(merged, tier, variation.tenantOnly);
 
   return { productId: variation.productId, price, mitraId: variation.mitraId ?? null };
 }

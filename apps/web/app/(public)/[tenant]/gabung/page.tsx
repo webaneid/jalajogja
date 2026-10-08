@@ -3,7 +3,8 @@ import { headers, cookies } from "next/headers";
 import { eq, and }       from "drizzle-orm";
 import { auth }          from "@/lib/auth";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
-import { db, tenants, tenantMemberships, createTenantDb, getSetting, getSettings } from "@jalajogja/db";
+import { db, tenants, tenantMemberships, createTenantDb, getSetting, getSettings, mergeVariationPrices, resolveSellingPrice, isMemberPriceEligible } from "@jalajogja/db";
+import { resolveViewerTier } from "@/lib/session-type.server";
 import { getAkunIdentity } from "@/lib/akun-identity";
 import {
   checkMemberEligibility, MEMBER_ELIGIBILITY_LABELS, memberEligibilityFixHref,
@@ -135,6 +136,8 @@ export default async function GabungPage({ params }: { params: Params }) {
         .select({
           id: schema.products.id, name: schema.products.name, images: schema.products.images,
           productType: schema.products.productType, price: schema.products.price,
+          publicPrice: schema.products.publicPrice, memberPrice: schema.products.memberPrice,
+          memberPriceTenantOnly: schema.products.memberPriceTenantOnly,
           attributeGroups: schema.products.attributeGroups,
         })
         .from(schema.products)
@@ -142,6 +145,10 @@ export default async function GabungPage({ params }: { params: Params }) {
         .limit(1);
 
       if (p) {
+        // Tier harga pembeli — sama dengan yang dipakai checkoutAction (resolveViewerTier), supaya
+        // harga yang tampil di /gabung = harga yang ditagih. Lihat docs/arsitektur-product.md.
+        const viewer = await resolveViewerTier(session.user.id, slug);
+        const memberEligible = isMemberPriceEligible(viewer, p.memberPriceTenantOnly);
         const isVariable = p.productType === "variable";
         let variationData: ProductWidgetData["variationData"];
 
@@ -161,16 +168,25 @@ export default async function GabungPage({ params }: { params: Params }) {
             ))
             .orderBy(schema.productVariations.createdAt);
 
-          const variations: ProductVariationData[] = vrows.map((v) => ({
-            id: v.id, sku: v.sku ?? null,
-            price: String(v.price ?? p.price),
-            publicPrice: v.publicPrice != null ? String(v.publicPrice) : null,
-            memberPrice: v.memberPrice != null ? String(v.memberPrice) : null,
-            stock: v.stock,
-            images: (Array.isArray(v.images) ? v.images : []) as ProductVariationData["images"],
-            attributeCombo: (v.attributeCombo ?? {}) as Record<string, string>,
-            isActive: v.isActive,
-          }));
+          const variations: ProductVariationData[] = vrows.map((v) => {
+            // Tiga field harga ikut produk induk kalau kosong. Harga Anggota dibuang (null) kalau
+            // pembeli tidak berhak (flag "khusus anggota tenant" + bukan anggota tenant ini), supaya
+            // popup (memberPrice ?? publicPrice ?? price) selalu konsisten dengan checkout.
+            const m = mergeVariationPrices(
+              { price: p.price, publicPrice: p.publicPrice, memberPrice: p.memberPrice },
+              { price: v.price, publicPrice: v.publicPrice, memberPrice: v.memberPrice },
+            );
+            return {
+              id: v.id, sku: v.sku ?? null,
+              price: String(m.price),
+              publicPrice: m.publicPrice != null ? String(m.publicPrice) : null,
+              memberPrice: memberEligible && m.memberPrice != null ? String(m.memberPrice) : null,
+              stock: v.stock,
+              images: (Array.isArray(v.images) ? v.images : []) as ProductVariationData["images"],
+              attributeCombo: (v.attributeCombo ?? {}) as Record<string, string>,
+              isActive: v.isActive,
+            };
+          });
 
           productRelevantIds = new Set(variations.map((v) => v.id));
 
@@ -190,7 +206,7 @@ export default async function GabungPage({ params }: { params: Params }) {
         productWidget = {
           productId: p.id, name: p.name, coverUrl: extractCoverUrl(p.images),
           productType: (p.productType ?? "simple") as "simple" | "variable",
-          unitPrice: parseFloat(String(p.price)),
+          unitPrice: resolveSellingPrice(p, viewer, p.memberPriceTenantOnly),
           alreadyInCart: false, // dihitung di bawah setelah cartRows tersedia
           variationData,
         };

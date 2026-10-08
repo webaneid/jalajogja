@@ -74,6 +74,7 @@ export default async function ProductEditPage({
   return (
     <ProductForm
       slug={slug}
+      tenantName={access.tenant.name}
       productId={productId}
       initialData={{
         name:        product.name,
@@ -83,6 +84,7 @@ export default async function ProductEditPage({
         price:       parseFloat(String(product.price)),
         publicPrice: product.publicPrice != null ? parseFloat(String(product.publicPrice)) : null,
         memberPrice: product.memberPrice != null ? parseFloat(String(product.memberPrice)) : null,
+        memberPriceTenantOnly: product.memberPriceTenantOnly,
         stock:           product.stock,
         weightGram:      product.weightGram  ?? null,
         originCityId:    product.originCityId   ?? null,

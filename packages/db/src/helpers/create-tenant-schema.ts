@@ -943,6 +943,7 @@ export async function createTenantSchemaInDb(
         view_count   INTEGER        NOT NULL DEFAULT 0,
         public_price      NUMERIC(15,2),
         member_price      NUMERIC(15,2),
+        member_price_tenant_only BOOLEAN NOT NULL DEFAULT FALSE,  -- true = Harga Anggota khusus anggota tenant ini
         product_type      TEXT           NOT NULL DEFAULT 'simple'
                                          CHECK (product_type IN ('simple','variable')),
         attribute_groups  JSONB,

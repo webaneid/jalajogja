@@ -1,4 +1,4 @@
-import { createTenantDb, db as publicDb, tenants, tenantAddonInstallations, addons, memberBusinesses } from "@jalajogja/db";
+import { createTenantDb, publicSellingPrice, db as publicDb, tenants, tenantAddonInstallations, addons, memberBusinesses } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { getTokoSettings } from "@/lib/toko-settings";
 import { redirect } from "next/navigation";
@@ -39,6 +39,7 @@ export default async function PesananNewPage({
       name:        schema.products.name,
       sku:         schema.products.sku,
       price:       schema.products.price,
+      publicPrice: schema.products.publicPrice,
       stock:       schema.products.stock,
       weightGram:  schema.products.weightGram,
       mitraId:     schema.products.mitraId,
@@ -68,7 +69,8 @@ export default async function PesananNewPage({
     id:          p.id,
     name:        p.name,
     sku:         p.sku,
-    price:       typeof p.price === "string" ? parseFloat(p.price) : (p.price as number),
+    // Invoice manual admin menagih Harga Publik (bukan modal) — sama dengan resolveProductCartItem.
+    price:       publicSellingPrice(p),
     stock:       typeof p.stock === "number" ? p.stock : Number(p.stock),
     weightGram:  p.weightGram ?? 0,
     mitraId:     p.mitraId,

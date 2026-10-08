@@ -104,6 +104,11 @@ createProductCategoryAction(slug, { name, slug })       → buat kategori baru
 
 ## Sistem Harga Berlapis
 
+> ⚠️ **SUPERSEDED 2026-10-09** — arti tiga field di section ini (Dasar = tamu, Publik = akun login,
+> Anggota = alumni) sudah diganti. Model yang berlaku: **§ "Model Harga Baru"** di akhir dokumen
+> (Dasar = modal, Publik = harga jual semua orang, Anggota = khusus anggota). Section ini dibiarkan
+> sebagai riwayat; jangan dijadikan acuan.
+
 Setiap produk memiliki **tiga tingkat harga** berdasarkan identitas pembeli.
 Sistem ini berlaku untuk produk tenant maupun mitra.
 
@@ -1481,3 +1486,89 @@ dijalankan di VPS, belum diverifikasi visual di browser** — perlu dicoba: 1 pr
 invoice yang punya `shippingAddress` lengkap → cek gabungan alamat benar; 1 invoice pickup
 (tanpa alamat) yang linked ke member dengan alamat tersimpan DAN HP invoice = HP member →
 cek fallback jalan; 1 invoice guest tanpa member link/tanpa alamat → cek kolom kosong "—" aman.
+
+---
+
+## Model Harga Baru — Dasar (Modal) / Publik / Anggota (2026-10-09) — ✅ KODE SELESAI
+
+**Latar**: audit 2026-10-09 menemukan server checkout selalu menagih `price` dan mengabaikan
+`public_price`/`member_price` (tier hanya tampilan). Saat dibahas, ternyata ARTI field-nya sendiri
+beda dari yang tertulis di kode/label lama ("Harga Dasar = tidak login, Harga Publik = akun login").
+Keputusan user (2026-10-09), berlaku untuk **produk tenant** (produk mitra: lihat bawah):
+
+| Field | Arti | Tampil ke pembeli? |
+|---|---|---|
+| `price` — **Harga Dasar** | harga modal/dari produsen | TIDAK — info admin, dasar laporan laba |
+| `public_price` — **Harga Publik** | harga jual untuk SEMUA orang (login atau tidak) | ya |
+| `member_price` — **Harga Anggota** | harga khusus anggota | ya, hanya untuk anggota |
+
+**Aturan harga yang ditagih** (satu fungsi, dipakai tampilan DAN server):
+- Pembeli anggota yang berhak → `member_price ?? public_price`.
+- Selain itu (tamu, akun login non-anggota, anggota yang tidak berhak) → `public_price`.
+- Status login TIDAK lagi membedakan harga.
+- **Harga Dasar + Harga Publik wajib diisi** saat membuat/edit produk (validasi form + server action).
+
+**Checkbox "Khusus Anggota {nama tenant}"** (di samping Harga Anggota; kolom baru
+`member_price_tenant_only boolean default false` di `products`):
+- Dicentang → Harga Anggota hanya untuk anggota tenant ini (`tenant_memberships` tenant ini).
+- Tidak dicentang → berlaku untuk semua anggota IKPM terdaftar (`public.members`).
+- Flag ada di level produk; variasi mewarisi (tidak ada flag per variasi).
+- Tier pembeli (`viewer tier`): `public` | `ikpm` (punya `public.members`) | `tenant` (punya
+  `public.members` + `tenant_memberships` tenant ini, aktif). `tenant` ⊂ `ikpm`.
+
+**Variasi**: tiga field (dasar/publik/anggota) masing-masing = nilai variasi kalau diisi, kalau
+kosong ikut nilai produk utama (per field, independen). Stok/berat/SKU: stok dibahas sesi terpisah
+(user), berat+SKU sudah fallback. Ini sekaligus menutup 2 temuan audit: tier variasi tidak ikut
+induk, dan rentang harga kartu produk variabel yang mengabaikan tier.
+
+**Produk mitra**: harga mitra DIBAHAS TERPISAH, belum diaktifkan. Sementara perilaku produk dengan
+`mitra_id` tidak diubah (jalur lama: `price` = harga jual mitra, `member_price` tetap).
+
+**Laporan laba** (nanti, di luar cakupan ini): Harga Publik − Harga Dasar = keuntungan; Harga Dasar
+= yang ditransfer ke produsen — tampil di detail produk admin.
+
+**Keputusan final (user, 2026-10-09)**:
+- Produk lama: **dibiarkan apa adanya** (tanpa backfill). `public_price` kosong → resolver jatuh ke
+  `price` (laba tampil nol sampai admin mengoreksi). `public_price` yang sudah terisi dipakai untuk
+  SEMUA orang.
+- "Anggota tenant" = `tenant_memberships` tenant ini dengan `status IN ('active','alumni')` (aturan
+  sama dengan tiket event `requiresMembership`); khusus tenant tipe **forum** wajib juga
+  `forum_status = 'active'` (opt-in resmi — bukan pending/rejected/suspended). Tidak punya baris itu =
+  hanya anggota IKPM (`ikpm`). Catatan: aturan tiket event TIDAK mengecek `forum_status` — celah
+  lama, tidak disentuh di sini.
+- Flag `member_price_tenant_only` di level produk; variasi mewarisi. Harga Dasar/Publik/Anggota
+  variasi opsional per field (kosong → ikut produk induk).
+
+**Implementasi (selesai, type-check + `bun run build` bersih, belum dites di browser)**:
+- `packages/db/src/helpers/product-price.ts` — fungsi MURNI (nol import) `resolveSellingPrice`,
+  `mergeVariationPrices`, `publicSellingPrice`, `isMemberPriceEligible`, tipe `ViewerTier`
+  (`public | ikpm | tenant`). Diekspos juga sebagai subpath `@jalajogja/db/product-price`
+  (`exports` di `packages/db/package.json`) supaya komponen client bisa impor tanpa menarik
+  postgres. **Ini SATU-SATUNYA tempat aturan harga** — tampilan dan server memakai fungsi yang sama.
+- `apps/web/lib/session-type.server.ts` — `resolveViewerTier(userId, slug)` (server-side, pakai
+  `cache()`); tier TIDAK PERNAH diterima dari client.
+- Server: `resolveProductCartItem(db, schema, itemId, tier)` (checkout + preview voucher); pemanggil
+  admin default `"public"`. Schema: kolom `member_price_tenant_only` (Drizzle + DDL tenant baru +
+  `migrations/0069_product_member_price_tenant_only.sql`).
+- Admin: form produk (label baru, Harga Dasar+Publik wajib, checkbox "Khusus Anggota {nama
+  tenant}", peringatan jual di bawah modal), tabel variasi (placeholder dari induk), validasi server di
+  `createProductAction`/`updateProductAction`/`saveVariationsAction` (anggota ≤ publik).
+- Tampilan: `priceDisplay()`/`resolvePrice()` di `lib/product-card-templates.ts` (kartu grid/list/
+  ringkas, detail, arsip, kategori, landing, `/gabung`, search API, daftar+detail admin, invoice
+  manual admin). `resolveVariantPriceRanges(client, ids, viewer)` kini dihitung di JS per pembeli.
+  **Harga Dasar tidak pernah tampil/dicoret ke pembeli** — yang dicoret saat Harga Anggota berlaku
+  adalah Harga Publik.
+
+**Wajib dijalankan di VPS sebelum deploy**: migration `0069` (kolom baru dibaca semua halaman
+produk — tanpa migration, halaman produk publik error).
+
+**Yang sengaja BELUM**: produk mitra (harga mitra dibahas terpisah; jalur lama tetap — `price`
+mitra = harga jual, `public_price` kosong → resolver otomatis memakai `price`); laporan laba
+(Publik − Dasar); stok variasi (sesi terpisah); landing section produk tidak tahu sesi pembeli
+(selalu tampil harga publik); tier `tenant` untuk `/gabung` memakai aturan yang sama.
+
+**Cara tes manual**: (1) produk dengan Dasar 200rb / Publik 250rb / Anggota 230rb: tamu → 250rb;
+anggota IKPM bukan tenant ini → 230rb (flag off) atau 250rb (flag on); anggota tenant ini → 230rb di
+kartu, detail, keranjang, dan invoice. (2) Variasi dengan harga kosong ikut induk; variasi dengan
+Publik sendiri → tamu pakai harga itu, anggota tetap ikut Harga Anggota induk. (3) Form: simpan tanpa
+Harga Publik ditolak.

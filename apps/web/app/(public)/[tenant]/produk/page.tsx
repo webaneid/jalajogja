@@ -1,7 +1,8 @@
 import { notFound }                      from "next/navigation";
 import { eq, desc, and, inArray, ilike, sql } from "drizzle-orm";
 import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
-import { createTenantDb, db, tenants, members, memberBusinesses, getSettings } from "@jalajogja/db";
+import { resolveViewerTier } from "@/lib/session-type.server";
+import { createTenantDb, db, tenants, members, memberBusinesses, getSettings, publicSellingPrice } from "@jalajogja/db";
 import { auth }                          from "@/lib/auth";
 import { headers }                       from "next/headers";
 import { ProductArchiveCards }           from "@/components/website/public/product-cards/product-archive-cards";
@@ -28,17 +29,6 @@ function extractCover(images: unknown): { coverUrl: string | null; coverVariants
   const first = images[0] as { url?: string; variants?: Record<string, string> | null };
   const coverUrl = first.variants?.["square-large"] ?? first.url ?? null;
   return { coverUrl, coverVariants: first.variants ?? null };
-}
-
-// ─── sessionType ──────────────────────────────────────────────────────────────
-async function resolveSessionType(userId: string | undefined): Promise<SessionType> {
-  if (!userId) return "none";
-  const [member] = await db
-    .select({ id: members.id })
-    .from(members)
-    .where(eq(members.betterAuthUserId, userId))
-    .limit(1);
-  return member ? "member" : "public";
 }
 
 // ─── Metadata ─────────────────────────────────────────────────────────────────
@@ -100,7 +90,7 @@ export default async function ProdukArchivePage({
   if (!tenant?.isActive) notFound();
 
   const session     = await auth.api.getSession({ headers: await headers() });
-  const sessionType = await resolveSessionType(session?.user?.id);
+  const sessionType = await resolveViewerTier(session?.user?.id, slug);
 
   const tenantClient           = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;
@@ -149,6 +139,7 @@ export default async function ProdukArchivePage({
       price:        schema.products.price,
       publicPrice:  schema.products.publicPrice,
       memberPrice:  schema.products.memberPrice,
+      memberPriceTenantOnly: schema.products.memberPriceTenantOnly,
       productType:  schema.products.productType,
       images:       schema.products.images,
       categoryId:   schema.products.categoryId,
@@ -192,13 +183,13 @@ export default async function ProdukArchivePage({
   // priceMin/priceMax untuk variable product — COALESCE(variation.price, product.price) dulu,
   // lihat lib/product-variation-price.server.ts
   const variableIds   = filtered.filter(r => r.productType === "variable").map(r => r.id);
-  const priceRangeMap = await resolveVariantPriceRanges(tenantClient, variableIds);
+  const priceRangeMap = await resolveVariantPriceRanges(tenantClient, variableIds, sessionType);
 
   const products: ProductCardData[] = filtered.map(r => {
     const { coverUrl, coverVariants } = extractCover(r.images);
     const isVariable = r.productType === "variable";
     const range      = isVariable ? priceRangeMap.get(r.id) : null;
-    const priceMin   = range?.min ?? String(r.price);
+    const priceMin   = range?.min ?? String(publicSellingPrice(r));
     const priceMax   = range && range.max !== range.min ? range.max : null;
     return {
       id:           r.id,
@@ -208,6 +199,7 @@ export default async function ProdukArchivePage({
       price:        String(r.price),
       publicPrice:  r.publicPrice != null ? String(r.publicPrice) : null,
       memberPrice:  r.memberPrice != null ? String(r.memberPrice) : null,
+      memberPriceTenantOnly: r.memberPriceTenantOnly,
       productType:  (r.productType ?? "simple") as "simple" | "variable",
       priceMin,
       priceMax,

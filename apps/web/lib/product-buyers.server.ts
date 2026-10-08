@@ -21,7 +21,7 @@
 import "server-only";
 import { eq, and, inArray } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
-import { db as publicDb, members as publicMembers, contacts as publicContacts, composeAddress } from "@jalajogja/db";
+import { db as publicDb, members as publicMembers, contacts as publicContacts, composeAddress, publicSellingPrice } from "@jalajogja/db";
 import { formatShippingMethod } from "@/lib/format-shipping-method";
 import { normalizePhone } from "@/lib/phone";
 
@@ -77,13 +77,15 @@ export async function resolveProductBuyers(
   const [product] = await db
     .select({
       id: schema.products.id, name: schema.products.name, sku: schema.products.sku,
-      price: schema.products.price, stock: schema.products.stock, status: schema.products.status,
+      price: schema.products.price, publicPrice: schema.products.publicPrice, stock: schema.products.stock, status: schema.products.status,
       images: schema.products.images, productType: schema.products.productType,
     })
     .from(schema.products)
     .where(eq(schema.products.id, productId))
     .limit(1);
   if (!product) return { product: null, rows: [] };
+  // `price` yang dikembalikan = Harga Publik (harga jual), bukan Harga Dasar/modal.
+  const productOut = { ...product, price: String(publicSellingPrice(product)) };
 
   // Semua id yang mungkin muncul sebagai invoice_items.itemId untuk produk ini.
   const variations = await db
@@ -110,7 +112,7 @@ export async function resolveProductBuyers(
       eq(schema.invoiceItems.itemType, "product"),
       inArray(schema.invoiceItems.itemId, matchIds),
     ));
-  if (items.length === 0) return { product, rows: [] };
+  if (items.length === 0) return { product: productOut, rows: [] };
 
   const invoiceIds = [...new Set(items.map((i) => i.invoiceId))];
   const invoiceRows = await db
@@ -256,5 +258,5 @@ export async function resolveProductBuyers(
 
   rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
-  return { product, rows };
+  return { product: productOut, rows };
 }

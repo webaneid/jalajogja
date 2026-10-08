@@ -7,11 +7,11 @@ type Props = {
   product:      ProductCardData;
   variant:      ProductCardVariant;
   tenantSlug:   string;
-  sessionType?: SessionType;  // "none" | "public" | "member" — menentukan tier harga
+  sessionType?: SessionType;  // "public" | "ikpm" | "tenant" — menentukan tier harga
   className?:   string;       // hanya dipakai oleh variant ringkas
 };
 
-export function ProductCard({ product, variant, tenantSlug, sessionType = "none", className }: Props) {
+export function ProductCard({ product, variant, tenantSlug, sessionType = "public", className }: Props) {
   switch (variant) {
     case "list":    return <ProductCardList    product={product} tenantSlug={tenantSlug} sessionType={sessionType} />;
     case "ringkas": return <ProductCardRingkas product={product} tenantSlug={tenantSlug} sessionType={sessionType} className={className} />;

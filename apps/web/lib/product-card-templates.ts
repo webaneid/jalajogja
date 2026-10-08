@@ -1,12 +1,19 @@
+import { resolveSellingPrice, publicSellingPrice, isMemberPriceEligible, type ViewerTier } from "@jalajogja/db/product-price";
+
 export type ProductCardData = {
   id:             string;
   name:           string;
   slug:           string;
   description:    string | null;
   // Harga — untuk simple product; variable product pakai priceMin/priceMax
-  price:          string;          // tier 1: harga dasar (tidak login)
-  publicPrice:    string | null;   // tier 2: harga untuk akun login
-  memberPrice:    string | null;   // tier 3: harga anggota IKPM seluruh dunia
+  // Model harga baru (docs/arsitektur-product.md § "Model Harga Baru"): `price` = Harga Dasar
+  // (MODAL — JANGAN PERNAH ditampilkan ke pembeli, jangan dicoret sebagai "harga asli"),
+  // `publicPrice` = harga jual semua orang, `memberPrice` = Harga Anggota (cakupan ditentukan
+  // `memberPriceTenantOnly`). Harga tampil WAJIB lewat priceDisplay()/resolvePrice().
+  price:          string;
+  publicPrice:    string | null;
+  memberPrice:    string | null;
+  memberPriceTenantOnly: boolean;
   // Variasi
   productType:    "simple" | "variable";
   priceMin:       string;          // simple → price; variable → MIN(variation.price)
@@ -32,18 +39,32 @@ export type ProductCardData = {
   freeShippingCities?:    { id: number; name: string }[];
 };
 
-export type SessionType = "none" | "public" | "member";
+// Tier pembeli: "public" (tamu/non-anggota) | "ikpm" (anggota IKPM) | "tenant" (anggota tenant ini).
+export type SessionType = ViewerTier;
 
-// Resolve harga display — untuk variable product pakai priceMin sebagai base
-export function resolvePrice(product: ProductCardData, sessionType: SessionType): string {
+export type PriceDisplay = {
+  display:       string;          // harga yang DITAGIH untuk pembeli ini
+  original:      string | null;   // Harga Publik — hanya diisi (untuk dicoret) kalau Harga Anggota berlaku
+  isMemberPrice: boolean;
+};
+
+// Satu-satunya pintu harga tampil. Produk variabel: priceMin sudah di-resolve per pembeli di
+// server (resolveVariantPriceRanges); diskon per variasi tampil di halaman detail.
+export function priceDisplay(product: ProductCardData, viewer: SessionType): PriceDisplay {
   if (product.productType === "variable") {
-    // Variable product: tampilkan priceMin (harga terendah variasi)
-    // Diskon per variasi ditampilkan di halaman detail saat user pilih variasi
-    return product.priceMin;
+    return { display: product.priceMin, original: null, isMemberPrice: false };
   }
-  if (sessionType === "member" && product.memberPrice) return product.memberPrice;
-  if (sessionType !== "none"   && product.publicPrice)  return product.publicPrice;
-  return product.price;
+  const display = String(resolveSellingPrice(product, viewer, product.memberPriceTenantOnly));
+  const pub     = String(publicSellingPrice(product));
+  const isMemberPrice =
+    product.memberPrice != null
+    && isMemberPriceEligible(viewer, product.memberPriceTenantOnly)
+    && parseFloat(display) < parseFloat(pub);
+  return { display, original: isMemberPrice ? pub : null, isMemberPrice };
+}
+
+export function resolvePrice(product: ProductCardData, sessionType: SessionType): string {
+  return priceDisplay(product, sessionType).display;
 }
 
 // Label harga untuk card — variable product tampil "Mulai dari"

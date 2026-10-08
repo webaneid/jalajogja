@@ -4,7 +4,7 @@ import { eq, and, sql, ne, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import {
   createTenantDb, recordIncome, generateFinancialNumber, generateUniqueCode, syncInvoicePayment,
-  resolveProductCartItem, findVoucherByCode, countCustomerRedemptions, computeVoucherDiscount,
+  resolveProductCartItem, mergeVariationPrices, publicSellingPrice, findVoucherByCode, countCustomerRedemptions, computeVoucherDiscount,
   type VoucherApplicationResult, type FreeShippingMode, type FreeShippingRegion,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
@@ -39,6 +39,8 @@ export type ProductData = {
   price:           number;
   publicPrice?:    number | null;
   memberPrice?:    number | null;
+  // true = Harga Anggota hanya untuk anggota tenant ini; false = semua anggota IKPM terdaftar.
+  memberPriceTenantOnly?: boolean;
   stock:           number;
   weightGram?:     number | null;
   originCityId?:   number | null;
@@ -216,6 +218,13 @@ export async function createProductAction(
   if (!data.slug?.trim()) return { success: false, error: "Slug produk wajib diisi." };
   if (data.price < 0)     return { success: false, error: "Harga tidak boleh negatif." };
   if (data.stock < 0)     return { success: false, error: "Stok tidak boleh negatif." };
+  // Model harga baru — lihat updateProductAction. Harga Dasar + Harga Publik wajib.
+  if (!(data.price > 0))
+    return { success: false, error: "Harga Dasar wajib diisi." };
+  if (!(data.publicPrice != null && data.publicPrice > 0))
+    return { success: false, error: "Harga Publik wajib diisi." };
+  if (data.memberPrice != null && data.memberPrice > data.publicPrice)
+    return { success: false, error: "Harga Anggota tidak boleh lebih tinggi dari Harga Publik." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -235,6 +244,9 @@ export async function createProductAction(
         sku:           data.sku             ?? null,
         description:   data.description     ?? null,
         price:         String(data.price),
+        publicPrice:   data.publicPrice != null ? data.publicPrice.toFixed(2) : null,
+        memberPrice:   data.memberPrice != null ? data.memberPrice.toFixed(2) : null,
+        memberPriceTenantOnly: data.memberPriceTenantOnly ?? false,
         stock:         data.stock,
         weightGram:    data.weightGram      ?? null,
         originCityId:  data.originCityId    ?? null,
@@ -321,6 +333,14 @@ export async function updateProductAction(
   if (!data.slug?.trim()) return { success: false, error: "Slug produk wajib diisi." };
   if (data.price < 0)     return { success: false, error: "Harga tidak boleh negatif." };
   if (data.stock < 0)     return { success: false, error: "Stok tidak boleh negatif." };
+  // Model harga baru (docs/arsitektur-product.md § "Model Harga Baru"): Harga Dasar (modal) +
+  // Harga Publik (harga jual) WAJIB. Server SENDIRI yang memvalidasi — jangan percaya form saja.
+  if (!(data.price > 0))
+    return { success: false, error: "Harga Dasar wajib diisi." };
+  if (!(data.publicPrice != null && data.publicPrice > 0))
+    return { success: false, error: "Harga Publik wajib diisi." };
+  if (data.memberPrice != null && data.memberPrice > data.publicPrice)
+    return { success: false, error: "Harga Anggota tidak boleh lebih tinggi dari Harga Publik." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -347,6 +367,7 @@ export async function updateProductAction(
         price:           data.price.toFixed(2),
         publicPrice:     data.publicPrice  != null ? data.publicPrice.toFixed(2)  : null,
         memberPrice:     data.memberPrice  != null ? data.memberPrice.toFixed(2)  : null,
+        memberPriceTenantOnly: data.memberPriceTenantOnly ?? false,
         stock:           data.stock,
         weightGram:      data.weightGram   ?? null,
         originCityId:    data.originCityId   ?? null,
@@ -560,7 +581,8 @@ export async function getProductVariationsAction(
 
   const [p] = await db
     .select({
-      id: schema.products.id, price: schema.products.price, weightGram: schema.products.weightGram,
+      id: schema.products.id, price: schema.products.price, publicPrice: schema.products.publicPrice,
+      weightGram: schema.products.weightGram,
       attributeGroups: schema.products.attributeGroups, productType: schema.products.productType,
     })
     .from(schema.products)
@@ -572,7 +594,8 @@ export async function getProductVariationsAction(
   const vrows = await db
     .select({
       id: schema.productVariations.id, sku: schema.productVariations.sku,
-      price: schema.productVariations.price, stock: schema.productVariations.stock,
+      price: schema.productVariations.price, publicPrice: schema.productVariations.publicPrice,
+      stock: schema.productVariations.stock,
       weightGram: schema.productVariations.weightGram, attributeCombo: schema.productVariations.attributeCombo,
       isActive: schema.productVariations.isActive,
     })
@@ -583,7 +606,8 @@ export async function getProductVariationsAction(
   const variations: AdminProductVariation[] = vrows.map((v) => ({
     id:             v.id,
     sku:            v.sku ?? null,
-    price:          String(v.price ?? p.price),
+    // Invoice manual admin menagih Harga Publik (bukan modal); kosong di variasi → ikut produk induk.
+    price:          String(publicSellingPrice(mergeVariationPrices(p, v))),
     stock:          v.stock,
     weightGram:     v.weightGram ?? p.weightGram ?? 0,
     attributeCombo: (v.attributeCombo ?? {}) as Record<string, string>,
@@ -1289,6 +1313,24 @@ export async function saveVariationsAction(
   if (!hasFullAccess(access.tenantUser, "toko")) return { error: "Akses ditolak." };
 
   const { db: tenantDb, schema } = createTenantDb(slug);
+
+  // Harga Anggota variasi tidak boleh melebihi Harga Publik efektifnya (publik variasi, kalau
+  // kosong ikut publik produk induk, kalau itu kosong ikut Harga Dasar — produk lama).
+  const [parent] = await tenantDb
+    .select({ price: schema.products.price, publicPrice: schema.products.publicPrice })
+    .from(schema.products)
+    .where(eq(schema.products.id, productId))
+    .limit(1);
+  if (!parent) return { error: "Produk tidak ditemukan." };
+  const parentPublic = parseFloat(String(parent.publicPrice ?? parent.price)) || 0;
+  for (const v of variations) {
+    const member = v.memberPrice ? parseFloat(v.memberPrice) : NaN;
+    if (Number.isNaN(member)) continue;
+    const effPublic = v.publicPrice ? (parseFloat(v.publicPrice) || 0) : parentPublic;
+    if (member > effPublic) {
+      return { error: "Harga Anggota variasi tidak boleh lebih tinggi dari Harga Publiknya." };
+    }
+  }
 
   // Diff-based upsert — BUKAN delete-all+insert-all seperti sebelumnya. cart_items.item_id
   // (untuk produk variable) adalah product_variations.id — kalau setiap save meregenerasi

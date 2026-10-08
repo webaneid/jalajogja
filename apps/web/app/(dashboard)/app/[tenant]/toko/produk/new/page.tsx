@@ -42,6 +42,7 @@ export default async function ProdukNewPage({
   return (
     <ProductForm
       slug={slug}
+      tenantName={access.tenant.name}
       productId={null}
       initialData={{
         name:        "",
@@ -51,6 +52,7 @@ export default async function ProdukNewPage({
         price:           0,
         publicPrice:     null,
         memberPrice:     null,
+        memberPriceTenantOnly: false,
         stock:           0,
         weightGram:      null,
         originCityId:    null,

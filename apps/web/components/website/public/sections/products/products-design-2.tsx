@@ -61,7 +61,7 @@ export function ProductsDesign2({ data, products, tenantSlug, sectionTitle, filt
               {featured.description && (
                 <p className="text-sm text-muted-foreground line-clamp-2">{featured.description}</p>
               )}
-              <p className="text-base font-bold">{priceLabel(featured, "none")}</p>
+              <p className="text-base font-bold">{priceLabel(featured, "public")}</p>
             </div>
           </a>
 

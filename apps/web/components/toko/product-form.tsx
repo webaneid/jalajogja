@@ -61,6 +61,7 @@ type Category = { id: string; name: string; slug: string };
 
 export type ProductFormProps = {
   slug:      string;
+  tenantName: string;   // untuk label checkbox "Khusus Anggota {nama tenant}"
   productId: string | null; // null = create mode
   initialData: {
     name:            string;
@@ -70,6 +71,7 @@ export type ProductFormProps = {
     price:           number;
     publicPrice:     number | null;
     memberPrice:     number | null;
+    memberPriceTenantOnly: boolean;
     stock:           number;
     weightGram:      number | null;
     originCityId:    number | null;
@@ -232,6 +234,7 @@ function ProductImages({
 
 export function ProductForm({
   slug,
+  tenantName,
   productId,
   initialData,
   categories,
@@ -246,6 +249,7 @@ export function ProductForm({
   const [price,           setPrice]           = useState(String(initialData.price));
   const [publicPrice,     setPublicPrice]     = useState(initialData.publicPrice != null ? String(initialData.publicPrice) : "");
   const [memberPrice,     setMemberPrice]     = useState(initialData.memberPrice != null ? String(initialData.memberPrice) : "");
+  const [memberPriceTenantOnly, setMemberPriceTenantOnly] = useState(initialData.memberPriceTenantOnly);
   const [stock,           setStock]           = useState(String(initialData.stock));
   const [weightGram,      setWeightGram]      = useState(initialData.weightGram != null ? String(initialData.weightGram) : "");
   const [originCityId,    setOriginCityId]    = useState<number | null>(initialData.originCityId);
@@ -288,7 +292,15 @@ export function ProductForm({
     setSaveMsg("");
 
     const priceNum      = parseFloat(price) || 0;
+    const publicNum     = parseFloat(publicPrice) || 0;
+    const memberNum     = parseFloat(memberPrice) || 0;
     const stockNum      = parseInt(stock) || 0;
+
+    // Model harga baru: Harga Dasar (modal) + Harga Publik (harga jual) wajib. Server memvalidasi
+    // ulang — ini hanya supaya admin tahu sebelum request dikirim.
+    if (priceNum <= 0)  { setError("Harga Dasar wajib diisi."); return; }
+    if (publicNum <= 0) { setError("Harga Publik wajib diisi."); return; }
+    if (memberNum > publicNum) { setError("Harga Anggota tidak boleh lebih tinggi dari Harga Publik."); return; }
     const weightGramNum = weightGram ? (parseInt(weightGram) || null) : null;
 
     const data: ProductData = {
@@ -299,6 +311,7 @@ export function ProductForm({
       price:           priceNum,
       publicPrice:     publicPrice ? (parseFloat(publicPrice) || null) : null,
       memberPrice:     memberPrice ? (parseFloat(memberPrice) || null) : null,
+      memberPriceTenantOnly,
       stock:           stockNum,
       weightGram:      weightGramNum,
       originCityId,
@@ -484,11 +497,11 @@ export function ProductForm({
               {/* Card Harga — 3 tier dalam 1 card */}
               <div className="rounded-xl border border-border bg-card divide-y divide-border">
 
-                {/* Harga Dasar */}
+                {/* Harga Dasar (modal) */}
                 <div className="flex items-center gap-3 px-3 py-2.5">
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium leading-none">Harga Dasar</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Tdk login</p>
+                    <p className="text-xs font-medium leading-none">Harga Dasar <span className="text-destructive">*</span></p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Modal / harga dari produsen — tidak tampil ke pembeli</p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <span className="text-xs text-muted-foreground">Rp</span>
@@ -505,8 +518,8 @@ export function ProductForm({
                 {/* Harga Publik */}
                 <div className="flex items-center gap-3 px-3 py-2.5">
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium leading-none">Harga Publik</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Akun login</p>
+                    <p className="text-xs font-medium leading-none">Harga Publik <span className="text-destructive">*</span></p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Harga jual untuk semua orang (login maupun tidak)</p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <span className="text-xs text-muted-foreground">Rp</span>
@@ -514,29 +527,55 @@ export function ProductForm({
                       type="number" min="0" step="1"
                       value={publicPrice}
                       onChange={(e) => setPublicPrice(e.target.value)}
-                      placeholder="—"
+                      placeholder="0"
                       className="h-7 text-xs w-28 px-2"
                     />
                   </div>
                 </div>
 
                 {/* Harga Anggota */}
-                <div className="flex items-center gap-3 px-3 py-2.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium leading-none">Harga Anggota</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Alumni Gontor</p>
+                <div className="px-3 py-2.5 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium leading-none">Harga Anggota</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Opsional — kosong = anggota membayar Harga Publik</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-xs text-muted-foreground">Rp</span>
+                      <Input
+                        type="number" min="0" step="1"
+                        value={memberPrice}
+                        onChange={(e) => setMemberPrice(e.target.value)}
+                        placeholder="—"
+                        className="h-7 text-xs w-28 px-2"
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-xs text-muted-foreground">Rp</span>
-                    <Input
-                      type="number" min="0" step="1"
-                      value={memberPrice}
-                      onChange={(e) => setMemberPrice(e.target.value)}
-                      placeholder="—"
-                      className="h-7 text-xs w-28 px-2"
+                  <label className="flex items-start gap-2 text-[11px] text-muted-foreground cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={memberPriceTenantOnly}
+                      onChange={(e) => setMemberPriceTenantOnly(e.target.checked)}
+                      className="mt-0.5"
                     />
-                  </div>
+                    <span>
+                      Khusus Anggota {tenantName}
+                      <span className="block text-[10px]">
+                        {memberPriceTenantOnly
+                          ? `Harga Anggota hanya untuk anggota ${tenantName}.`
+                          : "Tidak dicentang: berlaku untuk semua anggota IKPM terdaftar."}
+                      </span>
+                    </span>
+                  </label>
+                  {Number(publicPrice) > 0 && Number(memberPrice) > Number(publicPrice) && (
+                    <p className="text-[11px] text-destructive">Harga Anggota tidak boleh lebih tinggi dari Harga Publik.</p>
+                  )}
                 </div>
+                {Number(price) > 0 && Number(publicPrice) > 0 && Number(publicPrice) < Number(price) && (
+                  <p className="px-3 py-2 text-[11px] text-amber-600">
+                    Harga Publik di bawah Harga Dasar (modal) — produk dijual rugi. Pastikan ini disengaja.
+                  </p>
+                )}
               </div>
 
               {/* Card Stok & Berat */}
@@ -698,6 +737,8 @@ export function ProductForm({
                     attributeGroups={attributeGroups}
                     onChange={setVariations}
                     productPrice={price}
+                    productPublicPrice={publicPrice}
+                    productMemberPrice={memberPrice}
                     productWeightGram={weightGram}
                     productSku={sku}
                   />

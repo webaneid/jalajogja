@@ -1,7 +1,8 @@
 import { notFound }                from "next/navigation";
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
-import { createTenantDb, db, tenants, members, memberBusinesses, getSettings, getAvailableStock } from "@jalajogja/db";
+import { resolveViewerTier } from "@/lib/session-type.server";
+import { createTenantDb, db, tenants, members, memberBusinesses, getSettings, getAvailableStock, mergeVariationPrices, resolveSellingPrice, publicSellingPrice } from "@jalajogja/db";
 import { auth }                   from "@/lib/auth";
 import { headers }                from "next/headers";
 import { renderBody }             from "@/lib/letter-render";
@@ -25,16 +26,6 @@ function extractCover(images: unknown): { coverUrl: string | null; coverVariants
   if (!Array.isArray(images) || images.length === 0) return { coverUrl: null, coverVariants: null };
   const first = images[0] as { url?: string; variants?: Record<string, string> | null };
   return { coverUrl: first.variants?.["square-large"] ?? first.url ?? null, coverVariants: first.variants ?? null };
-}
-
-async function resolveSessionType(userId: string | undefined): Promise<SessionType> {
-  if (!userId) return "none";
-  const [member] = await db
-    .select({ id: members.id })
-    .from(members)
-    .where(eq(members.betterAuthUserId, userId))
-    .limit(1);
-  return member ? "member" : "public";
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
@@ -84,7 +75,7 @@ export default async function ProdukDetailPage({
   if (!tenant?.isActive) notFound();
 
   const session     = await auth.api.getSession({ headers: await headers() });
-  const sessionType = await resolveSessionType(session?.user?.id);
+  const sessionType = await resolveViewerTier(session?.user?.id, slug);
 
   const tenantClient             = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;
@@ -100,6 +91,7 @@ export default async function ProdukDetailPage({
       price:           schema.products.price,
       publicPrice:     schema.products.publicPrice,
       memberPrice:     schema.products.memberPrice,
+      memberPriceTenantOnly: schema.products.memberPriceTenantOnly,
       productType:     schema.products.productType,
       attributeGroups: schema.products.attributeGroups,
       images:          schema.products.images,
@@ -179,24 +171,33 @@ export default async function ProdukDetailPage({
     // BUKAN stok fisik mentah — lihat docs/arsitektur-stok.md. Halaman ini `revalidate = 60`,
     // jadi angka ini bisa basi sampai 60 detik; itu wajar untuk tampilan, validasi
     // sesungguhnya (checkout) selalu baca ulang dari DB.
-    variations = await Promise.all(vrows.map(async v => ({
-      id:             v.id,
-      sku:            v.sku ?? row.sku,
-      price:          String(v.price ?? row.price),
-      publicPrice:    v.publicPrice != null ? String(v.publicPrice) : null,
-      memberPrice:    v.memberPrice != null ? String(v.memberPrice) : null,
-      stock:          await getAvailableStock(tenantDb, schema, v.id) ?? v.stock,
-      images:         (Array.isArray(v.images) ? v.images : []) as ProductVariationData["images"],
-      attributeCombo: (v.attributeCombo ?? {}) as Record<string, string>,
-      isActive:       v.isActive,
-    })));
+    variations = await Promise.all(vrows.map(async v => {
+      // Tiga field harga (dasar/publik/anggota) masing-masing ikut produk induk kalau kosong —
+      // model harga baru, lihat docs/arsitektur-product.md § "Model Harga Baru".
+      const merged = mergeVariationPrices(
+        { price: row.price, publicPrice: row.publicPrice, memberPrice: row.memberPrice },
+        { price: v.price,   publicPrice: v.publicPrice,   memberPrice: v.memberPrice },
+      );
+      return {
+        id:             v.id,
+        sku:            v.sku ?? row.sku,
+        price:          String(merged.price),
+        publicPrice:    merged.publicPrice != null ? String(merged.publicPrice) : null,
+        memberPrice:    merged.memberPrice != null ? String(merged.memberPrice) : null,
+        stock:          await getAvailableStock(tenantDb, schema, v.id) ?? v.stock,
+        images:         (Array.isArray(v.images) ? v.images : []) as ProductVariationData["images"],
+        attributeCombo: (v.attributeCombo ?? {}) as Record<string, string>,
+        isActive:       v.isActive,
+      };
+    }));
   }
 
   // priceMin/priceMax untuk variable product
-  let priceMin = String(row.price);
+  let priceMin = String(publicSellingPrice(row));
   let priceMax: string | null = null;
   if (isVariable && variations.length > 0) {
-    const prices = variations.map(v => parseFloat(v.price));
+    // Harga JUAL per variasi untuk pembeli ini (bukan modal) — aturan sama dengan checkout.
+    const prices = variations.map(v => resolveSellingPrice(v, sessionType, row.memberPriceTenantOnly));
     const minP   = Math.min(...prices);
     const maxP   = Math.max(...prices);
     priceMin = String(minP);
@@ -230,6 +231,7 @@ export default async function ProdukDetailPage({
     price:        String(row.price),
     publicPrice:  row.publicPrice != null ? String(row.publicPrice) : null,
     memberPrice:  row.memberPrice != null ? String(row.memberPrice) : null,
+    memberPriceTenantOnly: row.memberPriceTenantOnly,
     productType:  (row.productType ?? "simple") as "simple" | "variable",
     priceMin,
     priceMax,
@@ -263,6 +265,7 @@ export default async function ProdukDetailPage({
         price:        schema.products.price,
         publicPrice:  schema.products.publicPrice,
         memberPrice:  schema.products.memberPrice,
+      memberPriceTenantOnly: schema.products.memberPriceTenantOnly,
         productType:  schema.products.productType,
         images:       schema.products.images,
         categoryId:   schema.products.categoryId,
@@ -286,7 +289,7 @@ export default async function ProdukDetailPage({
 
     // priceMin/priceMax untuk variable related — COALESCE(variation.price, product.price) dulu
     const relVariableIds = relFiltered.filter(r => r.productType === "variable").map(r => r.id);
-    const relPriceMap    = await resolveVariantPriceRanges(tenantClient, relVariableIds);
+    const relPriceMap    = await resolveVariantPriceRanges(tenantClient, relVariableIds, sessionType);
 
     relatedProducts = relFiltered.map(r => {
       const { coverUrl: cv, coverVariants: cvs } = extractCover(r.images);
@@ -300,8 +303,9 @@ export default async function ProdukDetailPage({
         price:        String(r.price),
         publicPrice:  r.publicPrice != null ? String(r.publicPrice) : null,
         memberPrice:  r.memberPrice != null ? String(r.memberPrice) : null,
+      memberPriceTenantOnly: r.memberPriceTenantOnly,
         productType:  (r.productType ?? "simple") as "simple" | "variable",
-        priceMin:     range?.min ?? String(r.price),
+        priceMin:     range?.min ?? String(publicSellingPrice(r)),
         priceMax:     range && range.max !== range.min ? range.max : null,
         coverUrl:     cv,
         coverVariants: cvs,

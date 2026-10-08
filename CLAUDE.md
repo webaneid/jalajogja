@@ -469,7 +469,7 @@ app/(dashboard)/[tenant]/
 - [x] **Produk Variasi V7** — halaman detail publik variasi picker (`ProductDetailClient`). TypeScript 0 errors.
 - [~] **Produk Variasi V8** — validasi stok server-side saat add to cart. **DITUNDA**.
 - [~] **ProductCard Phase 3 Mitra** — integrasi fetch publik (JOIN mitras) + order commission snapshot + filter seller_type admin. **DITUNDA**.
-- [x] **Sistem Harga Berlapis** — 3 tier: `price` (tidak login) → `public_price` (siapapun yang login) → `member_price` (anggota IKPM seluruh dunia). Schema Drizzle + DDL + form admin + ProductCard + `resolvePrice()` helper. Berlaku untuk tenant dan mitra. TypeScript 0 errors.
+- [x] **Model Harga Produk (diganti 2026-10-09)** — `price` = Harga Dasar/MODAL (tidak pernah tampil ke pembeli), `public_price` = harga jual semua orang (wajib), `member_price` = Harga Anggota (+ flag `member_price_tenant_only`: khusus anggota tenant ini atau semua anggota IKPM). Variasi: per field kosong → ikut produk induk. Satu fungsi aturan harga (`packages/db/src/helpers/product-price.ts`) dipakai tampilan + checkout. Kode selesai, **migration `0069` wajib di VPS**, belum dites browser. Detail: `docs/arsitektur-product.md` § "Model Harga Baru". Produk mitra, laporan laba, stok variasi: belum.
 - [x] **Halaman publik `/produk`** — archive + filter kategori + search + pagination. URL `/produk` (bukan `/toko` — hindari konflik dashboard). TypeScript 0 errors. + **Registry Desain Kartu Arsip** (setting bernomor "Desain 1/2/..." di `/toko/pengaturan`, pola sama Donasi § 14m — 3 titik: arsip, kategori, "Produk Lainnya") + **Coupling ke landing "Grid Produk"** (satu sumber kebenaran, plus fix mobile slider yang sebelumnya tidak ada + fix picker Design Layout `ProductsEditor`) — `docs/arsitektur-product.md`
 - [x] **Halaman publik `/produk/kategori/{slug}`** — arsip per kategori + breadcrumb + SEO. TypeScript 0 errors.
 - [x] **Halaman publik `/produk/{slug}`** — detail produk: gallery + variasi picker + add to cart via `addToCartAction` + produk terkait. TypeScript 0 errors.
@@ -1178,6 +1178,10 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 ## Status Project (terkini)
 > Ini status singkat yang di-OVERWRITE tiap kali berubah, BUKAN log yang ditambah terus.
 > Riwayat detail tiap perbaikan ada di `docs/lessons-learned.md` dan `docs/arsitektur-*.md` masing-masing modul.
+
+- **Belum di-commit (2026-10-09)**: (1) fix gate OTP checkout — `docs/arsitektur-billing.md` § 16.x; (2) model harga
+  Dasar/Publik/Anggota — `docs/arsitektur-product.md` § "Model Harga Baru" (migration `0069`). Jalankan
+  skill `jalakarta-security-review` untuk keduanya sebelum commit/deploy (menyentuh uang + auth OTP).
 
 - Commit terakhir per `git log`: `977b4e0` (2026-09-18) — validasi format UUID di 6 halaman
   publik `[tenant]/{modul}/[id]` (cegah crash 500 dari bot/scanner, lihat
