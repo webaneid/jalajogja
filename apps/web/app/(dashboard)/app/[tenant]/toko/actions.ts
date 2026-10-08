@@ -671,7 +671,7 @@ export async function createOrderAction(
       // (voucher.targetItemIds cuma pernah simpan products.id, tidak pernah variasi). Dua
       // field ini WAJIB dipisah — lihat komentar di resolveProductCartItem() untuk root cause
       // bug kelas ini yang pernah terjadi di checkout publik.
-      const resolvedItems: Array<{ itemId: string; productId: string; name: string; unitPrice: number; quantity: number; mitraId: string | null }> = [];
+      const resolvedItems: Array<{ itemId: string; productId: string; name: string; unitPrice: number; quantity: number; mitraId: string | null; unitCost: number | null }> = [];
       for (const item of data.items) {
         const resolved = await resolveProductCartItem(tx, schema, item.productId);
         if (!resolved) return { error: "Produk tidak ditemukan." };
@@ -708,7 +708,7 @@ export async function createOrderAction(
         }
 
         if (availableStock < item.qty) return { error: `Stok "${itemName}" tidak cukup. Tersedia: ${availableStock}, diminta: ${item.qty}.` };
-        resolvedItems.push({ itemId: item.productId, productId: resolved.productId, name: itemName, unitPrice: resolved.price, quantity: item.qty, mitraId: resolved.mitraId });
+        resolvedItems.push({ itemId: item.productId, productId: resolved.productId, name: itemName, unitPrice: resolved.price, quantity: item.qty, mitraId: resolved.mitraId, unitCost: resolved.unitCost });
       }
 
       // ── Voucher (opsional) ──
@@ -868,6 +868,7 @@ export async function createOrderAction(
             sellerId:    item.mitraId,
             discountAmount: disc.toFixed(2),
             voucherId:      disc > 0 ? (voucherApplication?.voucher.id ?? null) : null,
+            unitCost:       item.unitCost != null ? item.unitCost.toFixed(2) : null,
           };
         })
       );

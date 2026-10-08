@@ -51,6 +51,15 @@ export type ProductBuyerRow = {
   paymentStatusLabel:  "Lunas" | "Sebagian" | "Belum Bayar";
   totalDibayarkan:     number | "";
   createdAt:           Date;
+
+  // ── Laporan Produk (docs/arsitektur-product.md § "Laporan Produk") ──────────────────────
+  // JANGAN diteruskan ke tampilan/export untuk pengguna tanpa hasFullAccess(toko): modal = rahasia bisnis.
+  sellerType:          "tenant" | "mitra";
+  unitCost:            number | null;  // MODAL per unit (snapshot saat transaksi; kalau tak ada → modal produk saat ini). null = produk mitra
+  costIsEstimate:      boolean;        // true = unitCost dari modal produk SAAT INI (invoice lama tanpa snapshot)
+  uniqueCode:          number;         // kode unik invoice (tingkat INVOICE, bukan per baris)
+  freeShippingDiscount: number;        // "hemat gratis ongkir" pada baris pengiriman (info saja)
+  invoiceKey:          string;         // `${invoiceId}|${sellerType}|${sellerId}` — kunci dedupe nilai tingkat-invoice (ongkir)
 };
 
 export type ProductBuyersResult = {
@@ -58,7 +67,8 @@ export type ProductBuyersResult = {
     id:          string;
     name:        string;
     sku:         string | null;
-    price:       string;
+    price:       string;   // Harga Publik (harga jual) — BUKAN modal
+    cost:        string;   // Harga Dasar = MODAL (hanya untuk admin berhak, lihat catatan ProductBuyerRow)
     stock:       number;
     status:      string;
     images:      unknown;
@@ -85,14 +95,16 @@ export async function resolveProductBuyers(
     .limit(1);
   if (!product) return { product: null, rows: [] };
   // `price` yang dikembalikan = Harga Publik (harga jual), bukan Harga Dasar/modal.
-  const productOut = { ...product, price: String(publicSellingPrice(product)) };
+  const productOut = { ...product, price: String(publicSellingPrice(product)), cost: String(product.price) };
 
   // Semua id yang mungkin muncul sebagai invoice_items.itemId untuk produk ini.
   const variations = await db
-    .select({ id: schema.productVariations.id, attributeCombo: schema.productVariations.attributeCombo })
+    .select({ id: schema.productVariations.id, attributeCombo: schema.productVariations.attributeCombo, price: schema.productVariations.price })
     .from(schema.productVariations)
     .where(eq(schema.productVariations.productId, productId));
   const variationMap = new Map(variations.map((v) => [v.id, v.attributeCombo as Record<string, string>]));
+  // Modal SAAT INI per variasi (kosong → ikut produk induk) — hanya fallback "estimasi" untuk invoice lama.
+  const variationCostMap = new Map(variations.map((v) => [v.id, parseFloat(String(v.price ?? product.price)) || 0]));
   const matchIds = [product.id, ...variations.map((v) => v.id)];
 
   const items = await db
@@ -104,6 +116,7 @@ export async function resolveProductBuyers(
       unitPrice:      schema.invoiceItems.unitPrice,
       total:          schema.invoiceItems.total,
       discountAmount: schema.invoiceItems.discountAmount,
+      unitCost:       schema.invoiceItems.unitCost,
       sellerType:     schema.invoiceItems.sellerType,
       sellerId:       schema.invoiceItems.sellerId,
     })
@@ -120,6 +133,7 @@ export async function resolveProductBuyers(
       id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber,
       customerName: schema.invoices.customerName, customerPhone: schema.invoices.customerPhone,
       status: schema.invoices.status, paidAmount: schema.invoices.paidAmount,
+      uniqueCode: schema.invoices.uniqueCode,
       voucherCode: schema.invoices.voucherCode,
       shippingAddress: schema.invoices.shippingAddress,
       shippingCityName: schema.invoices.shippingCityName,
@@ -140,6 +154,7 @@ export async function resolveProductBuyers(
       service: schema.invoiceShippingLines.service,
       paymentMethod: schema.invoiceShippingLines.paymentMethod,
       cost: schema.invoiceShippingLines.cost,
+      freeShippingDiscount: schema.invoiceShippingLines.freeShippingDiscount,
     })
     .from(schema.invoiceShippingLines)
     .where(inArray(schema.invoiceShippingLines.invoiceId, invoiceIds));
@@ -234,6 +249,13 @@ export async function resolveProductBuyers(
       .join(", ");
     const memberAddress = memberAddressMap.get(invoice.id) ?? "";
 
+    // Modal: snapshot saat transaksi kalau ada; kalau tidak (invoice lama) → modal produk/variasi
+    // SAAT INI, ditandai estimasi. Produk mitra tidak punya modal (harga mitra dibahas terpisah).
+    const isMitraRow     = item.sellerType === "mitra";
+    const currentCost    = item.itemId === product.id ? (parseFloat(String(product.price)) || 0) : (variationCostMap.get(item.itemId ?? "") ?? (parseFloat(String(product.price)) || 0));
+    const hasSnapshot    = item.unitCost != null;
+    const unitCost       = isMitraRow ? null : (hasSnapshot ? parseFloat(String(item.unitCost)) : currentCost);
+
     rows.push({
       invoiceId:          invoice.id,
       invoiceNumber:      invoice.invoiceNumber,
@@ -253,6 +275,12 @@ export async function resolveProductBuyers(
       paymentStatusLabel,
       totalDibayarkan,
       createdAt:          invoice.createdAt,
+      sellerType:         isMitraRow ? "mitra" : "tenant",
+      unitCost,
+      costIsEstimate:     !isMitraRow && !hasSnapshot,
+      uniqueCode:         invoice.uniqueCode ?? 0,
+      freeShippingDiscount: shipping ? parseFloat(String(shipping.freeShippingDiscount ?? "0")) : 0,
+      invoiceKey:         `${item.invoiceId}|${item.sellerType}|${item.sellerId ?? ""}`,
     });
   }
 

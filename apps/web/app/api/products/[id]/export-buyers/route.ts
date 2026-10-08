@@ -27,6 +27,13 @@ export const dynamic = "force-dynamic";
 // untuk semua baris invoice yang sama) — kosong berarti tanpa voucher, persis pola export
 // peserta event.
 //
+// LAPORAN PRODUK (2026-10-09, docs/arsitektur-product.md § "Laporan Produk"): kolom dipisah — Subtotal
+// (tagihan produk), Harga Dasar/Unit + Total Modal (rahasia bisnis, hanya hasFullAccess toko), Uang Masuk
+// Produk (hanya baris Lunas), Keuntungan (Lunas saja, hanya hasFullAccess), lalu Ongkos Kirim / Kode Unik /
+// Total Dibayar Client. Tiga kolom TERAKHIR itu bernilai tingkat-INVOICE (ongkir: per invoice+penjual) dan
+// HANYA diisi di baris pertama tiap invoice supaya penjumlahan kolom di Excel tidak dobel. Sheet "Ringkasan"
+// (hanya hasFullAccess) memuat angka total + kesimpulan, identik dengan kartu di halaman produk.
+//
 // Query logic (resolveProductBuyers) dan status pembayaran dijamin identik dengan tabel
 // "Daftar Pembeli" di halaman /toko/produk/[id] — satu fungsi shared, lihat
 // lib/product-buyers.server.ts untuk detail arsitektur (termasuk kenapa itemId bisa berupa
@@ -36,9 +43,10 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
-import { hasReadAccess } from "@/lib/permissions";
+import { hasReadAccess, hasFullAccess } from "@/lib/permissions";
 import { displayPhone } from "@/lib/phone";
 import { resolveProductBuyers } from "@/lib/product-buyers.server";
+import { buildProductReport, buildProductConclusion } from "@/lib/product-report";
 
 function fmtDate(d: Date): string {
   return new Date(d).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
@@ -71,34 +79,89 @@ export async function GET(
     }, { status: 400 });
   }
 
+  // Modal & keuntungan = rahasia bisnis → hanya pengguna dengan akses penuh modul toko.
+  const includeCost = hasFullAccess(access.tenantUser, "toko");
+
   const headers = [
     "No. Invoice", "Nama Pembeli", "Telepon", "Jumlah", "Varian/Ukuran", "Harga Satuan",
-    "Subtotal", "Diskon Voucher", "Cara Pengiriman", "Alamat Checkout", "Alamat User",
-    "Ongkos Kirim", "Status Pembayaran", "Total Dibayarkan", "Kode Voucher", "Tanggal Pesan",
+    "Diskon Voucher", "Subtotal",
+    ...(includeCost ? ["Harga Dasar/Unit (Modal)", "Total Modal"] : []),
+    "Uang Masuk Produk (Lunas)",
+    ...(includeCost ? ["Keuntungan (Lunas)", "Modal Estimasi"] : []),
+    "Cara Pengiriman", "Alamat Checkout", "Alamat User",
+    "Ongkos Kirim (per invoice)", "Kode Unik (per invoice)", "Total Dibayar Client (per invoice)",
+    "Status Pembayaran", "Kode Voucher", "Tanggal Pesan",
   ];
 
-  const dataRows = rows.map((r) => [
-    r.invoiceNumber,
-    r.customerName,
-    r.customerPhone ? displayPhone(r.customerPhone) : "",
-    r.quantity,
-    r.variantLabel || "-",
-    r.unitPrice,
-    r.lineTotal,
-    r.discountAmount > 0 ? r.discountAmount : "",
-    r.shippingLabel,
-    r.checkoutAddress || "-",
-    r.memberAddress || "-",
-    r.shippingCost,
-    r.paymentStatusLabel,
-    r.totalDibayarkan,
-    r.voucherCode ?? "",
-    fmtDate(r.createdAt),
-  ]);
+  // Nilai tingkat-invoice hanya di baris pertama tiap invoice (ongkir: per invoice+penjual).
+  const seenShipping = new Set<string>();
+  const seenInvoice  = new Set<string>();
+
+  const dataRows = rows.map((r) => {
+    const firstShip    = !seenShipping.has(r.invoiceKey);
+    const firstInvoice = !seenInvoice.has(r.invoiceId);
+    seenShipping.add(r.invoiceKey);
+    seenInvoice.add(r.invoiceId);
+
+    const isPaid       = r.paymentStatusLabel === "Lunas";
+    const costKnown    = r.sellerType === "tenant" && r.unitCost != null;
+    const totalModal   = costKnown ? (r.unitCost as number) * r.quantity : "";
+    const keuntungan   = isPaid && costKnown ? r.lineTotal - (r.unitCost as number) * r.quantity : "";
+
+    return [
+      r.invoiceNumber,
+      r.customerName,
+      r.customerPhone ? displayPhone(r.customerPhone) : "",
+      r.quantity,
+      r.variantLabel || "-",
+      r.unitPrice,
+      r.discountAmount > 0 ? r.discountAmount : "",
+      r.lineTotal,
+      ...(includeCost ? [costKnown ? r.unitCost : "", totalModal] : []),
+      isPaid ? r.lineTotal : "",
+      ...(includeCost ? [keuntungan, costKnown && r.costIsEstimate ? "Ya" : ""] : []),
+      r.shippingLabel,
+      r.checkoutAddress || "-",
+      r.memberAddress || "-",
+      firstShip ? r.shippingCost : "",
+      firstInvoice ? (r.uniqueCode > 0 ? r.uniqueCode : "") : "",
+      firstInvoice ? r.totalDibayarkan : "",
+      r.paymentStatusLabel,
+      r.voucherCode ?? "",
+      fmtDate(r.createdAt),
+    ];
+  });
 
   const wb = XLSX.utils.book_new();
   const sheet = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
   XLSX.utils.book_append_sheet(wb, sheet, "Pembeli");
+
+  if (includeCost) {
+    const rep = buildProductReport(rows);
+    const rp  = (n: number) => "Rp" + Math.round(n).toLocaleString("id-ID");
+    const summary: Array<Array<string | number>> = [
+      ["Laporan Produk", product.name],
+      ["Dihitung dari pesanan LUNAS (produk tenant)", ""],
+      [],
+      ["Pendapatan Produk", rep.revenue],
+      ["Modal ke Produsen", rep.cost],
+      ["Keuntungan", rep.profit],
+      ["Margin (%)", rep.marginPct != null ? Number(rep.marginPct.toFixed(1)) : ""],
+      ["Unit Terjual", rep.paidQty],
+      ["Pesanan Lunas", rep.paidOrders],
+      [],
+      ["Dicatat terpisah (bukan keuntungan)", ""],
+      ["Ongkos Kirim (diteruskan ke kurir)", rep.shipping],
+      ["Hemat Gratis Ongkir (info)", rep.freeShippingSavings],
+      ["Kode Unik Transfer", rep.uniqueCode],
+      ["Total Dibayar Client (produk+ongkir+kode unik, per invoice)", rep.clientPaid],
+      ["Belum Lunas / Piutang (bagian produk)", rep.receivable],
+      [],
+      ["Kesimpulan", ""],
+      ...buildProductConclusion(rep, rp).map((l) => [l]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), "Ringkasan");
+  }
   const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 
   const safeName = product.name.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();

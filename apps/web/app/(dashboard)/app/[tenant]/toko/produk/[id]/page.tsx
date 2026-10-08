@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { resolveProductBuyers } from "@/lib/product-buyers.server";
 import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
 import { ProductBuyerList } from "@/components/toko/product-buyer-list";
+import { ProductReportCard } from "@/components/toko/product-report-card";
+import { buildProductReport, buildProductConclusion } from "@/lib/product-report";
+import { hasFullAccess } from "@/lib/permissions";
 
 function formatRupiah(amount: number | string) {
   const n = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -64,6 +67,17 @@ export default async function ProdukDetailPage({
   const sebagianCount = rows.filter((r) => r.paymentStatusLabel === "Sebagian").length;
   const belumCount    = rows.filter((r) => r.paymentStatusLabel === "Belum Bayar").length;
   const thumbUrl       = getFirstImage(product.images);
+
+  // Laporan keuangan produk memuat MODAL (Harga Dasar) = rahasia bisnis → hanya hasFullAccess(toko).
+  // Akses baca-saja tetap melihat Daftar Pembeli tapi tanpa modal/laba.
+  const canSeeReport = hasFullAccess(access.tenantUser, "toko");
+  const report       = canSeeReport ? buildProductReport(rows) : null;
+  const conclusion   = report ? buildProductConclusion(report, formatRupiah) : [];
+
+  // ProductBuyerList = client component → props ter-serialize ke browser. Daftar tidak menampilkan modal,
+  // jadi MODAL per baris dikosongkan untuk SEMUA pengguna sebelum dikirim (jangan bocor lewat view-source,
+  // pelajaran sama dengan Harga Dasar di payload publik — lessons-learned [2026-10-09]).
+  const listRows = rows.map((r) => ({ ...r, unitCost: null, costIsEstimate: false }));
 
   return (
     <div className="flex flex-col h-full">
@@ -137,6 +151,15 @@ export default async function ProdukDetailPage({
           ))}
         </div>
 
+        {/* Laporan Produk — keuntungan, uang masuk, ongkir terpisah + kesimpulan */}
+        {report && (
+          <ProductReportCard
+            report={report}
+            conclusion={conclusion}
+            exportHref={`/api/products/${productId}/export-buyers?tenant=${slug}&all=1`}
+          />
+        )}
+
         {/* Daftar Pembeli */}
         <div className="space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -160,7 +183,7 @@ export default async function ProdukDetailPage({
             &ldquo;Export Pembeli (Sudah Bayar)&rdquo; hanya invoice berstatus Lunas. &ldquo;Export Semua
             Pembeli&rdquo; menyertakan semua status termasuk yang belum bayar/dibatalkan.
           </p>
-          <ProductBuyerList slug={slug} rows={rows} />
+          <ProductBuyerList slug={slug} rows={listRows} />
         </div>
       </main>
     </div>

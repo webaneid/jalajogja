@@ -1182,8 +1182,10 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 - **Deployed ke VPS (2026-10-09), verifikasi browser belum dilaporkan**: `1ec09d1` fix gate OTP checkout
   (`docs/arsitektur-billing.md` § 16.x) + `43ef926` model harga Dasar/Publik/Anggota
   (`docs/arsitektur-product.md` § "Model Harga Baru", migration `0069` sudah jalan di 5 tenant).
-  Harga konsisten di semua halaman termasuk beranda (landing ikut `resolveViewerTier`). Belum
-  dikerjakan: produk mitra / laporan laba / stok variasi (sesi terpisah). `jalakarta-security-review` belum dijalankan
+  Harga konsisten di semua halaman termasuk beranda (landing ikut `resolveViewerTier`).
+- **Laporan Produk (keuntungan/uang masuk/ongkir terpisah + export) — kode SELESAI, BELUM deploy**:
+  `docs/arsitektur-product.md` § "Laporan Produk". Migration `0070_invoice_item_unit_cost.sql` WAJIB jalan di VPS
+  dulu. Belum dikerjakan: produk mitra / stok variasi / rate limit `checkoutAction`. `jalakarta-security-review` belum dijalankan
   untuk dua commit ini.
 - Commit terakhir per `git log`: `977b4e0` (2026-09-18) — validasi format UUID di 6 halaman
   publik `[tenant]/{modul}/[id]` (cegah crash 500 dari bot/scanner, lihat
