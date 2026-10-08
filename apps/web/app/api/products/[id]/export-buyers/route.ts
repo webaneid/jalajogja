@@ -90,7 +90,7 @@ export async function GET(
     "Diskon Voucher", "Subtotal",
     ...(includeCost ? ["Harga Dasar/Unit (Modal)", "Total Modal"] : []),
     "Uang Masuk Produk (Lunas)",
-    ...(includeCost ? ["Keuntungan (Lunas)", "Modal Estimasi"] : []),
+    ...(includeCost ? ["Keuntungan (Lunas)", "Modal Belum Tercatat (pesanan lama)"] : []),
     "Cara Pengiriman", "Alamat Checkout", "Alamat User",
     "Ongkos Kirim (per invoice)", "Kode Unik (per invoice)", "Total Dibayar Client (per invoice)",
     "Status Pembayaran", "Kode Voucher", "Tanggal Pesan",

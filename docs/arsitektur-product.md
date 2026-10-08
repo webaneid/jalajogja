@@ -1607,8 +1607,9 @@ juga memisahkan **harga dasar (modal)**, **uang masuk dari client**, dan **ongko
 
 **Keputusan teknis (Claude, user tidak keberatan)**: modal DIBEKUKAN saat transaksi — kolom baru
 `invoice_items.unit_cost` (nullable) disalin saat invoice produk dibuat, supaya mengedit Harga Dasar kemudian
-TIDAK mengubah laba transaksi lama. Baris lama (tanpa snapshot) memakai modal produk saat ini dan ditandai
-**estimasi**. Produk mitra (`seller_type = mitra`) TIDAK ikut hitungan laba (harga mitra dibahas terpisah).
+TIDAK mengubah laba transaksi lama. Baris lama (tanpa snapshot) **dibiarkan apa adanya**: modal dianggap = harga jual yang
+ditagih → **keuntungan 0**, dan TIDAK berubah walau Harga Dasar diedit kemudian (keputusan user 2026-10-09; versi
+pertama sempat memakai "modal saat ini" sebagai estimasi — itu SALAH, labanya acak dan bergeser tiap edit modal, sudah diganti). Produk mitra (`seller_type = mitra`) TIDAK ikut hitungan laba (harga mitra dibahas terpisah).
 Snapshot dipasang di 3 jalur invoice produk: `checkoutAction`, pesanan manual admin (`toko/actions.ts`), invoice
 manual keuangan (`finance/billing/actions.ts`). `createLinkedInvoice` (donasi/event) tidak menyentuh produk.
 
@@ -1632,7 +1633,7 @@ melihat Daftar Pembeli seperti sekarang tapi tanpa modal/laba (modal = rahasia b
   (`buildProductReport`, `buildProductConclusion`) — murni, dijumlah SEKALI per invoice untuk ongkir/kode unik.
 - UI: `components/toko/product-report-card.tsx` di `/toko/produk/[id]` (hanya `hasFullAccess(toko)`).
 - Export: `/api/products/[id]/export-buyers` — kolom Harga Dasar/Unit, Total Modal, Uang Masuk Produk, Keuntungan,
-  Modal Estimasi (hanya akses penuh); Ongkos Kirim / Kode Unik / Total Dibayar Client per invoice di baris pertama
+  Modal Belum Tercatat (hanya akses penuh); Ongkos Kirim / Kode Unik / Total Dibayar Client per invoice di baris pertama
   saja; sheet "Ringkasan" berisi total + kesimpulan.
 - Keamanan: `ProductBuyerList` adalah client component → modal per baris DIKOSONGKAN sebelum jadi props
   (`listRows`); modal & laba tidak ada di payload pengguna tanpa akses penuh.
@@ -1641,10 +1642,10 @@ melihat Daftar Pembeli seperti sekarang tapi tanpa modal/laba (modal = rahasia b
 
 **Cara tes manual**: (1) buka produk yang sudah punya pesanan lunas → kartu Laporan Produk muncul di atas Daftar
 Pembeli; pendapatan − modal = keuntungan; ongkir/kode unik/total dibayar/piutang tampil terpisah + kesimpulan.
-(2) Buat pesanan BARU lalu lunasi → baris itu tidak lagi "estimasi" (modal tersnapshot); ubah Harga Dasar produk →
-laba pesanan tadi TIDAK berubah. (3) Export → kolom terpisah, ongkir tidak dobel untuk invoice berisi >1 baris,
+(2) Pesanan LAMA tampil keuntungan Rp0 (modal = harga jual) dan tetap Rp0 walau Harga Dasar diedit. Buat pesanan BARU
+lalu lunasi → modal tersnapshot, keuntungan = harga jual − Harga Dasar saat itu; ubah Harga Dasar produk → laba
+pesanan tadi TIDAK berubah. (3) Export → kolom terpisah, ongkir tidak dobel untuk invoice berisi >1 baris,
 sheet "Ringkasan" ada. (4) Login sebagai pengguna akses baca-saja → kartu tidak muncul, export tanpa kolom modal/laba.
 
-**Keterbatasan**: invoice lama = modal saat ini (estimasi, dan produk lama modal=harga jual lama → laba nol sampai
-admin mengoreksi Harga Dasar, sesuai keputusan user); ongkir adalah ongkir INVOICE (bisa memuat produk lain);
+**Keterbatasan**: pesanan lama = keuntungan 0 (modal belum tercatat — sesuai keputusan user, "kita menatap ke depan"); ongkir adalah ongkir INVOICE (bisa memuat produk lain);
 "Total Dibayar Client" juga per invoice; produk mitra tidak masuk laba.

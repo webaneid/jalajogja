@@ -3,7 +3,8 @@
 // docs/arsitektur-product.md § "Laporan Produk".
 //
 //   pendapatan produk = invoice_items.total (harga yang DITAGIH, sudah net voucher) — invoice LUNAS saja
-//   modal             = unitCost × qty (snapshot saat transaksi; baris lama = modal saat ini, estimasi)
+//   modal             = unitCost × qty (snapshot saat transaksi). Pesanan LAMA tanpa snapshot: modal dianggap
+//                       = harga jual → keuntungan 0, dan TIDAK berubah walau Harga Dasar diedit kemudian
 //   keuntungan        = pendapatan − modal            (ongkir & kode unik TIDAK ikut — bukan laba)
 //   ongkir            = dijumlah SEKALI per (invoice, penjual): ongkir dicatat per grup, bukan per produk
 //   kode unik         = dijumlah SEKALI per invoice
@@ -19,7 +20,7 @@ export type ProductReport = {
   cost:                number;   // modal ke produsen
   profit:              number;
   marginPct:           number | null;
-  costEstimateRows:    number;   // baris lunas yang modalnya estimasi (invoice lama tanpa snapshot)
+  costEstimateRows:    number;   // baris lunas pesanan LAMA (modal belum tercatat → keuntungan dianggap 0)
   mitraRowsExcluded:   number;   // baris lunas produk mitra (tidak masuk laba)
   shipping:            number;   // ongkir invoice terkait (diteruskan ke kurir, bukan laba)
   freeShippingSavings: number;   // total "hemat gratis ongkir" (info saja)
@@ -85,7 +86,7 @@ export function buildProductConclusion(r: ProductReport, fmt: (n: number) => str
   if (r.shipping > 0) lines.push(`Ongkos kirim ${fmt(r.shipping)} dicatat terpisah — uang yang diteruskan ke kurir, bukan bagian keuntungan.`);
   if (r.uniqueCode > 0) lines.push(`Kode unik transfer ${fmt(r.uniqueCode)} juga terpisah dari pendapatan produk.`);
   if (r.receivableOrders > 0) lines.push(`${r.receivableOrders} pesanan belum lunas (${fmt(r.receivable)}) belum dihitung sebagai pendapatan.`);
-  if (r.costEstimateRows > 0) lines.push(`${r.costEstimateRows} baris memakai modal produk saat ini (estimasi) karena pesanannya dibuat sebelum modal disimpan per transaksi.`);
+  if (r.costEstimateRows > 0) lines.push(`${r.costEstimateRows} baris berasal dari pesanan lama yang modalnya belum tercatat — keuntungannya dianggap 0 (modal = harga jual). Pesanan baru otomatis tercatat modalnya.`);
   if (r.mitraRowsExcluded > 0) lines.push(`${r.mitraRowsExcluded} baris produk mitra tidak ikut perhitungan keuntungan.`);
   return lines;
 }

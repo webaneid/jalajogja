@@ -55,8 +55,8 @@ export type ProductBuyerRow = {
   // ── Laporan Produk (docs/arsitektur-product.md § "Laporan Produk") ──────────────────────
   // JANGAN diteruskan ke tampilan/export untuk pengguna tanpa hasFullAccess(toko): modal = rahasia bisnis.
   sellerType:          "tenant" | "mitra";
-  unitCost:            number | null;  // MODAL per unit (snapshot saat transaksi; kalau tak ada → modal produk saat ini). null = produk mitra
-  costIsEstimate:      boolean;        // true = unitCost dari modal produk SAAT INI (invoice lama tanpa snapshot)
+  unitCost:            number | null;  // MODAL per unit: snapshot saat transaksi. Pesanan LAMA (tanpa snapshot) → = harga jual yang ditagih (keuntungan 0). null = produk mitra
+  costIsEstimate:      boolean;        // true = pesanan lama, modal BELUM tercatat → dianggap = harga jual (keuntungan 0, tidak berubah walau Harga Dasar diedit)
   uniqueCode:          number;         // kode unik invoice (tingkat INVOICE, bukan per baris)
   freeShippingDiscount: number;        // "hemat gratis ongkir" pada baris pengiriman (info saja)
   invoiceKey:          string;         // `${invoiceId}|${sellerType}|${sellerId}` — kunci dedupe nilai tingkat-invoice (ongkir)
@@ -68,7 +68,6 @@ export type ProductBuyersResult = {
     name:        string;
     sku:         string | null;
     price:       string;   // Harga Publik (harga jual) — BUKAN modal
-    cost:        string;   // Harga Dasar = MODAL (hanya untuk admin berhak, lihat catatan ProductBuyerRow)
     stock:       number;
     status:      string;
     images:      unknown;
@@ -95,16 +94,14 @@ export async function resolveProductBuyers(
     .limit(1);
   if (!product) return { product: null, rows: [] };
   // `price` yang dikembalikan = Harga Publik (harga jual), bukan Harga Dasar/modal.
-  const productOut = { ...product, price: String(publicSellingPrice(product)), cost: String(product.price) };
+  const productOut = { ...product, price: String(publicSellingPrice(product)) };
 
   // Semua id yang mungkin muncul sebagai invoice_items.itemId untuk produk ini.
   const variations = await db
-    .select({ id: schema.productVariations.id, attributeCombo: schema.productVariations.attributeCombo, price: schema.productVariations.price })
+    .select({ id: schema.productVariations.id, attributeCombo: schema.productVariations.attributeCombo })
     .from(schema.productVariations)
     .where(eq(schema.productVariations.productId, productId));
   const variationMap = new Map(variations.map((v) => [v.id, v.attributeCombo as Record<string, string>]));
-  // Modal SAAT INI per variasi (kosong → ikut produk induk) — hanya fallback "estimasi" untuk invoice lama.
-  const variationCostMap = new Map(variations.map((v) => [v.id, parseFloat(String(v.price ?? product.price)) || 0]));
   const matchIds = [product.id, ...variations.map((v) => v.id)];
 
   const items = await db
@@ -249,12 +246,16 @@ export async function resolveProductBuyers(
       .join(", ");
     const memberAddress = memberAddressMap.get(invoice.id) ?? "";
 
-    // Modal: snapshot saat transaksi kalau ada; kalau tidak (invoice lama) → modal produk/variasi
-    // SAAT INI, ditandai estimasi. Produk mitra tidak punya modal (harga mitra dibahas terpisah).
+    // Modal: snapshot saat transaksi (invoice_items.unit_cost). Pesanan LAMA tanpa snapshot TIDAK
+    // memakai Harga Dasar produk saat ini (itu berubah-ubah dan sebelum model harga baru artinya
+    // harga jual) — keputusan user 2026-10-09: pesanan lama dibiarkan, keuntungannya 0 → modal
+    // dianggap = harga jual yang ditagih (lineTotal/qty). Produk mitra tidak punya modal.
     const isMitraRow     = item.sellerType === "mitra";
-    const currentCost    = item.itemId === product.id ? (parseFloat(String(product.price)) || 0) : (variationCostMap.get(item.itemId ?? "") ?? (parseFloat(String(product.price)) || 0));
     const hasSnapshot    = item.unitCost != null;
-    const unitCost       = isMitraRow ? null : (hasSnapshot ? parseFloat(String(item.unitCost)) : currentCost);
+    const lineTotalNum   = parseFloat(String(item.total));
+    const unitCost       = isMitraRow
+      ? null
+      : (hasSnapshot ? parseFloat(String(item.unitCost)) : (item.quantity > 0 ? lineTotalNum / item.quantity : 0));
 
     rows.push({
       invoiceId:          invoice.id,
