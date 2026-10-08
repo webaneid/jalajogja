@@ -1566,8 +1566,18 @@ produk — tanpa migration, halaman produk publik error).
 
 **Yang sengaja BELUM**: produk mitra (harga mitra dibahas terpisah; jalur lama tetap — `price`
 mitra = harga jual, `public_price` kosong → resolver otomatis memakai `price`); laporan laba
-(Publik − Dasar); stok variasi (sesi terpisah); landing section produk tidak tahu sesi pembeli
-(selalu tampil harga publik); tier `tenant` untuk `/gabung` memakai aturan yang sama.
+(Publik − Dasar); stok variasi (sesi terpisah); tier `tenant` untuk `/gabung` memakai aturan yang sama.
+
+**Konsistensi harga di SEMUA halaman (2026-10-09, permintaan user)**: beranda/landing (section "Grid
+Produk", 3 desain) dulu selalu menampilkan harga publik karena tidak tahu sesi pembeli — pembeli
+anggota melihat harga berbeda di beranda vs arsip/detail. Sekarang `ProductsSection` memanggil
+`resolveViewerTier()` dan meneruskan `sessionType` ke kartu + `resolveVariantPriceRanges()`, sama dengan
+arsip/kategori/detail/`/gabung`. Beranda memang sudah dirender dinamis per pengunjung (`ƒ /[tenant]` di
+build output, meski ada `revalidate = 60`), jadi tidak ada cache yang hilang. ATURAN: setiap tempat baru
+yang menampilkan harga produk ke pembeli WAJIB (1) membangun data lewat `toPublicPriceFields()`,
+(2) memakai `priceDisplay()`/`resolvePrice()` dengan `sessionType` dari `resolveViewerTier()`, dan
+(3) meneruskan `sessionType` ke `ProductCard` — default `"public"` di kartu HANYA untuk konteks tanpa
+sesi, bukan jalan pintas.
 
 **Cara tes manual**: (1) produk dengan Dasar 200rb / Publik 250rb / Anggota 230rb: tamu → 250rb;
 anggota IKPM bukan tenant ini → 230rb (flag off) atau 250rb (flag on); anggota tenant ini → 230rb di

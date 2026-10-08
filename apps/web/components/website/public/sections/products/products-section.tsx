@@ -1,8 +1,11 @@
 import { eq, desc, and, inArray } from "drizzle-orm";
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
+import { resolveViewerTier } from "@/lib/session-type.server";
 import { getSettings, publicSellingPrice, toPublicPriceFields, type TenantDb } from "@jalajogja/db";
 import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
 import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/products-section-designs";
-import type { ProductCardData } from "@/lib/product-card-templates";
+import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
 import { PRODUCT_ARCHIVE_CARD_DESIGN_IDS, type ProductArchiveCardDesignId } from "@/lib/product-archive-card-designs";
 import { ProductsDesign1 } from "./products-design-1";
 import { ProductsDesign2 } from "./products-design-2";
@@ -31,6 +34,7 @@ async function fetchProducts(
   tenantClient: TenantDb,
   data: ProductsSectionData,
   tenantSlug: string,
+  sessionType: SessionType,
 ): Promise<ProductCardData[]> {
   const { db, schema } = tenantClient;
   const count = data.count ?? 8;
@@ -103,7 +107,7 @@ async function fetchProducts(
   // Fetch priceMin/priceMax untuk variable product — COALESCE(variation.price, product.price)
   // dulu, lihat lib/product-variation-price.server.ts
   const variableIds   = filtered.filter(r => r.productType === "variable").map(r => r.id);
-  const priceRangeMap = await resolveVariantPriceRanges(tenantClient, variableIds);
+  const priceRangeMap = await resolveVariantPriceRanges(tenantClient, variableIds, sessionType);
 
   return filtered.map(r => {
     const { coverUrl, coverVariants } = extractCover(r.images);
@@ -152,7 +156,13 @@ export async function ProductsSection({ data, variant, tenantClient, tenantSlug 
     }
   }
 
-  const products = await fetchProducts(tenantClient, data, tenantSlug);
+  // Tier pembeli dari SESI — beranda memakai aturan harga yang sama dengan arsip/detail/checkout
+  // (satu sumber: product-price.ts + session-type.server.ts). Beranda sudah dirender dinamis per
+  // pengunjung (route `ƒ /[tenant]`), jadi ini tidak mengorbankan cache.
+  const session     = await auth.api.getSession({ headers: await headers() });
+  const sessionType = await resolveViewerTier(session?.user?.id, tenantSlug);
+
+  const products = await fetchProducts(tenantClient, data, tenantSlug, sessionType);
 
   // Desain kartu untuk "Grid Produk" — ikut setting Desain Kartu Arsip yang aktif.
   // Lihat docs/arsitektur-product.md § "Coupling ke Landing Section Grid Produk".
@@ -162,7 +172,7 @@ export async function ProductsSection({ data, variant, tenantClient, tenantSlug 
     ? (archiveDesignRaw!.design as ProductArchiveCardDesignId)
     : "1";
 
-  const props = { data, products, tenantSlug, sectionTitle, filterHref, cardDesign };
+  const props = { data, products, tenantSlug, sectionTitle, filterHref, cardDesign, sessionType };
 
   switch (variant) {
     case "2": return <ProductsDesign2 {...props} />;

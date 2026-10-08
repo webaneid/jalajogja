@@ -6,7 +6,7 @@ import { PostsSectionTitle } from "../posts/posts-section-title";
 import { ProductCard } from "@/components/website/public/product-cards/product-card";
 import type { ProductsSectionProps } from "@/lib/products-section-designs";
 
-export function ProductsDesign3({ data, products, tenantSlug, sectionTitle, filterHref }: ProductsSectionProps) {
+export function ProductsDesign3({ data, products, tenantSlug, sectionTitle, filterHref, sessionType }: ProductsSectionProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scroll    = (dir: "left" | "right") =>
     scrollRef.current?.scrollBy({ left: dir === "right" ? 280 : -280, behavior: "smooth" });
@@ -47,7 +47,7 @@ export function ProductsDesign3({ data, products, tenantSlug, sectionTitle, filt
         >
           {products.map(p => (
             <div key={p.id} className="shrink-0 snap-start w-[46%] sm:w-[calc(33.333%-8px)] lg:w-[calc(25%-9px)]">
-              <ProductCard product={p} variant="ringkas" tenantSlug={tenantSlug} />
+              <ProductCard product={p} variant="ringkas" tenantSlug={tenantSlug} sessionType={sessionType} />
             </div>
           ))}
         </div>

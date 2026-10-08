@@ -6,13 +6,13 @@ import type { ProductsSectionProps } from "@/lib/products-section-designs";
 // "Grid Produk" — ikut setting "Desain Kartu Arsip" (docs/arsitektur-product.md), bukan pilihan
 // kartu terpisah. Registry arsip Produk baru 1 desain — dispatch di bawah selalu 1 cabang untuk
 // sekarang, murni plumbing supaya desain baru nanti otomatis ikut tanpa ubah file ini lagi.
-function renderCard(p: ProductCardData, tenantSlug: string, cardDesign: ProductsSectionProps["cardDesign"]) {
+function renderCard(p: ProductCardData, tenantSlug: string, cardDesign: ProductsSectionProps["cardDesign"], sessionType: ProductsSectionProps["sessionType"]) {
   switch (cardDesign) {
-    default: return <ProductCard product={p} variant="grid" tenantSlug={tenantSlug} />;
+    default: return <ProductCard product={p} variant="grid" tenantSlug={tenantSlug} sessionType={sessionType} />;
   }
 }
 
-export function ProductsDesign1({ data, products, tenantSlug, sectionTitle, filterHref, cardDesign }: ProductsSectionProps) {
+export function ProductsDesign1({ data, products, tenantSlug, sectionTitle, filterHref, cardDesign, sessionType }: ProductsSectionProps) {
   if (products.length === 0) return null;
 
   return (
@@ -30,7 +30,7 @@ export function ProductsDesign1({ data, products, tenantSlug, sectionTitle, filt
         {/* Desktop: Grid 4 kolom */}
         <div className="hidden md:grid grid-cols-4 gap-4">
           {products.map(p => (
-            <div key={p.id}>{renderCard(p, tenantSlug, cardDesign)}</div>
+            <div key={p.id}>{renderCard(p, tenantSlug, cardDesign, sessionType)}</div>
           ))}
         </div>
 
@@ -41,7 +41,7 @@ export function ProductsDesign1({ data, products, tenantSlug, sectionTitle, filt
         >
           {products.map(p => (
             <div key={p.id} className="flex-none w-[75%] sm:w-[45%] snap-start">
-              {renderCard(p, tenantSlug, cardDesign)}
+              {renderCard(p, tenantSlug, cardDesign, sessionType)}
             </div>
           ))}
         </div>

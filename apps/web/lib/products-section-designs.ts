@@ -1,3 +1,4 @@
+import type { SessionType } from "@/lib/product-card-templates";
 import type { ProductCardData } from "./product-card-templates";
 import type { ProductArchiveCardDesignId } from "./product-archive-card-designs";
 import type { SectionTitleAlign } from "./section-title-align";
@@ -27,6 +28,9 @@ export const PRODUCTS_SECTION_DESIGNS: Record<ProductsSectionDesignId, ProductsS
 };
 
 export type ProductsSectionProps = {
+  // Tier harga pembeli (public/ikpm/tenant) — SAMA dengan yang dipakai arsip/detail/checkout
+  // (lib/session-type.server.ts), supaya harga di beranda = harga di halaman lain.
+  sessionType: SessionType;
   data:        ProductsSectionData;
   products:    ProductCardData[];
   tenantSlug:  string;

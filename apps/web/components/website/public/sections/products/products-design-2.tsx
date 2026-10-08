@@ -4,7 +4,7 @@ import { pickProductCover, priceLabel } from "@/lib/product-card-templates";
 import { Store } from "lucide-react";
 import type { ProductsSectionProps } from "@/lib/products-section-designs";
 
-export function ProductsDesign2({ data, products, tenantSlug, sectionTitle, filterHref }: ProductsSectionProps) {
+export function ProductsDesign2({ data, products, tenantSlug, sectionTitle, filterHref, sessionType }: ProductsSectionProps) {
   if (products.length === 0) return null;
 
   const featured = products[0];
@@ -26,7 +26,7 @@ export function ProductsDesign2({ data, products, tenantSlug, sectionTitle, filt
         {/* ── MOBILE: 2-col grid semua produk ── */}
         <div className="md:hidden grid grid-cols-2 gap-3">
           {products.slice(0, 6).map(p => (
-            <ProductCard key={p.id} product={p} variant="grid" tenantSlug={tenantSlug} />
+            <ProductCard key={p.id} product={p} variant="grid" tenantSlug={tenantSlug} sessionType={sessionType} />
           ))}
         </div>
 
@@ -61,7 +61,7 @@ export function ProductsDesign2({ data, products, tenantSlug, sectionTitle, filt
               {featured.description && (
                 <p className="text-sm text-muted-foreground line-clamp-2">{featured.description}</p>
               )}
-              <p className="text-base font-bold">{priceLabel(featured, "public")}</p>
+              <p className="text-base font-bold">{priceLabel(featured, sessionType)}</p>
             </div>
           </a>
 
@@ -69,7 +69,7 @@ export function ProductsDesign2({ data, products, tenantSlug, sectionTitle, filt
           {rest.length > 0 && (
             <div className="grid grid-cols-2 gap-3">
               {rest.map(p => (
-                <ProductCard key={p.id} product={p} variant="grid" tenantSlug={tenantSlug} />
+                <ProductCard key={p.id} product={p} variant="grid" tenantSlug={tenantSlug} sessionType={sessionType} />
               ))}
             </div>
           )}
