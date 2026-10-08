@@ -897,6 +897,34 @@ export async function createTenantSchemaInDb(
       )
     `));
 
+    // ── 30b. Producers (produsen produk — ADMIN-ONLY, docs/arsitektur-produsen.md) ──
+    // Dibuat SEBELUM products karena products.producer_id merujuknya. Internal = tanpa baris.
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".producers (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        type        TEXT        NOT NULL CHECK (type IN ('member','custom')),
+        source_type TEXT        CHECK (source_type IN ('usaha','pesantren','profesional')),
+        source_id   UUID,
+        member_id   UUID,        -- pemilik, FK public.members via aplikasi (lintas schema)
+        name_cache  TEXT,
+        custom_name            TEXT,
+        custom_whatsapp        TEXT,
+        custom_address_detail  TEXT,
+        custom_province_id     INTEGER,
+        custom_regency_id      INTEGER,
+        custom_district_id     INTEGER,
+        custom_village_id      TEXT,
+        custom_postal_code     TEXT,
+        notes       TEXT,
+        is_active   BOOLEAN     NOT NULL DEFAULT TRUE,
+        created_by  UUID,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producers_member_idx ON "${s}".producers(member_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producers_type_idx   ON "${s}".producers(type)`));
+
     // ── 31. Product Categories ─────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".product_categories (
@@ -944,6 +972,7 @@ export async function createTenantSchemaInDb(
         public_price      NUMERIC(15,2),
         member_price      NUMERIC(15,2),
         member_price_tenant_only BOOLEAN NOT NULL DEFAULT FALSE,  -- true = Harga Anggota khusus anggota tenant ini
+        producer_id      UUID           REFERENCES "${s}".producers(id) ON DELETE SET NULL,  -- NULL = produsen internal (tenant sendiri)
         product_type      TEXT           NOT NULL DEFAULT 'simple'
                                          CHECK (product_type IN ('simple','variable')),
         attribute_groups  JSONB,

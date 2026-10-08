@@ -71,6 +71,8 @@ export type ProductBuyersResult = {
     status:      string;
     images:      unknown;
     productType: string;
+    producerId:  string | null;   // ADMIN-ONLY — hanya dipakai kartu Produsen di dashboard
+    mitraId:     string | null;
   } | null;
   rows: ProductBuyerRow[];
 };
@@ -87,6 +89,7 @@ export async function resolveProductBuyers(
       id: schema.products.id, name: schema.products.name, sku: schema.products.sku,
       price: schema.products.price, publicPrice: schema.products.publicPrice, stock: schema.products.stock, status: schema.products.status,
       images: schema.products.images, productType: schema.products.productType,
+      producerId: schema.products.producerId, mitraId: schema.products.mitraId,
     })
     .from(schema.products)
     .where(eq(schema.products.id, productId))

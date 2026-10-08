@@ -238,7 +238,7 @@ pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
 | Koneksi Instagram otomatis (Graph API) | `docs/arsitektur-instagram-embed.md` |
 | Integrasi KBLI (klasifikasi usaha) — perencanaan, belum dieksekusi | `docs/arsitektur-integrasi-kbli.md` |
 | Mobile shell (header global, sticky bar, aturan spacer) | `docs/arsitektur-mobile-shell.md` |
-| Produsen produk (admin-only: internal/anggota/custom) — RENCANA, belum dieksekusi | `docs/arsitektur-produsen.md` |
+| Produsen produk (admin-only: internal/anggota/custom) — kode selesai, belum deploy | `docs/arsitektur-produsen.md` |
 | Penulis & Editor Post (byline system) | `docs/arsitektur-penulis-post.md` |
 | Data Pesantren anggota | `docs/arsitektur-pesantren.md` |
 | Data Profesional anggota — perencanaan, belum dieksekusi | `docs/arsitektur-profesional.md` |
@@ -1191,6 +1191,8 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 - **Stok produk bervariasi — kode SELESAI, belum deploy**: stok utama DIABAIKAN, stok = jumlah stok variasi aktif (variasi
   kosong = 0, tidak ada pembagian stok utama; rencana awal "ikut stok utama"/migration nullable DITOLAK user). Tanpa migration.
   `docs/arsitektur-stok.md` § "Stok Produk Bervariasi". Helper `getVariableProductStockTotals()`.
+- **Produsen produk (admin-only) — kode SELESAI fase 1–3, belum deploy**: `docs/arsitektur-produsen.md`. Migration `0070_producers.sql`
+  WAJIB jalan di VPS dulu. Menu Toko → Produsen, Combobox di form produk, kartu di detail produk. Fase 4 (kolom daftar/export) belum.
 - Commit terakhir per `git log`: `977b4e0` (2026-09-18) — validasi format UUID di 6 halaman
   publik `[tenant]/{modul}/[id]` (cegah crash 500 dari bot/scanner, lihat
   `docs/lessons-learned.md` [2026-09-18]). Beberapa commit terakhir (SUDAH di-push per `39edaa5`

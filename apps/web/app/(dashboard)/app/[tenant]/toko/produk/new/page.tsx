@@ -1,7 +1,10 @@
 import { createTenantDb } from "@jalajogja/db";
+import { eq } from "drizzle-orm";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
 import { ProductForm } from "@/components/toko/product-form";
+import { resolveProducers } from "@/lib/producer.server";
+import { hasFullAccess } from "@/lib/permissions";
 import type { SeoValues } from "@/components/seo/seo-panel";
 
 const DEFAULT_SEO: SeoValues = {
@@ -39,10 +42,22 @@ export default async function ProdukNewPage({
     .from(schema.productCategories)
     .orderBy(schema.productCategories.name);
 
+  // Opsi produsen aktif (id + nama saja) — hanya pengguna akses penuh
+  let producerOptions: { value: string; label: string }[] | null = null;
+  if (hasFullAccess(access.tenantUser, "toko")) {
+    const prodRows = await db.select({ id: schema.producers.id }).from(schema.producers).where(eq(schema.producers.isActive, true));
+    const views = await resolveProducers(createTenantDb(slug), { id: access.tenant.id, name: access.tenant.name, tenantType: access.tenant.tenantType }, prodRows.map((r) => r.id));
+    producerOptions = [...views.values()].map((v) => ({
+      value: v.id as string,
+      label: `${v.name} (${v.kind === "member" ? `anggota · ${v.sourceType}` : "custom"})`,
+    }));
+  }
+
   return (
     <ProductForm
       slug={slug}
       tenantName={access.tenant.name}
+      producerOptions={producerOptions}
       productId={null}
       initialData={{
         name:        "",
@@ -68,6 +83,7 @@ export default async function ProdukNewPage({
         variations:      [],
         images:      [],
         categoryId:  null,
+        producerId:      null,
         status:      "draft",
         seo:         DEFAULT_SEO,
       }}

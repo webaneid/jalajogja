@@ -9,6 +9,7 @@ import {
   ShoppingCart,
   Tag,
   Handshake,
+  Factory,
   Settings2,
 } from "lucide-react";
 
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { label: "Pesanan",     icon: ShoppingCart,    path: "/pesanan"     },
   { label: "Kategori",    icon: Tag,             path: "/kategori"    },
   { label: "Mitra",       icon: Handshake,       path: "/mitra"       },
+  { label: "Produsen",    icon: Factory,         path: "/produsen"    },
   { label: "Pengaturan",  icon: Settings2,       path: "/pengaturan"  },
 ] as const;
 

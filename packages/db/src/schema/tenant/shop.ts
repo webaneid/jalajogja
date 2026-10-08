@@ -114,6 +114,9 @@ export function createProductsTable(s: ReturnType<typeof pgSchema>) {
     pickupAddress:      text("pickup_address"),
     pickupMapsUrl:      text("pickup_maps_url"),
     // Mitra fields
+    // Produsen (ADMIN-ONLY, docs/arsitektur-produsen.md): FK → producers.id via DDL. NULL = internal
+    // (tenant sendiri). Hanya untuk produk tenant (mitraId null). JANGAN ikut query/payload publik.
+    producerId:  uuid("producer_id"),
     sellerType:  text("seller_type", { enum: ["tenant", "mitra"] as const }).notNull().default("tenant"),
     mitraId:     uuid("mitra_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

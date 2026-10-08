@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Combobox } from "@/components/ui/combobox";
 import {
   Select,
   SelectContent,
@@ -84,6 +85,7 @@ export type ProductFormProps = {
     pickupMapsUrl:      string | null;
     images:          ProductImage[];
     categoryId:      string | null;
+    producerId:      string | null;   // null = internal (tenant sendiri)
     status:          "draft" | "active" | "archived";
     productType:     "simple" | "variable";
     attributeGroups: AttributeGroup[];
@@ -91,6 +93,9 @@ export type ProductFormProps = {
     seo:             SeoValues;
   };
   categories: Category[];
+  // Produsen (ADMIN-ONLY, docs/arsitektur-produsen.md): daftar produsen aktif (id + nama saja — tanpa
+  // nomor/alamat). `null` = field disembunyikan (produk mitra tidak memakai produsen).
+  producerOptions: { value: string; label: string }[] | null;
 };
 
 // ─── StatusBadge ──────────────────────────────────────────────────────────────
@@ -238,6 +243,7 @@ export function ProductForm({
   productId,
   initialData,
   categories,
+  producerOptions,
 }: ProductFormProps) {
   const router = useRouter();
 
@@ -265,6 +271,8 @@ export function ProductForm({
   const [variations,      setVariations]      = useState<VariationLocal[]>(initialData.variations);
   const [images,      setImages]      = useState<ProductImage[]>(initialData.images);
   const [categoryId,  setCategoryId]  = useState(initialData.categoryId ?? "none");
+  // "internal" = tanpa produsen khusus (tenant sendiri) → disimpan sebagai producerId null
+  const [producerId,  setProducerId]  = useState(initialData.producerId ?? "internal");
   const [status,      setStatus]      = useState(initialData.status);
   const [seo,         setSeo]         = useState<SeoValues>(initialData.seo);
 
@@ -331,6 +339,8 @@ export function ProductForm({
       attributeGroups: productType === "variable" ? attributeGroups : [],
       images:      images.map((img, i) => ({ ...img, order: i })),
       categoryId:  categoryId === "none" ? null : categoryId,
+      // undefined (tidak dikirim) kalau field disembunyikan — produk mitra tidak diubah produsennya
+      ...(producerOptions ? { producerId: producerId === "internal" ? null : producerId } : {}),
       status,
       metaTitle:     seo.metaTitle     || null,
       metaDesc:      seo.metaDesc      || null,
@@ -802,6 +812,26 @@ export function ProductForm({
             </div>
 
             <Separator />
+
+            {/* Produsen — ADMIN-ONLY (docs/arsitektur-produsen.md). Tidak pernah tampil di halaman publik. */}
+            {producerOptions && (
+              <>
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Produsen</p>
+                  <Combobox
+                    options={[{ value: "internal", label: `Internal — ${tenantName}` }, ...producerOptions]}
+                    value={producerId}
+                    onValueChange={(v) => setProducerId(v || "internal")}
+                    placeholder="Pilih produsen"
+                    searchPlaceholder="Cari produsen…"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Hanya terlihat admin. Kelola daftar di menu Toko → Produsen.
+                  </p>
+                </div>
+                <Separator />
+              </>
+            )}
 
             {/* Status */}
             <div>

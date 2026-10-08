@@ -8,6 +8,8 @@ import { resolveProductBuyers } from "@/lib/product-buyers.server";
 import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
 import { ProductBuyerList } from "@/components/toko/product-buyer-list";
 import { ProductReportCard } from "@/components/toko/product-report-card";
+import { ProducerCard } from "@/components/toko/producer-card";
+import { resolveProducers, resolveInternalProducer } from "@/lib/producer.server";
 import { buildProductReport, buildProductConclusion } from "@/lib/product-report";
 import { hasFullAccess } from "@/lib/permissions";
 import { isValidUuid } from "@/lib/is-uuid";
@@ -81,6 +83,15 @@ export default async function ProdukDetailPage({
   // pelajaran sama dengan Harga Dasar di payload publik — lessons-learned [2026-10-09]).
   const listRows = rows.map((r) => ({ ...r, unitCost: null }));
 
+  // Produsen (ADMIN-ONLY, docs/arsitektur-produsen.md) — hanya produk tenant & pengguna akses penuh.
+  // producerId null = internal (tenant sendiri).
+  const producerTenant = { id: access.tenant.id, name: access.tenant.name, tenantType: access.tenant.tenantType };
+  const producerView = canSeeReport && !product.mitraId
+    ? (product.producerId
+        ? (await resolveProducers(tenantClient, producerTenant, [product.producerId])).get(product.producerId) ?? null
+        : await resolveInternalProducer(tenantClient, producerTenant))
+    : null;
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -152,6 +163,17 @@ export default async function ProdukDetailPage({
             </div>
           ))}
         </div>
+
+        {/* Produsen — ADMIN-ONLY: siapa produsennya + kontak cepat (WhatsApp) */}
+        {producerView && (
+          <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Produsen</h2>
+              <Link href={`/app/${slug}/toko/produsen`} className="text-xs font-medium text-primary hover:underline">Kelola produsen →</Link>
+            </div>
+            <ProducerCard v={producerView} productCount={0} showCount={false} />
+          </section>
+        )}
 
         {/* Laporan Produk — keuntungan, uang masuk, ongkir terpisah + kesimpulan */}
         {report && (

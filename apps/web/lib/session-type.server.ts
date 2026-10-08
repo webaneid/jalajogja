@@ -3,15 +3,13 @@
 //   "public" → tamu, atau akun login non-anggota IKPM
 //   "ikpm"   → punya public.members (anggota IKPM terdaftar), tapi BUKAN anggota tenant ini
 //   "tenant" → anggota IKPM yang juga anggota tenant ini
-// Aturan "anggota tenant ini" SAMA dengan syarat tiket event requiresMembership
-// (event/actions.ts): tenant_memberships status IN ('active','alumni'); khusus tenant tipe forum
-// wajib forum_status = 'active' (forum = opt-in, harus resmi terdaftar — bukan pending/rejected/
-// suspended; pola sama resolve-akun-branding.ts). Lihat docs/arsitektur-product.md
+// Aturan "anggota tenant ini" ada di SATU tempat: lib/tenant-membership.server.ts (juga dipakai Produsen). Lihat docs/arsitektur-product.md
 // § "Model Harga Baru".
 import "server-only";
 import { cache } from "react";
-import { and, eq, inArray } from "drizzle-orm";
-import { db, members, tenants, tenantMemberships, type ViewerTier } from "@jalajogja/db";
+import { eq } from "drizzle-orm";
+import { db, members, tenants, type ViewerTier } from "@jalajogja/db";
+import { isTenantMember } from "@/lib/tenant-membership.server";
 
 export const resolveViewerTier = cache(async (
   userId: string | null | undefined,
@@ -33,16 +31,8 @@ export const resolveViewerTier = cache(async (
     .limit(1);
   if (!tenant) return "ikpm";
 
-  const [membership] = await db
-    .select({ id: tenantMemberships.id })
-    .from(tenantMemberships)
-    .where(and(
-      eq(tenantMemberships.tenantId, tenant.id),
-      eq(tenantMemberships.memberId, member.id),
-      inArray(tenantMemberships.status, ["active", "alumni"]),
-      ...(tenant.tenantType === "forum" ? [eq(tenantMemberships.forumStatus, "active")] : []),
-    ))
-    .limit(1);
+  // Aturan keanggotaan tenant: SATU fungsi bersama (lib/tenant-membership.server.ts).
+  const isMember = await isTenantMember(member.id, tenant);
 
-  return membership ? "tenant" : "ikpm";
+  return isMember ? "tenant" : "ikpm";
 });

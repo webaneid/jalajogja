@@ -27,6 +27,7 @@ import {
 import { createSettingsTable, createMenusTable, createMenuItemsTable } from "./settings";
 import { createSeoPageOverridesTable } from "./seo";
 import { createMitraApplicationsTable, createMitrasTable } from "./mitra";
+import { createProducersTable } from "./producers";
 import {
   createCartsTable,
   createCartItemsTable,
@@ -107,6 +108,7 @@ function buildTenantSchema(slug: string) {
     // Mitra — anggota IKPM yang berjualan di toko tenant
     mitraApplications:  createMitraApplicationsTable(s),
     mitras:             createMitrasTable(s),
+    producers:          createProducersTable(s),
     // Settings & navigasi
     settings: createSettingsTable(s),
     menus: createMenusTable(s),
@@ -150,4 +152,5 @@ export * from "./documents";
 export * from "./settings";
 export * from "./billing";
 export * from "./mitra";
+export * from "./producers";
 export * from "./seo";

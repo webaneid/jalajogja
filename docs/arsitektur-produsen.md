@@ -1,7 +1,8 @@
 # Arsitektur — Produsen Produk (data admin-only)
 
-> **Status: RENCANA — BELUM DIEKSEKUSI (2026-10-09).** Disetujui user ("ikut saran"), menunggu persetujuan
-> eksplisit untuk mulai kode. Dokumen ini adalah satu-satunya sumber keputusan untuk fitur ini.
+> **Status: ✅ KODE SELESAI fase 1–3 (2026-10-09)** — type-check + `bun run build` bersih, uji aturan fallback lulus; belum dites
+> di browser, belum di-deploy. **Migration `0070_producers.sql` WAJIB jalan di VPS sebelum deploy.** Fase 4 (opsional) sengaja
+> belum. Dokumen ini adalah satu-satunya sumber keputusan untuk fitur ini.
 
 ## 1. Tujuan
 
@@ -116,11 +117,11 @@ ada-tidaknya WhatsApp) — **tidak** mengirim nomor/alamat ke picker. Tidak ada 
 
 ## 9. Fase pengerjaan (urut)
 
-1. Schema Drizzle + DDL + migration `0070` + fungsi keanggotaan bersama (refactor `session-type.server.ts` + `event/actions.ts`
-   memakai satu fungsi) + `lib/producer.server.ts` + uji aturan fallback (skenario: usaha punya WA / hanya telepon / kosong →
-   pemilik; sumber dihapus; anggota keluar).
-2. API picker + halaman `/toko/produsen` (CRUD).
-3. Field di form produk + kartu di detail produk.
+1. ✅ Schema Drizzle (`schema/tenant/producers.ts`, `products.producer_id`) + DDL + migration `0070` + fungsi keanggotaan bersama
+   (`lib/tenant-membership.server.ts`; `session-type.server.ts` memakainya — `event/actions.ts` SENGAJA tidak disentuh, aturannya
+   beda: tidak cek forum_status) + `lib/producer-resolve.ts` (murni, 12 skenario fallback diuji) + `lib/producer.server.ts`.
+2. ✅ API picker `/api/ref/producer-sources` + `toko/produsen/actions.ts` + halaman `/toko/produsen` (+ menu "Produsen" di TokoNav).
+3. ✅ Combobox "Produsen" di form produk (edit + baru; disembunyikan untuk produk mitra) + kartu "Produsen" di detail produk admin.
 4. (Opsional) kolom daftar produk + export.
 
 ## 10. Di luar cakupan (sengaja)
@@ -133,3 +134,19 @@ produsen per transaksi (sama seperti modal: perubahan produsen pada produk tidak
 Admin-only (tidak pernah publik) · pesantren = milik anggota · fallback WhatsApp usaha→telepon usaha→WhatsApp pemilik · fallback alamat ke
 alamat rumah pemilik · daftar produsen terpisah yang dipakai banyak produk · aturan anggota tenant sama dengan Harga Anggota ·
 produsen hanya untuk produk tenant. **Terbuka satu hal**: apakah alumni dihitung anggota (lihat § 5).
+
+## 12. Catatan implementasi (2026-10-09)
+
+- Custom: hanya **nama wajib**; WhatsApp & alamat opsional (WhatsApp lewat `PhoneInput` + `normalizePhone`, error bila tak valid).
+- Produsen anggota: hanya **catatan** yang bisa diubah (data lain mengikuti profil anggota); ganti sumber = buat produsen baru.
+  Duplikat sumber ditolak. Hapus hanya bila tidak dipakai produk; selain itu nonaktifkan.
+- `updateProductAction`/`createProductAction`: `producerId` `undefined` = tidak diubah, `null` = internal, string = divalidasi (ada di
+  tabel producers tenant + aktif, kecuali sudah jadi produsen produk itu; produk mitra ditolak).
+- Form produk hanya menerima id + nama produsen (tanpa nomor/alamat); kartu detail produk memuat kontak hanya untuk `hasFullAccess(toko)`.
+- Tidak ada `select()` penuh pada `products` di jalur publik (dicek) → `producer_id` tidak bocor ke payload publik.
+
+**Cara tes manual**: (1) `/app/{slug}/toko/produsen` → kartu Internal tampil (nama + kontak + alamat dari pengaturan tenant). (2) Tambah → Dari
+Anggota → pilih usaha/pesantren/profesional: hanya anggota tenant ini yang muncul; produsen tersimpan dengan WhatsApp usaha, atau WA
+pemilik berlabel "WA pemilik (anggota)" bila usaha tak punya. (3) Tambah Custom (nama saja cukup). (4) Edit produk → pilih Produsen →
+simpan → detail produk menampilkan kartu Produsen (tombol WhatsApp). (5) Produk tanpa pilihan = Internal. (6) Buka halaman publik produk
+(view-source) → tidak ada data produsen. (7) Pengguna akses baca-saja → halaman Produsen menolak, kartu tidak muncul.

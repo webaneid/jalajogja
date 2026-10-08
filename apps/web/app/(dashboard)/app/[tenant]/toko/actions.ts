@@ -8,6 +8,7 @@ import {
   type VoucherApplicationResult, type FreeShippingMode, type FreeShippingRegion,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { isValidUuid } from "@/lib/is-uuid";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/phone";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
@@ -41,6 +42,9 @@ export type ProductData = {
   memberPrice?:    number | null;
   // true = Harga Anggota hanya untuk anggota tenant ini; false = semua anggota IKPM terdaftar.
   memberPriceTenantOnly?: boolean;
+  // Produsen (ADMIN-ONLY, docs/arsitektur-produsen.md): undefined = tidak diubah, null = internal
+  // (tenant sendiri), string = id produsen. Hanya produk tenant (bukan mitra).
+  producerId?: string | null;
   stock:           number;
   weightGram?:     number | null;
   originCityId?:   number | null;
@@ -202,6 +206,25 @@ function revalidateToko(slug: string) {
 // PRODUK
 // ════════════════════════════════════════════════════════════════════════════════
 
+// Validasi produsen yang dipilih admin — id dari client TIDAK dipercaya: harus ada di tabel producers
+// TENANT ini (createTenantDb(slug) sudah terisolasi) dan aktif (kecuali sudah menjadi produsen produk
+// itu sebelumnya). Produk mitra tidak boleh punya produsen. Doc: docs/arsitektur-produsen.md.
+async function validateProducerChoice(
+  db: ReturnType<typeof createTenantDb>["db"],
+  schema: ReturnType<typeof createTenantDb>["schema"],
+  producerId: string,
+  currentProducerId: string | null,
+  isMitraProduct: boolean,
+): Promise<string | null> {
+  if (isMitraProduct) return "Produk mitra tidak memakai produsen.";
+  if (!isValidUuid(producerId)) return "Produsen tidak valid.";
+  if (producerId === currentProducerId) return null;
+  const [p] = await db.select({ isActive: schema.producers.isActive }).from(schema.producers).where(eq(schema.producers.id, producerId)).limit(1);
+  if (!p) return "Produsen tidak ditemukan.";
+  if (!p.isActive) return "Produsen nonaktif tidak bisa dipilih.";
+  return null;
+}
+
 /**
  * Create produk dengan data lengkap — dipanggil dari form kosong di /produk/new.
  * Tidak pre-create; record baru dibuat saat user klik "Simpan" pertama kali.
@@ -228,6 +251,11 @@ export async function createProductAction(
 
   const { db, schema } = createTenantDb(slug);
 
+  if (data.producerId) {
+    const perr = await validateProducerChoice(db, schema, data.producerId, null, false);
+    if (perr) return { success: false, error: perr };
+  }
+
   const [dup] = await db
     .select({ id: schema.products.id })
     .from(schema.products)
@@ -247,6 +275,7 @@ export async function createProductAction(
         publicPrice:   data.publicPrice != null ? data.publicPrice.toFixed(2) : null,
         memberPrice:   data.memberPrice != null ? data.memberPrice.toFixed(2) : null,
         memberPriceTenantOnly: data.memberPriceTenantOnly ?? false,
+        producerId:    data.producerId ?? null,
         stock:         data.stock,
         weightGram:    data.weightGram      ?? null,
         originCityId:  data.originCityId    ?? null,
@@ -344,6 +373,21 @@ export async function updateProductAction(
 
   const { db, schema } = createTenantDb(slug);
 
+  // Produsen: undefined = tidak diubah, null = internal, string = divalidasi (lihat validateProducerChoice)
+  let producerUpdate: { producerId: string | null } | Record<string, never> = {};
+  if (data.producerId !== undefined) {
+    if (data.producerId === null) {
+      producerUpdate = { producerId: null };
+    } else {
+      const [cur] = await db.select({ producerId: schema.products.producerId, mitraId: schema.products.mitraId })
+        .from(schema.products).where(eq(schema.products.id, productId)).limit(1);
+      if (!cur) return { success: false, error: "Produk tidak ditemukan." };
+      const perr = await validateProducerChoice(db, schema, data.producerId, cur.producerId, !!cur.mitraId);
+      if (perr) return { success: false, error: perr };
+      producerUpdate = { producerId: data.producerId };
+    }
+  }
+
   // Cek slug duplikat (kecuali produk ini sendiri)
   const [dup] = await db
     .select({ id: schema.products.id })
@@ -368,6 +412,7 @@ export async function updateProductAction(
         publicPrice:     data.publicPrice  != null ? data.publicPrice.toFixed(2)  : null,
         memberPrice:     data.memberPrice  != null ? data.memberPrice.toFixed(2)  : null,
         memberPriceTenantOnly: data.memberPriceTenantOnly ?? false,
+        ...producerUpdate,
         stock:           data.stock,
         weightGram:      data.weightGram   ?? null,
         originCityId:    data.originCityId   ?? null,
