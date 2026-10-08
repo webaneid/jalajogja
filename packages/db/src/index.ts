@@ -73,6 +73,7 @@ export {
   decrementStockForInvoiceItems,
   restoreStockForInvoiceItems,
   getProductInvoiceItems,
+  getVariableProductStockTotals,
   type StockLineItem,
 } from "./helpers/stock";
 

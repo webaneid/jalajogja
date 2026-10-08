@@ -287,6 +287,11 @@ export function ProductForm({
     setProductSlug(val);
   }
 
+  // Total stok produk bervariasi = jumlah stok variasi AKTIF (stok utama diabaikan).
+  const variationStockTotal = variations
+    .filter((v) => v.isActive)
+    .reduce((sum, v) => sum + (parseInt(v.stock) || 0), 0);
+
   function handleSave() {
     setError("");
     setSaveMsg("");
@@ -583,15 +588,24 @@ export function ProductForm({
                 <div className="flex items-center gap-3 px-3 py-2.5">
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium leading-none">Stok</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Jumlah tersedia</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {productType === "variable" ? "Total semua variasi aktif — dihitung otomatis" : "Jumlah tersedia"}
+                    </p>
                   </div>
-                  <Input
-                    type="number" min="0" step="1"
-                    value={stock}
-                    onChange={(e) => setStock(e.target.value)}
-                    placeholder="0"
-                    className="h-7 text-xs w-28 px-2 shrink-0"
-                  />
+                  {productType === "variable" ? (
+                    // Produk bervariasi: stok utama DIABAIKAN, stok = jumlah stok variasi (docs/arsitektur-stok.md)
+                    <span className="h-7 w-28 px-2 shrink-0 inline-flex items-center justify-end text-xs font-semibold">
+                      {variationStockTotal}
+                    </span>
+                  ) : (
+                    <Input
+                      type="number" min="0" step="1"
+                      value={stock}
+                      onChange={(e) => setStock(e.target.value)}
+                      placeholder="0"
+                      className="h-7 text-xs w-28 px-2 shrink-0"
+                    />
+                  )}
                 </div>
                 <div className="flex items-center gap-3 px-3 py-2.5">
                   <div className="flex-1 min-w-0">
@@ -699,8 +713,9 @@ export function ProductForm({
               </div>
               {productType === "variable" && (
                 <p className="text-xs text-muted-foreground mt-1.5">
-                  Stok selalu per variasi. Harga &amp; berat di atas dipakai sebagai bawaan
-                  untuk variasi yang tidak diisi sendiri — tidak diabaikan.
+                  Stok produk = jumlah stok semua variasi aktif (stok utama tidak dipakai; variasi yang
+                  stoknya kosong dianggap 0). Harga &amp; berat di atas dipakai sebagai bawaan untuk
+                  variasi yang tidak diisi sendiri.
                 </p>
               )}
             </div>

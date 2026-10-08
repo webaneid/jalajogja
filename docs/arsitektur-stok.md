@@ -241,3 +241,26 @@ file baru/diubah di fitur ini. 2 temuan, keduanya sudah diperbaiki di sesi yang 
 - Registrasi cron baru di crontab VPS — instruksi manual, bukan bagian kode.
 - Verifikasi visual di browser (login admin) dan uji end-to-end sungguhan (checkout produk asli
   → bayar → cek stok berkurang, cek notifikasi WA/Email benar-benar terkirim).
+
+---
+
+## Stok Produk Bervariasi — Stok Utama Diabaikan (2026-10-09)
+
+**Keputusan user (final)**: untuk produk dengan variasi, **stok utama (`products.stock`) DIABAIKAN SEPENUHNYA**.
+Stok produk = **jumlah stok variasi**. Variasi yang stoknya kosong = 0 (habis) — TIDAK mengambil dari stok utama,
+dan stok utama TIDAK dibagi-bagi ke variasi ("stok 10 dibagi ke M/L/XL" itu cacat logika: stok adalah barang fisik
+per jenis). Rencana awal sesi ini (variasi kosong → ikut stok utama / kantong stok bersama + kolom stok nullable +
+migration) DITOLAK user dan dibatalkan — tidak ada migration, kolom `product_variations.stock` tetap `NOT NULL DEFAULT 0`.
+
+**Aturan**:
+- Produk `simple`: tidak berubah (stok = `products.stock`).
+- Produk `variable`: stok tampil = Σ `product_variations.stock` dari variasi **aktif** (variasi nonaktif tidak bisa dibeli
+  publik, jadi tidak ikut total — sama dengan yang bisa terjual). Dihitung saat dibaca, TIDAK disimpan (computed,
+  prinsip yang sama dengan "stok tersedia").
+- Checkout/validasi/pengurangan stok/cron tidak berubah: sudah memakai stok per-variasi (`itemId` = id variasi).
+
+**Yang diubah (hanya tempat yang MENAMPILKAN/MENGHITUNG dengan stok utama untuk produk bervariasi)**: daftar produk
+admin, header detail produk admin, daftar produk di pembuatan pesanan manual, widget "Produk stok rendah" di dashboard
+(sebelumnya produk bervariasi dengan stok utama 0 ikut terhitung "rendah" padahal variasinya banyak), dan form produk
+(kolom Stok utama disembunyikan untuk produk bervariasi, diganti total dari variasi). Helper:
+`getVariableProductStockTotals()` di `packages/db/src/helpers/stock.ts`.

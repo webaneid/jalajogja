@@ -215,3 +215,30 @@ export async function getProductInvoiceItems(
   return rows
     .filter((r): r is { itemId: string; quantity: number } => r.itemId !== null);
 }
+
+// ─── Stok TOTAL produk bervariasi ────────────────────────────────────────────────────────────
+// Keputusan user (2026-10-09, docs/arsitektur-stok.md § "Stok Produk Bervariasi"): untuk produk
+// `variable`, stok utama (products.stock) DIABAIKAN — stok produk = jumlah stok variasi AKTIF
+// (variasi nonaktif tak bisa dibeli publik). Variasi kosong = 0. Dihitung saat dibaca, tidak disimpan.
+// Produk simple tidak lewat sini (pakai products.stock apa adanya).
+
+/** Stok fisik total per produk bervariasi → Map<productId, total>. Produk tanpa variasi aktif = 0. */
+export async function getVariableProductStockTotals(
+  db: TenantDbOrTx,
+  schema: TenantDb["schema"],
+  productIds: string[],
+): Promise<Map<string, number>> {
+  const totals = new Map<string, number>(productIds.map((id) => [id, 0]));
+  if (productIds.length === 0) return totals;
+
+  const rows = await db
+    .select({ productId: schema.productVariations.productId, stock: schema.productVariations.stock })
+    .from(schema.productVariations)
+    .where(and(
+      inArray(schema.productVariations.productId, productIds),
+      eq(schema.productVariations.isActive, true),
+    ));
+
+  for (const r of rows) totals.set(r.productId, (totals.get(r.productId) ?? 0) + r.stock);
+  return totals;
+}

@@ -1,4 +1,4 @@
-import { createTenantDb, publicSellingPrice, db as publicDb, tenants, tenantAddonInstallations, addons, memberBusinesses } from "@jalajogja/db";
+import { createTenantDb, publicSellingPrice, getVariableProductStockTotals, db as publicDb, tenants, tenantAddonInstallations, addons, memberBusinesses } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { getTokoSettings } from "@/lib/toko-settings";
 import { redirect } from "next/navigation";
@@ -65,13 +65,19 @@ export default async function PesananNewPage({
     .where(eq(schema.products.status, "active"))
     .orderBy(schema.products.name);
 
+  // Produk bervariasi: stok = jumlah stok variasi aktif, stok utama diabaikan (docs/arsitektur-stok.md).
+  const variableStockTotals = await getVariableProductStockTotals(
+    db, schema,
+    products.filter((p) => p.productType === "variable").map((p) => p.id),
+  );
+
   const productList = products.map((p) => ({
     id:          p.id,
     name:        p.name,
     sku:         p.sku,
     // Invoice manual admin menagih Harga Publik (bukan modal) — sama dengan resolveProductCartItem.
     price:       publicSellingPrice(p),
-    stock:       typeof p.stock === "number" ? p.stock : Number(p.stock),
+    stock:       p.productType === "variable" ? (variableStockTotals.get(p.id) ?? 0) : (typeof p.stock === "number" ? p.stock : Number(p.stock)),
     weightGram:  p.weightGram ?? 0,
     mitraId:     p.mitraId,
     sellerType:  p.sellerType as "tenant" | "mitra",

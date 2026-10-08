@@ -1,4 +1,4 @@
-import { createTenantDb, publicSellingPrice } from "@jalajogja/db";
+import { createTenantDb, publicSellingPrice, getVariableProductStockTotals } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
 import { sql, ilike } from "drizzle-orm";
@@ -103,6 +103,8 @@ export default async function ProdukPage({
   // dari variasi aktif (COALESCE fallback ke harga induk sudah ditangani helper ini).
   const variableIds  = rows.filter((r) => r.productType === "variable").map((r) => r.id);
   const priceRanges  = await resolveVariantPriceRanges(tenantClient, variableIds);
+  // Produk bervariasi: stok = jumlah stok variasi, stok utama diabaikan (docs/arsitektur-stok.md).
+  const stockTotals  = await getVariableProductStockTotals(tenantClient.db, tenantClient.schema, variableIds);
 
   const tableRows: ProductRow[] = rows.map((product) => {
     const range = priceRanges.get(product.id);
@@ -120,7 +122,7 @@ export default async function ProdukPage({
       sku:         product.sku,
       thumbUrl:    getFirstImage(product.images),
       priceLabel,
-      stock:       product.stock,
+      stock:       product.productType === "variable" ? (stockTotals.get(product.id) ?? 0) : product.stock,
       productType: product.productType,
       status:      product.status,
     };

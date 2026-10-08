@@ -101,8 +101,17 @@ export default async function TenantDashboardPage({
     // Perlu tindakan — modul lain
     tdb.select({ count: sql<string>`COUNT(*)` }).from(schema.eventRegistrations)
       .where(eq(schema.eventRegistrations.status, "pending")),
+    // Stok rendah: produk bervariasi memakai JUMLAH stok variasi aktif (stok utama diabaikan —
+    // docs/arsitektur-stok.md § "Stok Produk Bervariasi"), produk simple memakai products.stock.
     tdb.select({ count: sql<string>`COUNT(*)` }).from(schema.products)
-      .where(and(lte(schema.products.stock, 5), eq(schema.products.status, "active"))),
+      .where(and(
+        eq(schema.products.status, "active"),
+        sql`(CASE WHEN ${schema.products.productType} = 'variable'
+              THEN COALESCE((SELECT SUM(${schema.productVariations.stock}) FROM ${schema.productVariations}
+                             WHERE ${schema.productVariations.productId} = ${schema.products.id}
+                               AND ${schema.productVariations.isActive}), 0)
+              ELSE ${schema.products.stock} END) <= 5`,
+      )),
     tdb.select({ count: sql<string>`COUNT(*)` }).from(schema.mitraApplications)
       .where(eq(schema.mitraApplications.status, "pending")),
 

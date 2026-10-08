@@ -1187,6 +1187,9 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
   `docs/arsitektur-product.md` § "Laporan Produk". Modal = Harga Dasar dibaca langsung (tanpa snapshot, tanpa migration
   baru, tanpa aturan khusus data lama — keputusan user). Belum dikerjakan: produk mitra / stok variasi / rate limit
   `checkoutAction`.
+- **Stok produk bervariasi — kode SELESAI, belum deploy**: stok utama DIABAIKAN, stok = jumlah stok variasi aktif (variasi
+  kosong = 0, tidak ada pembagian stok utama; rencana awal "ikut stok utama"/migration nullable DITOLAK user). Tanpa migration.
+  `docs/arsitektur-stok.md` § "Stok Produk Bervariasi". Helper `getVariableProductStockTotals()`.
 - Commit terakhir per `git log`: `977b4e0` (2026-09-18) — validasi format UUID di 6 halaman
   publik `[tenant]/{modul}/[id]` (cegah crash 500 dari bot/scanner, lihat
   `docs/lessons-learned.md` [2026-09-18]). Beberapa commit terakhir (SUDAH di-push per `39edaa5`

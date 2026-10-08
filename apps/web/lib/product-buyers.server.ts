@@ -93,7 +93,15 @@ export async function resolveProductBuyers(
     .limit(1);
   if (!product) return { product: null, rows: [] };
   // `price` yang dikembalikan = Harga Publik (harga jual), bukan Harga Dasar/modal.
-  const productOut = { ...product, price: String(publicSellingPrice(product)) };
+  // Produk bervariasi: stok utama diabaikan — stok = jumlah stok variasi AKTIF (docs/arsitektur-stok.md).
+  const variationStockRows = product.productType === "variable"
+    ? await db.select({ stock: schema.productVariations.stock, isActive: schema.productVariations.isActive })
+        .from(schema.productVariations).where(eq(schema.productVariations.productId, productId))
+    : [];
+  const stockOut = product.productType === "variable"
+    ? variationStockRows.filter((v) => v.isActive).reduce((s, v) => s + v.stock, 0)
+    : product.stock;
+  const productOut = { ...product, price: String(publicSellingPrice(product)), stock: stockOut };
 
   // Semua id yang mungkin muncul sebagai invoice_items.itemId untuk produk ini.
   const variations = await db
