@@ -123,6 +123,16 @@ project ini isolasi via **schema Postgres terpisah per tenant** (`tenant_{slug}`
   record dari SESI (`resolveIdentity` dengan `betterAuthUserId`), bukan kecocokan nomor. Kasus: gate OTP
   checkout (`resolveCheckoutContact(..., self)`), lesson `[2026-10-09]`.
 
+- **Rate limit per-IP (`lib/rate-limit.ts`) — IP klien diverifikasi 2026-10-09**: semua blok Nginx aplikasi
+  (`jalakarta.com`, `forbis.id`, `forcreator.id`, `ikpmjogja.com`, `visikita.com`) menimpa
+  `X-Real-IP $remote_addr` (+ `X-Forwarded-For $proxy_add_x_forwarded_for`), jadi `getClientIp()` yang
+  membaca `x-real-ip` lebih dulu TIDAK bisa dipalsukan klien. Catatan: `jalakarta.com` berada di balik
+  Cloudflare proxied dan TIDAK ada konfigurasi `real_ip` — IP yang terbaca = IP edge Cloudflare (limit
+  jadi per-edge, kasar tapi tidak bisa dibypass); custom domain (DNS-only) mendapat IP asli. Peningkatan
+  opsional: `real_ip_header CF-Connecting-IP` + `set_real_ip_from` rentang Cloudflare di blok jalakarta.com.
+  Tip cek konfigurasi: `sites-enabled/` berisi symlink — pakai `grep -rn ... /etc/nginx/sites-available/`
+  (atau `grep -rnL`/`-R`), `grep -r` biasa tidak mengikuti symlink dan hasilnya kosong menyesatkan.
+
 ## 5. Frontend (Next.js App Router)
 - Server Components untuk data yang butuh filter tenant/permission — jangan fetch data
   sensitif di Client Component lalu filter di client (authorization logic harus di server).
