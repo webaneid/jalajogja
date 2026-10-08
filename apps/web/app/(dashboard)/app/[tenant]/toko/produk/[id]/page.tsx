@@ -10,6 +10,7 @@ import { ProductBuyerList } from "@/components/toko/product-buyer-list";
 import { ProductReportCard } from "@/components/toko/product-report-card";
 import { buildProductReport, buildProductConclusion } from "@/lib/product-report";
 import { hasFullAccess } from "@/lib/permissions";
+import { isValidUuid } from "@/lib/is-uuid";
 
 function formatRupiah(amount: number | string) {
   const n = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -44,6 +45,7 @@ export default async function ProdukDetailPage({
   params: Promise<{ tenant: string; id: string }>;
 }) {
   const { tenant: slug, id: productId } = await params;
+  if (!isValidUuid(productId)) notFound();
   const access = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
 

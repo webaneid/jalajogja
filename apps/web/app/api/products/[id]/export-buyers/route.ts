@@ -46,6 +46,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { hasReadAccess, hasFullAccess } from "@/lib/permissions";
 import { displayPhone } from "@/lib/phone";
 import { resolveProductBuyers } from "@/lib/product-buyers.server";
+import { isValidUuid } from "@/lib/is-uuid";
 import { buildProductReport, buildProductConclusion } from "@/lib/product-report";
 
 function fmtDate(d: Date): string {
@@ -57,6 +58,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: productId } = await params;
+  // Segmen URL dipakai ke query kolom UUID → validasi format dulu (pola lesson UUID guard), bukan 500 dari Postgres.
+  if (!isValidUuid(productId)) return NextResponse.json({ error: "Produk tidak ditemukan." }, { status: 404 });
   const slug = req.nextUrl.searchParams.get("tenant") ?? req.nextUrl.searchParams.get("slug");
   if (!slug) return NextResponse.json({ error: "Parameter tenant wajib diisi." }, { status: 400 });
   const includeAll = req.nextUrl.searchParams.get("all") === "1";
