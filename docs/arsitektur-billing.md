@@ -2499,3 +2499,23 @@ diperbaiki**:
   Nama/Email/Alamat setiap kali nomor berubah dari status non-idle.
 
 Detail lengkap perbaikan: lihat commit yang menyertai dokumen ini.
+
+### 16.x Susulan (2026-10-09) — Gate OTP checkout: pengecualian sesi login + fail-closed konsisten
+**Bug** (dilaporkan user, checkout donasi di forbis.id): error merah "Nomor HP ini terdaftar di
+sistem kami — verifikasi OTP diperlukan" muncul TANPA kolom OTP di layar. Dua penyebab, keduanya
+berasal dari gate yang tidak simetris antara client dan server:
+1. **User login**: nomor HP terisi otomatis dari akun (`defaults.phone`), jadi event blur tidak
+   pernah terjadi → cek/kirim OTP tidak pernah jalan → kolom OTP tidak muncul. Server tetap
+   menuntut OTP karena nomor itu "match" (milik akunnya sendiri).
+2. **Fail-open di client, fail-closed di server**: kalau `send-otp` gagal setelah nomor match
+   (WA gateway mati / toggle "OTP Verifikasi Checkout" OFF → 503, rate limit → 429), client
+   menganggapnya "tidak terdaftar" (idle, kolom OTP tidak muncul), sementara `checkoutAction`
+   tetap menolak.
+**Fix**: (a) `checkoutAction` melewati gate OTP kalau sesi login punya nomor (phone/whatsapp)
+yang sama dengan nomor checkout — sesi sudah membuktikan kepemilikan; nomor yang diganti ke
+nomor lain tetap kena gate. (b) `send-otp` (type `checkout_verify`) menyertakan `found: true` di
+semua response error setelah nomor match; client menampilkan kolom OTP + alasan + tombol "Kirim
+ulang kode". (c) `checkoutAction` mengembalikan `code: "otp_required"`; form merespons dengan
+kembali ke Step 1, membuka kolom OTP dan mengirim kode baru. Cakupan: SEMUA tipe item (produk,
+donasi, tiket) — hanya ada satu `checkout-form.tsx` + satu `checkoutAction`, tidak ada komponen
+checkout terpisah per modul.

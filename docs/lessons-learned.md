@@ -8,6 +8,14 @@
 
 ---
 
+## [2026-10-09] Gate OTP checkout: client fail-open vs server fail-closed — error tanpa jalan keluar
+**Masalah:** Checkout donasi (user login) menampilkan "Nomor HP ini terdaftar di sistem kami — verifikasi OTP diperlukan" tanpa ada kolom OTP untuk diisi — user buntu.
+**Root cause:** Gate OTP dibangun asimetris. Client memicu cek via event blur dan menganggap SEMUA kegagalan (503/429/500) sebagai "nomor tidak terdaftar, lanjut"; server `checkoutAction` selalu menuntut OTP kalau nomor match. Nomor yang terisi otomatis dari akun login tidak pernah memicu blur sama sekali.
+**Fix:** Server skip gate untuk sesi login pemilik nomor; `send-otp` mengembalikan `found: true` di error pasca-match; `checkoutAction` mengembalikan `code: "otp_required"` yang membuat form membuka kolom OTP + kirim ulang. Detail: `docs/arsitektur-billing.md` § 16.x.
+**Pencegahan:** Kalau server menolak sebuah aksi karena syarat X, client WAJIB punya jalan untuk memenuhi X dari kondisi error apa pun (bukan cuma jalur sukses) — response penolakan server harus membawa kode terstruktur yang dipetakan ke UI, bukan hanya string error. Pemicu UX berbasis event (blur) tidak boleh jadi satu-satunya jalur kalau nilai bisa terisi tanpa event itu (prefill/autofill).
+
+---
+
 ## [2026-09-18] Segmen URL `[id]` mentah dipakai langsung di query kolom UUID — crash 500 untuk bot/scanner, bukan 404 bersih
 **Masalah:** PM2 error log produksi menunjukkan `invalid input syntax for type uuid: "mogus.id"` dari `/usaha/[id]/page.tsx` — bot/scanner probe path acak (`/{tenant}/usaha/mogus.id`) bikin Postgres throw error mentah, ditangkap sebagai 500 generic error page, bukan 404 yang wajar.
 **Root cause:** Segmen URL `id` dari `params` dipakai LANGSUNG di `eq(kolomUuid, id)` tanpa validasi bentuknya dulu — untuk string yang bukan UUID valid, driver Postgres gagal cast ke tipe `uuid` dan throw exception mentah yang tidak ditangkap (tidak ada `error.tsx` boundary khusus di route group `(public)`, sesuai lesson `[2026-08-31]` di bawah).

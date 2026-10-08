@@ -17,6 +17,7 @@ import { normalizePhone } from "@/lib/phone";
 import { getTokoSettings } from "@/lib/toko-settings";
 import { isSafeExternalUrl } from "@/lib/safe-url";
 import { auth } from "@/lib/auth";
+import { getAkunIdentity } from "@/lib/akun-identity";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, anchorTodayUtc, todayInTz, formatInTz, tzLabel } from "@/lib/tenant-timezone.server";
 import { createEventRegistrationsFromInvoiceTickets } from "@/lib/event-registration-sync.server";
@@ -25,7 +26,7 @@ import { createEventRegistrationsFromInvoiceTickets } from "@/lib/event-registra
 
 type ActionResult<T = void> =
   | { success: true; data: T }
-  | { success: false; error: string };
+  | { success: false; error: string; code?: "otp_required" };
 
 export type CartItemType = "product" | "ticket" | "donation" | "custom";
 
@@ -533,10 +534,28 @@ export async function checkoutAction(
     // `claimToken` di /api/akun/register (DELETE...RETURNING atomic, sekali pakai). Lihat
     // docs/arsitektur-billing.md § 16.
     const normalizedPhoneForCheck = normalizePhone(customer.phone) ?? customer.phone.trim();
-    const contactMatch = await resolveCheckoutContact(db, tdb, schema, normalizedPhoneForCheck);
+    const session = await auth.api.getSession({ headers: await headers() });
+
+    // Pengecualian gate: user LOGIN yang nomor HP akunnya (phone/whatsapp) sama dengan nomor
+    // checkout — sesi login sudah membuktikan kepemilikan nomor itu, OTP cuma membuat pemilik
+    // akun diminta verifikasi data miliknya sendiri. Form checkout mengisi nomor ini otomatis
+    // dari akun (tanpa blur), jadi tanpa pengecualian ini mereka kena error "verifikasi OTP
+    // diperlukan" tanpa kolom OTP yang bisa diisi. Nomor yang DIGANTI ke nomor lain tetap kena gate.
+    let ownedBySession = false;
+    if (session?.user?.id) {
+      const akun = await getAkunIdentity(session.user.id);
+      const ownPhones = [akun?.phone, akun?.whatsapp]
+        .map((p) => (p ? normalizePhone(p) ?? p.trim() : null))
+        .filter((p): p is string => !!p);
+      ownedBySession = ownPhones.includes(normalizedPhoneForCheck);
+    }
+
+    const contactMatch = ownedBySession
+      ? { found: false as const }
+      : await resolveCheckoutContact(db, tdb, schema, normalizedPhoneForCheck);
     if (contactMatch.found) {
       if (!customer.verifyToken) {
-        return { success: false, error: "Nomor HP ini terdaftar di sistem kami — verifikasi OTP diperlukan sebelum lanjut." };
+        return { success: false, code: "otp_required", error: "Nomor HP ini terdaftar di sistem kami — verifikasi OTP diperlukan sebelum lanjut." };
       }
       const [proof] = await db
         .delete(verification)
@@ -546,14 +565,13 @@ export async function checkoutAction(
         ))
         .returning({ value: verification.value });
       if (!proof || proof.value !== normalizedPhoneForCheck) {
-        return { success: false, error: "Verifikasi OTP tidak valid atau sudah kadaluarsa. Ulangi proses verifikasi." };
+        return { success: false, code: "otp_required", error: "Verifikasi OTP tidak valid atau sudah kadaluarsa. Ulangi proses verifikasi." };
       }
     }
 
     // ── Lookup identitas via resolveIdentity ─────────────────────────────────
     // Urutan: session login → public.profiles → public.members → guest
     // Query ke public schema — di luar transaction tenant di bawah (koneksi/DB berbeda).
-    const session = await auth.api.getSession({ headers: await headers() });
     const identity = await resolveIdentity(db, {
       betterAuthUserId: session?.user?.id ?? null,
       phone: normalizePhone(customer.phone),

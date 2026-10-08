@@ -113,6 +113,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Untuk checkout_verify, titik ini hanya tercapai kalau nomor SUDAH match — setiap response
+  // error setelah ini menyertakan `found: true` supaya form checkout tahu OTP tetap wajib
+  // (server checkoutAction akan menolak tanpa verifikasi), bukan menganggap nomor tak terdaftar.
+  const foundExtra = validType === "checkout_verify" ? { found: true } : {};
+
   // ── Rate limiting ──────────────────────────────────────────────────────────────
   const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW * 60 * 1000);
   const [{ total }] = await db
@@ -126,7 +131,7 @@ export async function POST(request: NextRequest) {
 
   if (Number(total) >= RATE_LIMIT_MAX) {
     return NextResponse.json(
-      { error: `Terlalu banyak permintaan OTP. Coba lagi dalam ${RATE_LIMIT_WINDOW} menit.` },
+      { error: `Terlalu banyak permintaan OTP. Coba lagi dalam ${RATE_LIMIT_WINDOW} menit.`, ...foundExtra },
       { status: 429 },
     );
   }
@@ -162,11 +167,11 @@ export async function POST(request: NextRequest) {
     // Verifikasi WA dikonfigurasi sebelum kirim (kecuali untuk login — boleh kirim meski belum verified)
     const waCfg = notifCfg["whatsapp_config"] as WaNotifConfig | undefined;
     if (!waCfg?.device_id || !waCfg.verified) {
-      return NextResponse.json({ error: "WhatsApp Gateway belum dikonfigurasi oleh admin." }, { status: 503 });
+      return NextResponse.json({ error: "WhatsApp Gateway belum dikonfigurasi oleh admin.", ...foundExtra }, { status: 503 });
     }
 
   } catch {
-    return NextResponse.json({ error: "Gagal membaca konfigurasi tenant." }, { status: 500 });
+    return NextResponse.json({ error: "Gagal membaca konfigurasi tenant.", ...foundExtra }, { status: 500 });
   }
 
   // ── Kirim via WA ──────────────────────────────────────────────────────────────
@@ -195,7 +200,7 @@ export async function POST(request: NextRequest) {
       send_failed:    "Gagal mengirim pesan WhatsApp. Coba lagi.",
     };
     const errorMsg = reasonMap[result.reason] ?? "Gagal mengirim OTP.";
-    return NextResponse.json({ error: errorMsg }, { status: 503 });
+    return NextResponse.json({ error: errorMsg, ...foundExtra }, { status: 503 });
   }
 
   return NextResponse.json({

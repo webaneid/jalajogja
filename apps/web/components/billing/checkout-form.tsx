@@ -147,30 +147,46 @@ export function CheckoutForm({
     }
   }
 
+  // Kirim OTP verifikasi ke nomor yang cocok data existing. Dipakai 3 jalur: blur field HP,
+  // tombol "Kirim ulang kode", dan respons `otp_required` dari checkoutAction (server menuntut
+  // OTP padahal kolomnya belum sempat muncul — mis. cek di blur gagal teknis).
+  async function requestContactOtp(trimmed: string, opts?: { notice?: string }) {
+    setContactCheck((c) => ({ ...c, status: c.status === "idle" ? "checking" : c.status, error: "" }));
+    try {
+      const res  = await fetch("/api/akun/send-otp", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ phone: trimmed, type: "checkout_verify", slug }),
+      });
+      const data = await res.json() as { ok?: boolean; found?: boolean; error?: string };
+      if (res.ok && data.ok && data.found) {
+        setContactCheck({ status: "found", otp: "", verifyPending: false, error: opts?.notice ?? "" });
+      } else if (data.found) {
+        // Nomor COCOK tapi OTP gagal terkirim (gateway WA mati/dinonaktifkan, rate limit nomor)
+        // — OTP tetap wajib (server menolak tanpa verifikasi), jadi JANGAN diam-diam dianggap
+        // "tidak terdaftar": tampilkan kolom OTP + alasan + tombol kirim ulang.
+        setContactCheck({ status: "found", otp: "", verifyPending: false, error: data.error ?? "Gagal mengirim kode OTP. Coba kirim ulang." });
+      } else if (opts?.notice) {
+        // Dipanggil dari otp_required tapi pengiriman gagal tanpa info `found` (mis. rate limit IP)
+        setContactCheck({ status: "found", otp: "", verifyPending: false, error: data.error ?? opts.notice });
+      } else {
+        // Tidak cocok apa pun, ATAU kegagalan teknis sebelum lookup — jangan blokir di sini;
+        // kalau ternyata nomor match, server checkoutAction yang menuntut OTP (code otp_required).
+        setContactCheck({ status: "idle", otp: "", verifyPending: false, error: "" });
+      }
+    } catch {
+      setContactCheck({ status: "idle", otp: "", verifyPending: false, error: "" });
+    }
+  }
+
   function handlePhoneBlur() {
     const trimmed = phone.trim();
     if (trimmed.length < 10 || trimmed === lastCheckedPhoneRef.current) return;
     lastCheckedPhoneRef.current = trimmed;
-    setContactCheck((c) => ({ ...c, status: "checking" }));
-    void (async () => {
-      try {
-        const res  = await fetch("/api/akun/send-otp", {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ phone: trimmed, type: "checkout_verify", slug }),
-        });
-        const data = await res.json() as { ok?: boolean; found?: boolean };
-        if (res.ok && data.ok && data.found) {
-          setContactCheck({ status: "found", otp: "", verifyPending: false, error: "" });
-        } else {
-          // Tidak cocok apa pun, ATAU kegagalan teknis (gateway down dll) — jangan blokir,
-          // anggap sama seperti tidak cocok: lanjut isi manual.
-          setContactCheck({ status: "idle", otp: "", verifyPending: false, error: "" });
-        }
-      } catch {
-        setContactCheck({ status: "idle", otp: "", verifyPending: false, error: "" });
-      }
-    })();
+    // Nomor bawaan akun yang sedang login = sudah terbukti milik user (sesi login) — tidak
+    // perlu OTP. Server tetap memeriksa sendiri (checkoutAction), ini murni UX.
+    if (defaults?.phone && trimmed === defaults.phone) return;
+    void requestContactOtp(trimmed);
   }
 
   function handleVerifyContactOtp() {
@@ -330,6 +346,14 @@ export function CheckoutForm({
       );
       if (res.success) {
         router.push(`/${slug}/invoice/${res.data.invoiceId}`);
+      } else if (res.code === "otp_required") {
+        // Server menuntut OTP (nomor cocok data existing) — balik ke Step 1 dan buka kolom OTP,
+        // kirim kode baru supaya user tidak buntu tanpa tahu harus apa.
+        setStep(1);
+        setError("");
+        lastCheckedPhoneRef.current = phone.trim();
+        setContactCheck({ status: "found", otp: "", verifyPending: false, error: "" });
+        void requestContactOtp(phone.trim(), { notice: res.error });
       } else {
         setError(res.error);
       }
@@ -534,6 +558,14 @@ export function CheckoutForm({
                 {contactCheck.error && (
                   <p className="text-xs text-destructive">{contactCheck.error}</p>
                 )}
+                <button
+                  type="button"
+                  onClick={() => void requestContactOtp(phone.trim(), { notice: "Kode baru dikirim — cek WhatsApp Anda." })}
+                  disabled={contactCheck.verifyPending}
+                  className="text-xs text-primary underline disabled:opacity-50"
+                >
+                  Kirim ulang kode
+                </button>
               </div>
             )}
 
