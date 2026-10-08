@@ -16,11 +16,10 @@
 
 ---
 
-## [2026-10-09] Produsen: referensi hidup ke data anggota tetap harus dibatasi keanggotaan SAAT DIBACA; normalizePhone bukan validator
-**Masalah:** Security review fitur Produsen (sebelum deploy) menemukan (1) produsen anggota menyimpan referensi ke usaha/pesantren/profesional + pemilik di schema `public`, dan kartu admin tetap menampilkan WhatsApp + alamat rumah pemilik walau pemilik sudah KELUAR dari tenant (hanya diberi lencana); (2) validasi WhatsApp custom memanggil `normalizePhone()` dan mengira `null` = tidak valid, padahal fungsi itu tidak pernah `null` untuk teks non-kosong (teks acak → `+62…`).
-**Root cause:** (1) isolasi tenant dicek di titik PEMILIHAN (picker + create) tapi tidak di titik BACA — keanggotaan bisa berubah setelahnya. (2) Nama fungsi "normalize" dianggap sekaligus validator.
-**Fix:** `resolveProducers()` menyembunyikan nomor/alamat turunan data anggota bila pemilik bukan anggota sah tenant (`contactHidden`); server memvalidasi E.164 (`^\+\d{8,15}$`) di `parseCustom`; tautan `wa.me` hanya digit.
-**Pencegahan:** (a) Referensi hidup ke data global anggota = cek keanggotaan di SETIAP baca, bukan hanya saat memilih. (b) `normalizePhone()` hanya mengubah bentuk — validasi bentuk E.164 harus eksplisit di server. (c) Untuk fitur baru yang menyentuh data anggota lintas schema: jalankan `jalakarta-security-review` sebelum deploy (kali ini benar dilakukan).
+## [2026-10-09] Produsen: `normalizePhone` bukan validator; jangan menambah pembatasan akses yang tidak diminta pada alat internal admin
+**Masalah:** Security review fitur Produsen menemukan validasi WhatsApp custom tidak efektif: `normalizePhone()` tidak pernah `null` untuk teks non-kosong (teks acak → `+62…`). Di review yang sama saya juga MENYEMBUNYIKAN kontak pemilik yang sudah keluar tenant, tanpa diminta — user menolak: ini alat internal admin untuk menghubungi produsen, rencana yang disetujui adalah data tetap tampil.
+**Fix:** server memvalidasi E.164 (`^\+\d{8,15}$`) di `parseCustom`; tautan `wa.me` hanya digit; penyembunyian kontak DITARIK (lencana "Bukan anggota lagi" tetap).
+**Pencegahan:** (a) `normalizePhone()` hanya mengubah bentuk — validasi E.164 eksplisit di server. (b) Temuan review yang MENGUBAH perilaku yang sudah disetujui (menyembunyikan data dari admin, dst) harus DITANYAKAN ke user dulu, bukan langsung diterapkan; jelaskan dengan bahasa sederhana (hindari istilah "isolasi"/"disembunyikan" tanpa konteks).
 
 ---
 

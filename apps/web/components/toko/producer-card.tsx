@@ -26,13 +26,7 @@ export function ProducerCard({ v, productCount, actions, showCount = true }: { v
         {showCount && <p className="text-xs text-muted-foreground shrink-0">{productCount} produk</p>}
       </div>
 
-      {v.contactHidden && (
-        <p className="text-xs rounded-md border border-border bg-muted/40 px-3 py-2 text-muted-foreground">
-          Kontak & alamat disembunyikan: pemilik sudah bukan anggota tenant ini. Kalau produsen ini masih dipakai,
-          buat produsen <b>Custom</b> dan isi kontaknya sendiri.
-        </p>
-      )}
-      <div className={`grid sm:grid-cols-2 gap-2 text-sm ${v.contactHidden ? "hidden" : ""}`}>
+      <div className="grid sm:grid-cols-2 gap-2 text-sm">
         <div className="flex items-start gap-2">
           {v.phone?.isWhatsapp ? <MessageCircle className="h-4 w-4 mt-0.5 text-green-600" /> : <Phone className="h-4 w-4 mt-0.5 text-muted-foreground" />}
           {v.phone ? (
