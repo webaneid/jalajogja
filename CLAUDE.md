@@ -238,6 +238,7 @@ pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
 | Koneksi Instagram otomatis (Graph API) | `docs/arsitektur-instagram-embed.md` |
 | Integrasi KBLI (klasifikasi usaha) — perencanaan, belum dieksekusi | `docs/arsitektur-integrasi-kbli.md` |
 | Mobile shell (header global, sticky bar, aturan spacer) | `docs/arsitektur-mobile-shell.md` |
+| Produsen produk (admin-only: internal/anggota/custom) — RENCANA, belum dieksekusi | `docs/arsitektur-produsen.md` |
 | Penulis & Editor Post (byline system) | `docs/arsitektur-penulis-post.md` |
 | Data Pesantren anggota | `docs/arsitektur-pesantren.md` |
 | Data Profesional anggota — perencanaan, belum dieksekusi | `docs/arsitektur-profesional.md` |
