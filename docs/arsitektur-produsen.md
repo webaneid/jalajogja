@@ -88,8 +88,9 @@ Migration `0070_producers.sql` (loop tenant aktif; `CREATE TABLE IF NOT EXISTS` 
   `lessons-learned` [2026-10-09]: payload client = publik).
 - **Validasi input**: WhatsApp custom lewat `<PhoneInput>` + `normalizePhone()`; wilayah lewat `WilayahSelect`; semua
   dropdown Combobox (standar UI project). Server memvalidasi ulang.
-- **Perilaku saat data berubah**: anggota keluar tenant → kartu tampil lencana "bukan anggota lagi" (data tetap tampil, admin
-  memutuskan); baris sumber dihapus → tampil `name_cache` + "data sumber dihapus"; produsen dipakai produk → tidak bisa
+- **Perilaku saat data berubah**: anggota keluar tenant → kartu tampil lencana "bukan anggota lagi" dan **kontak + alamat turunan data
+  anggota DISEMBUNYIKAN** (revisi setelah security review 2026-10-09: data global anggota hanya boleh dibaca tenant selama orangnya masih
+  anggota tenant itu; admin yang masih butuh kontaknya membuat produsen Custom); baris sumber dihapus → tampil `name_cache` + "data sumber dihapus"; produsen dipakai produk → tidak bisa
   dihapus, hanya dinonaktifkan; produk yang merujuk produsen nonaktif tetap tampil dengan tanda.
 
 ## 6. Lapisan baca — `lib/producer.server.ts` (admin-only)
@@ -150,3 +151,13 @@ Anggota → pilih usaha/pesantren/profesional: hanya anggota tenant ini yang mun
 pemilik berlabel "WA pemilik (anggota)" bila usaha tak punya. (3) Tambah Custom (nama saja cukup). (4) Edit produk → pilih Produsen →
 simpan → detail produk menampilkan kartu Produsen (tombol WhatsApp). (5) Produk tanpa pilihan = Internal. (6) Buka halaman publik produk
 (view-source) → tidak ada data produsen. (7) Pengguna akses baca-saja → halaman Produsen menolak, kartu tidak muncul.
+
+## 13. Hasil security review (2026-10-09, pasca-eksekusi, sebelum deploy)
+
+Lolos: `getTenantAccess` + `hasFullAccess(toko)` di semua action/API/halaman; `slug` divalidasi session; sumber dimuat ulang dari `public` dan pemilik
+wajib anggota sah tenant (cegah IDOR lintas tenant); picker JOIN `tenant_memberships` & tidak mengirim nomor/alamat; validasi UUID; whitelist field
+custom; semua query Drizzle terparameter; produk mitra tidak bisa punya produsen; tidak ada `select()` penuh `products` di jalur publik;
+form produk hanya menerima id+nama produsen. **Diperbaiki**: (1) kontak/alamat anggota yang sudah keluar tetap terbaca → kini disembunyikan;
+(2) `normalizePhone` tidak pernah `null` untuk teks non-kosong sehingga validasi WhatsApp custom tak efektif → server kini wajib `^\+\d{8,15}$`;
+tautan `wa.me` dibersihkan ke digit saja. **Diterima (risiko rendah)**: tidak ada unique index `(source_type, source_id)` — dua klik bersamaan
+bisa membuat duplikat produsen (admin-only, tanpa dampak keamanan).

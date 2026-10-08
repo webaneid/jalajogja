@@ -28,6 +28,9 @@ export type ProducerView = {
   address:      ProducerAddress | null;
   owner:        { memberId: string; name: string } | null;
   membership:   "ok" | "left" | "n/a";    // "left" = pemilik bukan anggota sah tenant lagi
+  // true = pemilik sudah BUKAN anggota tenant → nomor & alamat turunan data anggota DISEMBUNYIKAN (isolasi:
+  // data global anggota hanya boleh dibaca tenant selama orangnya masih anggota tenant itu).
+  contactHidden: boolean;
   sourceMissing: boolean;                 // baris sumber sudah dihapus / tidak lagi milik anggota itu
   notes:        string | null;
 };
@@ -64,7 +67,7 @@ export async function resolveInternalProducer(tenantClient: TenantDb, tenant: Te
     // contact_phone belum tentu WhatsApp (pengaturan kontak tenant) → isWhatsapp false, tampil sebagai kontak
     phone:   phone ? { value: phone, source: "tenant", isWhatsapp: false } : null,
     address: addressText ? { text: addressText, source: "tenant" } : null,
-    owner: null, membership: "n/a", sourceMissing: false, notes: null,
+    owner: null, membership: "n/a", contactHidden: false, sourceMissing: false, notes: null,
   };
 }
 
@@ -134,7 +137,7 @@ export async function resolveProducers(
         name: r.customName?.trim() || "(tanpa nama)", subtitle: "Produsen custom (bukan anggota)",
         phone:   r.customWhatsapp ? { value: r.customWhatsapp, source: "custom", isWhatsapp: true } : null,
         address: addrText ? { text: addrText, source: "custom" } : null,
-        owner: null, membership: "n/a", sourceMissing: false, notes: r.notes,
+        owner: null, membership: "n/a", contactHidden: false, sourceMissing: false, notes: r.notes,
       });
       continue;
     }
@@ -163,12 +166,18 @@ export async function resolveProducers(
       }
     }
 
+    // ISOLASI TENANT: kontak/alamat turunan data anggota HANYA dibaca selama pemilik masih anggota sah tenant
+    // ini. Setelah keluar, tampilkan nama saja + lencana; admin yang masih butuh kontaknya mengisinya sebagai
+    // produsen Custom (data yang ia ketik sendiri). Lihat docs/arsitektur-keamanan.md § 3b.
+    const isMember = !!r.memberId && memberSet.has(r.memberId);
+
     out.set(r.id, {
       id: r.id, kind: "member", sourceType: kind, isActive: r.isActive, name, subtitle,
-      phone:   pickProducerPhone(kind, sourceContact, ownerContact),
-      address: pickProducerAddress(sourceAddress, ownerAddress),
+      phone:   isMember ? pickProducerPhone(kind, sourceContact, ownerContact) : null,
+      address: isMember ? pickProducerAddress(sourceAddress, ownerAddress) : null,
       owner:   owner ? { memberId: owner.id, name: owner.name } : null,
-      membership: r.memberId && memberSet.has(r.memberId) ? "ok" : "left",
+      membership: isMember ? "ok" : "left",
+      contactHidden: !isMember,
       sourceMissing, notes: r.notes,
     });
   }

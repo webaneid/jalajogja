@@ -7,7 +7,8 @@ import { PHONE_SOURCE_LABEL, PHONE_SOURCE_LABEL_NONWA, ADDRESS_SOURCE_LABEL } fr
 import type { ProducerView } from "@/lib/producer.server";
 
 export function ProducerCard({ v, productCount, actions, showCount = true }: { v: ProducerView; productCount: number; actions?: React.ReactNode; showCount?: boolean }) {
-  const waDigits = v.phone?.isWhatsapp ? toWaDigits(v.phone.value) : "";
+  // Hanya digit untuk tautan wa.me — nilai kontak anggota berasal dari input bebas di alur lain.
+  const waDigits = v.phone?.isWhatsapp ? toWaDigits(v.phone.value).replace(/\D/g, "") : "";
   return (
     <div className={`rounded-xl border border-border bg-card p-4 space-y-2 ${v.isActive ? "" : "opacity-60"}`}>
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -25,7 +26,13 @@ export function ProducerCard({ v, productCount, actions, showCount = true }: { v
         {showCount && <p className="text-xs text-muted-foreground shrink-0">{productCount} produk</p>}
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-2 text-sm">
+      {v.contactHidden && (
+        <p className="text-xs rounded-md border border-border bg-muted/40 px-3 py-2 text-muted-foreground">
+          Kontak & alamat disembunyikan: pemilik sudah bukan anggota tenant ini. Kalau produsen ini masih dipakai,
+          buat produsen <b>Custom</b> dan isi kontaknya sendiri.
+        </p>
+      )}
+      <div className={`grid sm:grid-cols-2 gap-2 text-sm ${v.contactHidden ? "hidden" : ""}`}>
         <div className="flex items-start gap-2">
           {v.phone?.isWhatsapp ? <MessageCircle className="h-4 w-4 mt-0.5 text-green-600" /> : <Phone className="h-4 w-4 mt-0.5 text-muted-foreground" />}
           {v.phone ? (

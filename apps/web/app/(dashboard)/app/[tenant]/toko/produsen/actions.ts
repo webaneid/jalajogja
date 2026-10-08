@@ -117,7 +117,9 @@ function parseCustom(input: CustomProducerInput): { error: string } | { values: 
   let wa: string | null = null;
   if (input.whatsapp?.trim()) {
     wa = normalizePhone(input.whatsapp);
-    if (!wa) return { error: "Nomor WhatsApp tidak valid." };
+    // normalizePhone TIDAK pernah mengembalikan null untuk teks non-kosong (teks acak jadi "+62…") —
+    // validasi bentuk E.164 sendiri di server, jangan percaya PhoneInput di client.
+    if (!wa || !/^\+\d{8,15}$/.test(wa)) return { error: "Nomor WhatsApp tidak valid." };
   }
   const int = (v: number | null | undefined) => (Number.isInteger(v) && (v as number) > 0 ? (v as number) : null);
   const village = input.villageId != null && /^\d+$/.test(String(input.villageId)) ? String(input.villageId) : null;

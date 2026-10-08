@@ -16,6 +16,14 @@
 
 ---
 
+## [2026-10-09] Produsen: referensi hidup ke data anggota tetap harus dibatasi keanggotaan SAAT DIBACA; normalizePhone bukan validator
+**Masalah:** Security review fitur Produsen (sebelum deploy) menemukan (1) produsen anggota menyimpan referensi ke usaha/pesantren/profesional + pemilik di schema `public`, dan kartu admin tetap menampilkan WhatsApp + alamat rumah pemilik walau pemilik sudah KELUAR dari tenant (hanya diberi lencana); (2) validasi WhatsApp custom memanggil `normalizePhone()` dan mengira `null` = tidak valid, padahal fungsi itu tidak pernah `null` untuk teks non-kosong (teks acak → `+62…`).
+**Root cause:** (1) isolasi tenant dicek di titik PEMILIHAN (picker + create) tapi tidak di titik BACA — keanggotaan bisa berubah setelahnya. (2) Nama fungsi "normalize" dianggap sekaligus validator.
+**Fix:** `resolveProducers()` menyembunyikan nomor/alamat turunan data anggota bila pemilik bukan anggota sah tenant (`contactHidden`); server memvalidasi E.164 (`^\+\d{8,15}$`) di `parseCustom`; tautan `wa.me` hanya digit.
+**Pencegahan:** (a) Referensi hidup ke data global anggota = cek keanggotaan di SETIAP baca, bukan hanya saat memilih. (b) `normalizePhone()` hanya mengubah bentuk — validasi bentuk E.164 harus eksplisit di server. (c) Untuk fitur baru yang menyentuh data anggota lintas schema: jalankan `jalakarta-security-review` sebelum deploy (kali ini benar dilakukan).
+
+---
+
 ## [2026-10-09] Security review pasca-deploy: 3 celah di perubahan sendiri (pengecualian OTP, modal bocor ke payload, harga client)
 **Masalah:** Review `1ec09d1`+`43ef926` setelah deploy menemukan: (1) pengecualian OTP "nomor == nomor akun" bisa dipakai penyerang — `phone`/`whatsapp` akun diubah user tanpa verifikasi (`member-contact`, `profile-data`), cukup isi nomor korban; (2) `ProductCardData.price`/`ProductVariationData.price` masih berisi HARGA DASAR (modal) dan dikirim sebagai props ke komponen client (detail produk, popup `/gabung`, carousel/arsip) — tidak tampil di layar tapi terbaca lewat view-source/flight data; (3) `checkoutAction` memakai `unitPrice` snapshot dari client kalau produk/tiket tidak ter-resolve (itemId karangan/variasi nonaktif/dihapus), padahal `addToCartAction` menyimpan harga client apa adanya.
 **Root cause:** (1) memperlakukan field self-asserted sebagai bukti kepemilikan (pelajaran sama dengan § 4c keamanan: bukti harus dari sesuatu yang diverifikasi). (2) "tidak ditampilkan di UI" ≠ "tidak ada di payload" — saya membersihkan UI tapi tidak data yang dikirim. (3) fallback "kalau tidak ter-resolve pakai harga snapshot" tidak pernah dipertanyakan.
