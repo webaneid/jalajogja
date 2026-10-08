@@ -1489,7 +1489,7 @@ cek fallback jalan; 1 invoice guest tanpa member link/tanpa alamat → cek kolom
 
 ---
 
-## Model Harga Baru — Dasar (Modal) / Publik / Anggota (2026-10-09) — ✅ KODE SELESAI
+## Model Harga Baru — Dasar (Modal) / Publik / Anggota (2026-10-09) — ✅ SELESAI + DEPLOYED (verifikasi browser menyusul)
 
 **Latar**: audit 2026-10-09 menemukan server checkout selalu menagih `price` dan mengabaikan
 `public_price`/`member_price` (tier hanya tampilan). Saat dibahas, ternyata ARTI field-nya sendiri
@@ -1559,7 +1559,9 @@ induk, dan rentang harga kartu produk variabel yang mengabaikan tier.
   **Harga Dasar tidak pernah tampil/dicoret ke pembeli** — yang dicoret saat Harga Anggota berlaku
   adalah Harga Publik.
 
-**Wajib dijalankan di VPS sebelum deploy**: migration `0069` (kolom baru dibaca semua halaman
+**Status deploy (2026-10-09)**: commit `43ef926` (+ `1ec09d1` fix OTP) di-push dan DI-DEPLOY ke VPS. Migration `0069` jalan di 5 tenant aktif (pc-ikpm-jogjakarta, visikita, forcreator, ikpm-pusat, forbis — semua `t`), build 4m39s sukses, PM2 `online`. Backup DB sebelum deploy dicek utuh (`pg_restore -l`, 2.284 entri). **Verifikasi di browser (tes harga tamu/anggota, form admin, checkout OTP) BELUM dilaporkan hasilnya** — cek ulang sebelum menganggap fitur terverifikasi.
+
+**Wajib dijalankan di VPS sebelum deploy** (sudah dilakukan): migration `0069` (kolom baru dibaca semua halaman
 produk — tanpa migration, halaman produk publik error).
 
 **Yang sengaja BELUM**: produk mitra (harga mitra dibahas terpisah; jalur lama tetap — `price`

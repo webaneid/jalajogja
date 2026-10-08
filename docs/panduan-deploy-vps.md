@@ -523,6 +523,40 @@ pm2 restart jalajogja --update-env          # restart aplikasi
 pm2 logs jalajogja --lines 30               # cek tidak ada error
 ```
 
+### Checklist deploy dengan migration baru (alur yang terbukti, 2026-10-09)
+
+Urutan WAJIB: backup → pull → cek migration → migrate → build → restart. Migrate SEBELUM restart.
+
+1. **Backup**: `BACKUP_DIR=~/backups/jalajogja ./scripts/backup-db.sh` — tunggu sampai prompt kembali.
+   Dump database dibuat + diupload ke Drive DULU, baru arsip MinIO (besar, ±360 MB; upload-nya
+   mode diam tanpa progress, bisa beberapa menit — jangan Ctrl+C; kalau terlanjur, dump DB sudah
+   aman asal file `.dump` terbaru ada). Cek dump utuh:
+   `docker compose exec -T postgres pg_restore -l < ~/backups/jalajogja/<file>.dump | head -5`
+   (harus keluar daftar isi, bukan error). Stempel waktu di server = **UTC** (WIB − 7 jam). Cron
+   harian jam 02:00 UTC sudah jalan otomatis (retensi 30 hari) sebagai jaring pengaman tambahan.
+2. **Pull**: `git status` (file untracked tidak menghalangi) → `git pull` → `git log --oneline -3`.
+3. **Cek migration yang belum jalan** — migration TIDAK dicatat di tabel manapun, jadi cek lewat
+   `information_schema` per tenant (contoh untuk kolom `products.member_price_tenant_only`):
+   ```bash
+   docker compose exec -T postgres psql -U jalakarta -d jalakarta -c "
+   SELECT s.slug,
+     EXISTS(SELECT 1 FROM information_schema.columns c
+            WHERE c.table_schema='tenant_'||s.slug AND c.table_name='products'
+              AND c.column_name='member_price_tenant_only') AS sudah_ada
+   FROM public.tenants s WHERE s.is_active = true;"
+   ```
+   `t` = sudah ada, `f` = belum. Ganti `table_name`/`column_name` sesuai migration yang dicek.
+4. **Migrate**: `docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/NNNN_nama.sql`
+   (output `DO` = sukses; migration tenant memakai `ADD COLUMN IF NOT EXISTS`, aman diulang).
+   Ulangi query langkah 3 → semua tenant harus `t`.
+5. **Build + restart**: `bun install` → `bun run build --filter=@jalajogja/web` (±5 menit di VPS;
+   aplikasi lama tetap jalan sampai restart) → `pm2 restart jalajogja --update-env`.
+6. **Pantau**: `pm2 logs jalajogja --lines 0` (hanya baris baru). `pm2 logs --lines 30` menampilkan
+   ekor file log LAMA — error lama (404 gambar MinIO, `Server Reference ID ... "x"` dari bot,
+   NOTICE `identifier ... truncated` dari slug tenant palsu) bukan akibat deploy ini.
+7. **Rollback**: `git checkout <commit-lama>` → build → `pm2 restart`. Migration penambah kolom aman
+   dibiarkan; restore DB dari backup hanya kalau data rusak.
+
 ### Lihat logs
 
 ```bash
