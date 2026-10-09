@@ -2350,6 +2350,157 @@ begitu eksekusi utama beres, jangan diasumsikan otomatis termasuk.
 
 ---
 
+## RENCANA — Pendaftaran Forum Bertahap & Dipandu (Stepper + Klaim Donasi Lama) (2026-10-10)
+
+> **Status: RENCANA DISETUJUI USER, BELUM DIEKSEKUSI SATU BARIS KODE PUN.** User masih akan
+> menambahkan **satu alur lagi** ke rencana ini setelah membaca versi tertulis — jangan mulai
+> eksekusi sebelum alur itu masuk dan user memberi sinyal "mulai" eksplisit.
+
+### 1. Latar belakang (temuan investigasi 2026-10-10, diverifikasi ke kode)
+
+Kasus nyata: anggota IKPM mendaftar/klaim akun di domain forum, keanggotaan IKPM-nya benar, tapi
+keanggotaan **forum** tetap pending. Akar masalah ada tiga, semuanya terbukti dari kode:
+
+1. **Register di domain forum memang tidak membuat keanggotaan forum** (`api/akun/register/route.ts`,
+   `joinTenant` melewati `tenantType === "forum"`). Satu-satunya jalur resmi adalah `/gabung`.
+2. **Checkout donasi bisa buntu oleh gate OTP.** `checkoutAction` (`cart/actions.ts`) memanggil
+   `resolveCheckoutContact`; kalau nomor HP cocok dengan data milik record LAIN, server menuntut
+   `verifyToken`. Pemicu yang menimpa pemilik asli: (a) record member ganda dengan nomor sama,
+   (b) `profiles` dengan nomor sama, (c) invoice tamu lama di tenant ini (`memberId` NULL) dengan
+   nomor sama — kemungkinan terbesar bila sebelumnya pernah mencoba donasi sebagai tamu.
+   Pengiriman OTP (`api/akun/send-otp`, type `checkout_verify`) memakai WA gateway **tenant forum
+   itu sendiri**; bila belum dikonfigurasi/verified → 503 → jalan buntu total (tidak ada bypass).
+   Selain itu `checkout-form.tsx` hanya melewati OTP bila nomor **persis sama** dengan
+   `defaults.phone` (format `08…` vs `+62…` tetap memicu OTP).
+3. **Donasi yang terlanjur lunas lewat jalur biasa tidak bisa dipakai.**
+   `activateForumMembershipIfApplicable` (`finance/billing/actions.ts`) hanya menghitung item
+   berflag `forGabungRegistration=true` (keputusan "Pemisahan Donasi vs Registrasi Forum",
+   2026-07-24 — TETAP BERLAKU, tidak diubah rencana ini). Dan fungsi itu hanya dipanggil saat
+   invoice dikonfirmasi lunas; bila saat itu data belum lengkap ia `return` diam-diam dan
+   **tidak pernah dicek ulang**.
+
+### 2. Tujuan (dikunci dari penjelasan user)
+
+- **a.** User dipandu **bertahap** — lengkapi data → penuhi syarat iuran (donasi/produk) → bayar →
+  (jika ada) menunggu persetujuan → aktif — sesuai konfigurasi masing-masing forum.
+- **b.** Ada **beberapa jalur alternatif** supaya mendaftar mudah dan user selalu tahu langkah
+  berikutnya: lanjutkan pembayaran, klaim dengan donasi lama, selesaikan syarat yang kurang.
+- **c.** Tidak ada yang hilang diam-diam: kalau checkout error atau user menunda donasi
+  (besok/lusa), statusnya tetap tercatat dan bisa dilanjutkan dari `/akun` setelah login.
+
+### 3. Stepper per forum (status turunan, bukan kolom DB baru)
+
+Satu fungsi server menghitung langkah aktif dari data yang sudah ada. Langkah yang tampil
+mengikuti `membership_config` forum (forum tanpa syarat iuran melewati langkah 3).
+
+| # | Kondisi (diturunkan) | Pesan + tombol |
+|---|---|---|
+| 1 | Belum punya akun / belum klaim | (di luar `/akun`; jalur register/klaim yang sudah ada) |
+| 2 | `checkMemberEligibility` belum eligible | "Lengkapi data" → tujuan yang sudah ada (`memberEligibilityFixHref`) |
+| 3 | Eligible, syarat iuran belum terpenuhi, belum ada invoice | "Donasi sekarang" / "Beli produk" (link `?forGabung=1`) **dan** "Gunakan donasi saya yang sudah lunas" bila ada kandidat (§ 4) |
+| 3b | Ada invoice komitmen belum lunas | "Lanjutkan Pembayaran" (sudah ada: `pendingInvoiceId`) |
+| 3c | Bukti bayar dikirim, menunggu admin konfirmasi | Status saja + info |
+| 3d | Syarat terpenuhi, `require_approval` aktif | "Menunggu persetujuan admin" |
+| 4 | `forumStatus = active` | Kartu keanggotaan normal |
+| — | `suspended` / `rejected` | Pesan khusus per status (celah lama § 12 di "Koreksi: Komitmen Cart…" — dikerjakan sekalian karena fungsinya sama) |
+
+Implementasi UI: **perluas `MembershipEligibilityOverlay`** (sudah menangani langkah 2, 3b,
+eligible→/gabung) dan `/gabung/page.tsx`, bukan komponen baru yang berdampingan. Fungsi
+penghitung langkah ditaruh di `lib/forum-join-progress.server.ts` (satu sumber kebenaran, dipakai
+overlay `/akun` DAN `/gabung`).
+
+### 4. Klaim dengan donasi/produk yang sudah lunas (usulan A, disetujui)
+
+- **Aksi baru** `claimForumWithExistingPaymentAction(slug)` (server action di `gabung/actions.ts`).
+  Tombol hanya muncul bila ada kandidat.
+- **Kandidat** = `invoices` lunas (`status = 'paid'`) milik **`memberId` sesi yang sedang login**
+  (id dari sesi via `getAkunIdentity`, BUKAN dari input client) yang berisi item
+  `donation` untuk `requiredCampaignId` dan/atau `product` (termasuk variasi, pola
+  `productRelevantIds` yang sudah ada) untuk `requiredProductId`.
+- **Klaim per item** (usulan user disetujui): bila forum mewajibkan donasi DAN produk, user boleh
+  mengklaim donasi dari invoice lama lalu hanya membeli produk yang kurang. Server menghitung
+  ulang `isRequirementSatisfied` dari gabungan item (yang diklaim + yang baru dibayar via `/gabung`).
+- **Tanpa batas waktu** (usulan disetujui): invoice lunas kapan pun, asalkan `memberId`-nya sama.
+- **Penggunaan sekali**: invoice yang dipakai klaim dicatat di `tenant_memberships.forum_invoice_id`
+  (kolom sudah ada). Re-klaim memakai invoice sama → no-op. Satu invoice tidak bisa dipakai
+  member lain (filter `memberId` sesi).
+- **`require_approval`** (usulan disetujui): klaim mengikuti setting forum — bila aktif, hasilnya
+  `forumStatus = 'pending'` (menunggu admin), bukan langsung `active`.
+- **Tidak membuka lagi celah donasi organik**: aktivasi tetap butuh aksi sadar user (klik klaim);
+  donasi organik tidak pernah mengaktifkan keanggotaan sendiri. Aturan "Pemisahan Donasi vs
+  Registrasi Forum" tidak dilonggarkan.
+
+### 5. Aktivasi ulang otomatis (usulan B, disetujui)
+
+- Ekstrak inti `activateForumMembershipIfApplicable` ke helper bersama
+  `lib/forum-activation.server.ts` (dipakai: hook invoice-lunas yang sudah ada, aksi klaim § 4,
+  dan pemicu ulang ini). **Wajib satu implementasi** — pelajaran lessons-learned: tiga
+  implementasi kode-unik/voucher independen berulang kali menimbulkan bug.
+- **Pemicu ulang**: setelah user menyimpan data yang membuatnya eligible (`/akun/lengkapi`,
+  `/akun/usaha|pesantren|profesional`), cek invoice **berflag `forGabungRegistration` yang sudah
+  lunas** milik member untuk tenant forum yang bersangkutan; bila syarat terpenuhi dan kini
+  eligible → aktifkan. Ini menutup kasus "bayar dulu, lengkapi data belakangan" (saat ini
+  `return` diam-diam tanpa pemicu ulang).
+- Hanya invoice **berflag** yang diaktifkan otomatis; donasi organik hanya lewat klaim eksplisit § 4.
+
+### 6. Perbaikan gate OTP checkout (disetujui masuk paket ini)
+
+1. **Normalisasi nomor di UI**: `handlePhoneBlur` (`checkout-form.tsx`) membandingkan hasil
+   `normalizePhone()` kedua sisi, bukan string mentah (aturan Arsitektur Kontak § 2).
+2. **Jangan buntu bila WA gateway tenant belum aktif**: opsi yang akan dipilih saat eksekusi
+   (diputuskan setelah memeriksa `lib/whatsapp.ts` apakah ada gateway platform/fallback):
+   (a) kirim OTP lewat gateway platform bila tenant belum punya; atau (b) pesan jelas + jalur
+   alternatif ke `/akun` (user login diarahkan melanjutkan dari dashboard). Minimal: error yang
+   dapat ditindaklanjuti, bukan 503 buntu.
+3. **Record tamu/ganda milik sendiri** (keputusan keamanan TERBUKA — wajib lewat
+   `jalakarta-security-review`): jangan melonggarkan dengan "nomor == nomor akun" (fon bisa
+   diubah user tanpa verifikasi — lihat komentar `resolveCheckoutContact` & docs/arsitektur-keamanan.md
+   § 4c). Kandidat aman: invoice tamu yang BISA dibuktikan milik user (mis. sudah ter-link
+   `memberId`/`profileId` sesi) tetap diabaikan seperti sekarang; yang tidak bisa dibuktikan tetap
+   wajib OTP. Putusan final ditunda sampai review keamanan + alur tambahan dari user.
+
+### 7. Keputusan yang SUDAH dikunci user (2026-10-10)
+
+1. Klaim boleh **per item** (donasi lama + beli produk yang kurang).
+2. Klaim boleh dengan invoice lunas **kapan pun** asal `memberId` sama.
+3. `require_approval` forum **dihormati** (klaim → pending bila aktif).
+4. Perbaikan celah OTP checkout **masuk paket ini**.
+5. Opsi A (klaim) + B (aktivasi ulang) + stepper dipandu — semuanya disetujui.
+
+### 8. Urutan eksekusi (setelah alur tambahan user masuk + sinyal "mulai")
+
+1. Ekstrak `lib/forum-activation.server.ts`; hook invoice-lunas pakai helper (perilaku identik —
+   regresi nol).
+2. `lib/forum-join-progress.server.ts` + perluas `MembershipEligibilityOverlay` & `/gabung`
+   (langkah 2–4 + status suspended/rejected).
+3. `claimForumWithExistingPaymentAction` + tombol di overlay & `/gabung`.
+4. Pemicu aktivasi ulang di aksi simpan data eligibility.
+5. Perbaikan OTP checkout (§ 6).
+6. `jalakarta-security-review` (aksi server baru, query lintas-tenant) + `tsc --noEmit` + build.
+7. Docs: lengkapi bagian ini dengan hasil, lesson ke `docs/lessons-learned.md`, status singkat
+   di CLAUDE.md.
+
+**Estimasi skema**: kemungkinan **tanpa migration** (`forum_invoice_id`, `forGabungRegistration`,
+`forum_status` sudah ada). Verifikasi ulang sebelum mulai.
+
+### 9. Risiko & hal yang harus dijaga
+
+- Klaim memakai `memberId` dari **sesi**, tidak pernah dari body request; query invoice di tenant
+  schema lewat `createTenantDb(slug)` yang sudah tervalidasi (`getAkunIdentity` + cek `tenantType`).
+- Jangan sampai klaim menjadi jalan pintas melewati `checkMemberEligibility` — tetap wajib eligible.
+- Aktivasi ulang jangan mengaktifkan member yang sengaja `suspended`/`rejected` oleh admin
+  (hanya dari `pending`/belum ada baris).
+- Race: klaim dan hook invoice-lunas bisa jalan bersamaan → helper bersama idempotent (cek
+  `forumStatus === 'active'` lalu `UPDATE ... WHERE` kondisional).
+- Verifikasi akhir wajib manual di browser (kasus: daftar baru → donasi gagal → login ulang →
+  lanjut; donasi biasa lunas → klaim; data lengkap setelah bayar → aktif otomatis).
+
+### 10. Alur tambahan dari user
+
+> Alur tambahan diterima 2026-10-10: **notifikasi PJ/pengurus** (sekretariat dapat kabar pendaftar baru forum, bendahara memverifikasi uang masuk). Karena berlaku lintas modul, direncanakan terpisah di `docs/arsitektur-notifikasi-pengurus.md`; notifikasi "pendaftar baru" untuk sekretariat menjadi bagian dari rencana itu dan akan disambungkan ke langkah 3d/4 stepper di atas.
+
+---
+
 ## Dokumen Terkait
 
 | Dokumen | Relevansi |
