@@ -2477,6 +2477,7 @@ overlay `/akun` DAN `/gabung`).
 4. Pemicu aktivasi ulang di aksi simpan data eligibility.
 5. Perbaikan OTP checkout (§ 6).
 5b. Kartu "Gabung Grup WhatsApp" di `/akun` + field admin + catat klik (§ 9b).
+5c. `onMembershipActivated()` + template `membership_activated` (§ 9c); sambungkan ke ringkasan PJ.
 6. `jalakarta-security-review` (aksi server baru, query lintas-tenant) + `tsc --noEmit` + build.
 7. Docs: lengkapi bagian ini dengan hasil, lesson ke `docs/lessons-learned.md`, status singkat
    di CLAUDE.md.
@@ -2547,6 +2548,51 @@ selesai setelah klik tercatat.
 
 **Admin:** field "Tautan grup WhatsApp" di `/app/{slug}/settings/keanggotaan` (form
 `membership-config-form.tsx`) + catatan keamanan di atas.
+
+### 9c. Alur lengkap hingga aktif + dua notifikasi saat aktif (2026-10-10, dari user)
+
+**Gabung grup WhatsApp berlaku untuk SEMUA tipe tenant** (cabang, marhalah, forum), bukan hanya
+forum — sudah demikian di § 9b; ditegaskan ulang oleh user.
+
+**Alur menyeluruh (rangkuman user):**
+
+```
+Daftar IKPM → isi data → [jika donasi/produk wajib] bayar
+  → bendahara verifikasi (tanpa payment gateway: manual, via tautan — notifikasi-pengurus § 4.3)
+  → data lengkap & eligible → gabung → AKTIF
+       ├─ 1. ANGGOTA dapat WA: "sudah aktif" + nomor anggota + info tombol gabung grup di /akun
+       └─ 2. PJ keanggotaan dapat kabar anggota baru: info anggota, nomor HP, nomor ID anggota
+```
+
+**1. Notifikasi ke anggota (langsung, per-orang — bukan digest):**
+- Event baru `membership_activated` di `lib/wa-templates.ts` (teks bisa diedit admin seperti
+  template lain). Isi: keanggotaan aktif di {orgName}, **nomor anggota**, dan arahan "gabung grup
+  WhatsApp lewat dashboard /akun" (+ tautan ke `/akun`; **tautan grup asli tidak dikirim**, § 9b).
+- Kanal: WA bila aktif, kalau tidak email (pola `lib/notify-customer.ts`).
+- **Temuan kode**: template `member_welcome` yang sudah ada TIDAK sama — ia terkirim saat wizard
+  `/akun/lengkapi` selesai (`api/akun/member-education`), default nonaktif, BUKAN saat keanggotaan
+  tenant aktif. Jadi notifikasi saat aktif memang belum ada dan perlu event sendiri.
+- **Nomor anggota**: sumbernya `tenant_memberships.membership_number` (nomor lokal tenant, format
+  opsional dari `membershipNumberFormat`). `members.stambuk_number` BUKAN nomor anggota (itu nomor
+  santri PM Gontor). Bila tenant tidak memakai nomor, pesan menyebut yang tersedia saja
+  (jangan menampilkan baris kosong).
+
+**2. Notifikasi ke PJ keanggotaan (sekretariat):** lewat mesin notifikasi PJ
+(`docs/arsitektur-notifikasi-pengurus.md` § 4.4) — ringkasan jam 16.00 (bukan per kejadian), berisi
+per anggota baru: nama, nomor HP, nomor anggota/ID forum, dan saran tindak lanjut (mis. pastikan
+sudah masuk grup WhatsApp; pakai catatan klik § 9b). Hanya anggota yang BENAR-BENAR aktif sejak
+pengiriman terakhir.
+
+**Satu titik pemicu (wajib):** keduanya dipicu dari SATU fungsi, mis. `onMembershipActivated()`,
+yang dipanggil di setiap tempat keanggotaan menjadi aktif: helper aktivasi bersama (§ 5, hook
+invoice-lunas + klaim + aktivasi ulang), `joinForumAction` (gratis), aksi admin approve di
+`/members`, dan auto-join cabang/marhalah. **Idempotent** — dijaga kolom/penanda "notifikasi aktif
+terkirim" supaya anggota tidak menerima pesan dua kali bila fungsi aktivasi terpanggil ulang.
+Kegagalan kirim tidak boleh menggagalkan aktivasi (fire-and-forget, `try/catch` sendiri).
+
+**Terbuka:** untuk cabang/marhalah, kapan tepatnya "aktif"? (auto-join terjadi saat registrasi,
+sedangkan overlay baru hilang setelah data eligible). Usulan: notifikasi terkirim saat baris
+keanggotaan ada DAN data sudah eligible, sekali saja.
 
 ### 10. Alur tambahan dari user
 
