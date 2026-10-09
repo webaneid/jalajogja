@@ -238,7 +238,7 @@ pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
 | Koneksi Instagram otomatis (Graph API) | `docs/arsitektur-instagram-embed.md` |
 | Integrasi KBLI (klasifikasi usaha) — perencanaan, belum dieksekusi | `docs/arsitektur-integrasi-kbli.md` |
 | Mobile shell (header global, sticky bar, aturan spacer) | `docs/arsitektur-mobile-shell.md` |
-| Produsen produk (admin-only: internal/anggota/custom) — kode selesai, belum deploy | `docs/arsitektur-produsen.md` |
+| Produsen produk (admin-only: internal/anggota/custom) — deployed 2026-10-09 | `docs/arsitektur-produsen.md` |
 | Penulis & Editor Post (byline system) | `docs/arsitektur-penulis-post.md` |
 | Data Pesantren anggota | `docs/arsitektur-pesantren.md` |
 | Data Profesional anggota — perencanaan, belum dieksekusi | `docs/arsitektur-profesional.md` |
@@ -1181,17 +1181,17 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 > Riwayat detail tiap perbaikan ada di `docs/lessons-learned.md` dan `docs/arsitektur-*.md` masing-masing modul.
 
 - **Sesi 2026-10-08/09 — ringkasan** (urutan kerja; detail + keputusan user + koreksi ada di memory `project_session_log_20261009`
-  dan dokumen masing-masing). Status git: SEMUA sudah di-push, `origin/main` = `001414d`.
+  dan dokumen masing-masing). Status git: SEMUA sudah di-push, `origin/main` = `25d6024`; semua poin 1–5 sudah di-deploy ke VPS.
   1. **Fix gate OTP checkout** (`1ec09d1`, direvisi `545c24b`) — `docs/arsitektur-billing.md` § 16.x. DEPLOYED.
   2. **Model harga Dasar(modal)/Publik/Anggota + flag khusus anggota tenant** (`43ef926`; migration `0069` jalan di 5 tenant) +
      3 celah keamanan hasil review (`545c24b`) + harga konsisten di beranda (`e930d37`) — `docs/arsitektur-product.md`
      § "Model Harga Baru". DEPLOYED, user: "aman".
   3. **Laporan Produk** (keuntungan/uang masuk/ongkir/kode unik terpisah + export Excel; modal = Harga Dasar langsung, tanpa snapshot,
-     tanpa migration) — `docs/arsitektur-product.md` § "Laporan Produk". Di-push, **BELUM deploy**.
+     tanpa migration) — `docs/arsitektur-product.md` § "Laporan Produk". DEPLOYED (2026-10-09); tes browser belum dilaporkan.
   4. **Stok produk bervariasi** (stok utama diabaikan, stok = jumlah stok variasi aktif; tanpa migration) —
-     `docs/arsitektur-stok.md` § "Stok Produk Bervariasi". Di-push, **BELUM deploy**.
-  5. **Produsen produk** (admin-only: internal/anggota/custom; fase 1–3) — `docs/arsitektur-produsen.md`. Di-push, **BELUM deploy**;
-     migration `0070_producers.sql` WAJIB jalan di VPS SEBELUM build (urutan: backup → pull → migrate → build → pm2 restart).
+     `docs/arsitektur-stok.md` § "Stok Produk Bervariasi". DEPLOYED (2026-10-09); tes browser belum dilaporkan.
+  5. **Produsen produk** (admin-only: internal/anggota/custom; fase 1–3) — `docs/arsitektur-produsen.md`. DEPLOYED (2026-10-09), migration
+     `0070_producers.sql` sudah jalan (dikonfirmasi user); tes browser belum dilaporkan.
   Belum dikerjakan / terbuka: rate limit `checkoutAction` (oracle nomor terdaftar), produsen fase 4 (kolom daftar/export), harga produk
   mitra, laporan per produsen + login produsen, aturan "alumni dihitung anggota?" (satu fungsi `lib/tenant-membership.server.ts`).
 - Backlog lama belum dikonfirmasi statusnya (perlu verifikasi manual apakah sudah dikerjakan di

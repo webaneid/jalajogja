@@ -1,8 +1,7 @@
 # Arsitektur — Produsen Produk (data admin-only)
 
-> **Status: ✅ KODE SELESAI fase 1–3 (2026-10-09)** — type-check + `bun run build` bersih, uji aturan fallback lulus; belum dites
-> di browser, belum di-deploy. **Migration `0070_producers.sql` WAJIB jalan di VPS sebelum deploy.** Fase 4 (opsional) sengaja
-> belum. Dokumen ini adalah satu-satunya sumber keputusan untuk fitur ini.
+> **Status: ✅ SELESAI fase 1–3 + DEPLOYED (2026-10-09; migration `0070_producers.sql` sudah jalan di VPS, dikonfirmasi user)** — type-check +
+> `bun run build` bersih, uji aturan fallback lulus; tes browser belum dilaporkan. Fase 4 (opsional) sengaja belum. Dokumen ini adalah satu-satunya sumber keputusan untuk fitur ini.
 
 ## 1. Tujuan
 
