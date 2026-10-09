@@ -1180,35 +1180,20 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 > Ini status singkat yang di-OVERWRITE tiap kali berubah, BUKAN log yang ditambah terus.
 > Riwayat detail tiap perbaikan ada di `docs/lessons-learned.md` dan `docs/arsitektur-*.md` masing-masing modul.
 
-- **Deployed ke VPS (2026-10-09), verifikasi browser belum dilaporkan**: `1ec09d1` fix gate OTP checkout
-  (`docs/arsitektur-billing.md` § 16.x) + `43ef926` model harga Dasar/Publik/Anggota
-  (`docs/arsitektur-product.md` § "Model Harga Baru", migration `0069` sudah jalan di 5 tenant).
-  Harga konsisten di semua halaman termasuk beranda (landing ikut `resolveViewerTier`).
-- **Laporan Produk (keuntungan/uang masuk/ongkir terpisah + export) — kode SELESAI, BELUM deploy**:
-  `docs/arsitektur-product.md` § "Laporan Produk". Modal = Harga Dasar dibaca langsung (tanpa snapshot, tanpa migration
-  baru, tanpa aturan khusus data lama — keputusan user). Belum dikerjakan: produk mitra / stok variasi / rate limit
-  `checkoutAction`.
-- **Stok produk bervariasi — kode SELESAI, belum deploy**: stok utama DIABAIKAN, stok = jumlah stok variasi aktif (variasi
-  kosong = 0, tidak ada pembagian stok utama; rencana awal "ikut stok utama"/migration nullable DITOLAK user). Tanpa migration.
-  `docs/arsitektur-stok.md` § "Stok Produk Bervariasi". Helper `getVariableProductStockTotals()`.
-- **Produsen produk (admin-only) — kode SELESAI fase 1–3, belum deploy**: `docs/arsitektur-produsen.md`. Migration `0070_producers.sql`
-  WAJIB jalan di VPS dulu. Menu Toko → Produsen, Combobox di form produk, kartu di detail produk. Fase 4 (kolom daftar/export) belum.
-- Commit terakhir per `git log`: `977b4e0` (2026-09-18) — validasi format UUID di 6 halaman
-  publik `[tenant]/{modul}/[id]` (cegah crash 500 dari bot/scanner, lihat
-  `docs/lessons-learned.md` [2026-09-18]). Beberapa commit terakhir (SUDAH di-push per `39edaa5`
-  ke atas, KECUALI 3 commit paling baru `00e15fb`/`38e8e26`/`977b4e0` yang baru saja diminta
-  push — cross-check `git log origin/main` kalau ragu):
-  - Fix GOWA reconnect setelah "Putuskan" (`88e3629`) + badge "Gratis Ongkir" checkout Step 2
-    (`39edaa5`).
-  - Admin dashboard forum — badge status (forum "Pending Claim" dkk + cabang/marhalah "Data
-    Belum Lengkap") + 4 aksi approve/reject/suspend/reactivate di `/members` (`6bcbb78`,
-    dokumentasi lengkap `docs/arsitektur-gabung-forum.md` § "Admin Dashboard Forum").
-  - Kolom "Alamat Checkout"/"Alamat User"/"Ongkos Kirim" di Daftar Pembeli & export produk
-    (`00e15fb`+`38e8e26`, `docs/arsitektur-product.md` § "Susulan — Alamat Lengkap...") — ada
-    fix keamanan (anti-abuse match-email tak terverifikasi) di tengah jalan, sudah ditutup.
-  - Fix crash UUID di atas (`977b4e0`).
-  Detail lengkap tiap fix ada di `docs/lessons-learned.md` dan dokumen arsitektur masing-masing
-  — jangan percaya ringkasan ini sebagai satu-satunya sumber, cross-check kode kalau perlu detail.
+- **Sesi 2026-10-08/09 — ringkasan** (urutan kerja; detail + keputusan user + koreksi ada di memory `project_session_log_20261009`
+  dan dokumen masing-masing). Status git: SEMUA sudah di-push, `origin/main` = `001414d`.
+  1. **Fix gate OTP checkout** (`1ec09d1`, direvisi `545c24b`) — `docs/arsitektur-billing.md` § 16.x. DEPLOYED.
+  2. **Model harga Dasar(modal)/Publik/Anggota + flag khusus anggota tenant** (`43ef926`; migration `0069` jalan di 5 tenant) +
+     3 celah keamanan hasil review (`545c24b`) + harga konsisten di beranda (`e930d37`) — `docs/arsitektur-product.md`
+     § "Model Harga Baru". DEPLOYED, user: "aman".
+  3. **Laporan Produk** (keuntungan/uang masuk/ongkir/kode unik terpisah + export Excel; modal = Harga Dasar langsung, tanpa snapshot,
+     tanpa migration) — `docs/arsitektur-product.md` § "Laporan Produk". Di-push, **BELUM deploy**.
+  4. **Stok produk bervariasi** (stok utama diabaikan, stok = jumlah stok variasi aktif; tanpa migration) —
+     `docs/arsitektur-stok.md` § "Stok Produk Bervariasi". Di-push, **BELUM deploy**.
+  5. **Produsen produk** (admin-only: internal/anggota/custom; fase 1–3) — `docs/arsitektur-produsen.md`. Di-push, **BELUM deploy**;
+     migration `0070_producers.sql` WAJIB jalan di VPS SEBELUM build (urutan: backup → pull → migrate → build → pm2 restart).
+  Belum dikerjakan / terbuka: rate limit `checkoutAction` (oracle nomor terdaftar), produsen fase 4 (kolom daftar/export), harga produk
+  mitra, laporan per produsen + login produsen, aturan "alumni dihitung anggota?" (satu fungsi `lib/tenant-membership.server.ts`).
 - Backlog lama belum dikonfirmasi statusnya (perlu verifikasi manual apakah sudah dikerjakan di
   sesi lain atau masih tertunda): sertifikat PDF untuk donasi, fitur V8 (cek stok produk),
   Donasi Rutin (siklus R1-R7, termasuk subscriptions `/{slug}/akun/subscriptions`), dan Fase 5
