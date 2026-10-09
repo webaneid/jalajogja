@@ -2476,6 +2476,7 @@ overlay `/akun` DAN `/gabung`).
 3. `claimForumWithExistingPaymentAction` + tombol di overlay & `/gabung`.
 4. Pemicu aktivasi ulang di aksi simpan data eligibility.
 5. Perbaikan OTP checkout (§ 6).
+5b. Kartu "Gabung Grup WhatsApp" di `/akun` + field admin + catat klik (§ 9b).
 6. `jalakarta-security-review` (aksi server baru, query lintas-tenant) + `tsc --noEmit` + build.
 7. Docs: lengkapi bagian ini dengan hasil, lesson ke `docs/lessons-learned.md`, status singkat
    di CLAUDE.md.
@@ -2494,6 +2495,58 @@ overlay `/akun` DAN `/gabung`).
   `forumStatus === 'active'` lalu `UPDATE ... WHERE` kondisional).
 - Verifikasi akhir wajib manual di browser (kasus: daftar baru → donasi gagal → login ulang →
   lanjut; donasi biasa lunas → klaim; data lengkap setelah bayar → aktif otomatis).
+
+### 9b. Langkah opsional setelah Aktif: Gabung Grup WhatsApp (2026-10-10, disetujui user)
+
+**Latar:** hampir semua tenant punya grup WhatsApp. Setelah keanggotaan aktif, anggota perlu
+bergabung ke grup. Tautan undangan WhatsApp asli bisa disalin dan dibagikan siapa saja, jadi
+**tautan asli tidak boleh dikirim lewat pesan**.
+
+**Keputusan (user menyetujui usulan Claude):**
+
+- **Tombol di dashboard, bukan tautan dalam pesan.** Setelah `forumStatus = active` (untuk cabang/
+  marhalah: keanggotaan aktif), `/akun` menampilkan kartu "Gabung Grup WhatsApp" dengan tombol.
+  Tombol hanya tampil untuk sesi login dengan keanggotaan aktif; server memvalidasi ulang saat
+  tombol ditekan (jangan hanya menyembunyikan di UI) lalu mengarahkan ke tautan grup.
+- **Pesan WA/email aktivasi hanya mengarahkan ke `/akun`**, tidak memuat tautan WhatsApp asli.
+- **Bukan tautan sekali klik.** Dua masalah yang ditemukan: (1) aplikasi WhatsApp/email membuka
+  tautan sendiri untuk pratinjau sehingga tautan sekali pakai bisa hangus sebelum anggota
+  mengkliknya; (2) klik pertama bisa gagal (desktop tanpa WhatsApp, aplikasi macet) dan anggota
+  buntu. Gerbang login + keanggotaan aktif sudah mencegah orang luar, dan anggota boleh mengklik
+  ulang tanpa meminta admin. Aksi memakai POST/Server Action, bukan redirect GET yang terpicu
+  pratinjau.
+- **Satu grup per tenant dulu.** Disimpan di `membership_config` (key tunggal group `"forum"`
+  yang sudah ada; field baru mis. `whatsappGroupUrl`, divalidasi skema `https://chat.whatsapp.com/`
+  di titik simpan dan render, helper `lib/safe-url.ts`). Banyak grup (per divisi/angkatan)
+  ditunda.
+- **Berlaku untuk semua tipe tenant** (cabang, marhalah, forum), bukan hanya forum.
+- **Ditangguhkan/ditolak → tombol hilang** (cek status di server).
+- **Catat klik**: siapa dan kapan (tabel/kolom ringan, putusan skema saat eksekusi) — dipakai
+  ringkasan sekretariat ("sudah aktif tapi belum bergabung grup", lihat
+  `docs/arsitektur-notifikasi-pengurus.md` § 4.4) dan menandai langkah selesai di stepper.
+- **Batas yang diakui:** tidak ada cara teknis mencegah tautan WhatsApp disalin orang yang paham
+  setelah terlihat. Pengaman sebenarnya ada di sisi grup: admin mengaktifkan setelan "Setujui
+  peserta baru" dan dapat me-reset tautan undangan bila bocor. Tampilkan catatan ini di UI admin
+  saat mengisi tautan grup.
+
+**Berlaku untuk SEMUA anggota aktif, lama maupun baru (konfirmasi user 2026-10-10).** Kartu
+mengikuti status keanggotaan saat ini, bukan peristiwa aktivasi, jadi anggota lama langsung
+melihatnya begitu admin mengisi tautan grup. Konsekuensi yang dicatat:
+
+- **Anggota lama yang sudah ada di grup** tidak punya catatan klik, sehingga dihitung "belum
+  bergabung". Beri tombol kecil **"Saya sudah di grup"** (laporan diri) yang menandai selesai
+  tanpa membuka tautan, supaya kartu hilang dan daftar sekretariat tidak membengkak.
+- **Ringkasan sekretariat tidak membanjiri**: untuk tenant dengan banyak anggota lama, yang
+  dikirim hanya jumlah + tautan ke daftar di dashboard, bukan daftar nama panjang di WA.
+  Anggota baru (sejak fitur aktif) boleh disebut per nama.
+- **Anggota tanpa akun login** (forum "Pending Claim", hasil import) tidak bisa melihat tombol —
+  mereka baru melihatnya setelah klaim akun dan login. Tidak perlu penanganan khusus.
+
+**Posisi di stepper:** langkah 5 (opsional, tidak memblokir aktivasi) — "Gabung grup WhatsApp";
+selesai setelah klik tercatat.
+
+**Admin:** field "Tautan grup WhatsApp" di `/app/{slug}/settings/keanggotaan` (form
+`membership-config-form.tsx`) + catatan keamanan di atas.
 
 ### 10. Alur tambahan dari user
 
