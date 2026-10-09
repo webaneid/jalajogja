@@ -3,7 +3,7 @@ import { headers }   from "next/headers";
 import { eq, and, inArray } from "drizzle-orm";
 import { auth }      from "@/lib/auth";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
-import { db, tenantMemberships, tenants, members, refIkpmCabang, createTenantDb, getSettings } from "@jalajogja/db";
+import { db, tenantMemberships, tenants, members, refIkpmCabang, createTenantDb, getSettings, getSetting } from "@jalajogja/db";
 import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
 import { resolveAkunBranding } from "@/lib/resolve-akun-branding";
 import { getTenantSeoBase }    from "@/lib/tenant-seo";
@@ -13,6 +13,8 @@ import { enabledModuleList, resolveEkosistemModuleLabel, type EkosistemModule } 
 import { MemberCard } from "@/components/akun/mobile/member-card";
 import { MembershipEligibilityOverlay } from "@/components/akun/membership-eligibility-overlay";
 import { notifyMembershipActivated } from "@/lib/membership-activated.server";
+import { WhatsappGroupCard } from "@/components/akun/whatsapp-group-card";
+import { isValidWhatsappGroupUrl, WHATSAPP_GROUP_SETTING_KEY } from "@/lib/whatsapp-group";
 import { resolveForumJoinProgress, type ForumJoinStage } from "@/lib/forum-join-progress.server";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
@@ -138,6 +140,9 @@ export default async function AkunPage({ params }: { params: Params }) {
   // Bayar".
   let overlayPendingInvoiceId: string | null = null;
   let overlayForumStage: ForumJoinStage | undefined;
+  // Kartu grup WhatsApp: terisi hanya untuk anggota AKTIF (tanpa overlay) di tenant yang tautan
+  // grupnya sudah diisi admin. Tautan aslinya TIDAK ikut ke sini — lihat group-actions.ts.
+  let groupCardState: { joined: boolean } | null = null;
 
   if (isMember && identity.memberId) {
     const [browsedTenantRow] = await db
@@ -193,6 +198,21 @@ export default async function AkunPage({ params }: { params: Params }) {
           // Cabang/marhalah: "aktif" = baris keanggotaan ada DAN data eligible (keputusan user
           // 2026-10-10: ikut standar eligibility yang ada). Sekali saja — idempoten (penanda DB).
           void notifyMembershipActivated({ slug, memberId: identity.memberId });
+        }
+      }
+
+      if (!showEligibilityOverlay && overlayIsJoined) {
+        const groupUrl = await getSetting<string>(tenantDb, WHATSAPP_GROUP_SETTING_KEY, "general");
+        if (isValidWhatsappGroupUrl(groupUrl)) {
+          const [gm] = await db
+            .select({ joinedAt: tenantMemberships.waGroupJoinedAt })
+            .from(tenantMemberships)
+            .where(and(
+              eq(tenantMemberships.tenantId, browsedTenantRow.id),
+              eq(tenantMemberships.memberId, identity.memberId),
+            ))
+            .limit(1);
+          groupCardState = { joined: !!gm?.joinedAt };
         }
       }
     }
@@ -334,6 +354,10 @@ export default async function AkunPage({ params }: { params: Params }) {
         </div>
       )}
 
+      {groupCardState && (
+        <WhatsappGroupCard slug={slug} tenantName={overlayTenantName} joined={groupCardState.joined} />
+      )}
+
       {/* Quick links data anggota */}
       {isMember && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -407,6 +431,10 @@ export default async function AkunPage({ params }: { params: Params }) {
           )}
         </div>
       </div>
+
+      {groupCardState && (
+        <WhatsappGroupCard slug={slug} tenantName={overlayTenantName} joined={groupCardState.joined} />
+      )}
 
       {/* 3 quick action utama */}
       <div className="grid grid-cols-3 gap-3">

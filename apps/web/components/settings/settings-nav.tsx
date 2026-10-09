@@ -39,7 +39,10 @@ const FORUM_NAV_ITEM = { label: "Keanggotaan", href: "keanggotaan", icon: UsersR
 
 export function SettingsNav({ slug, isForum = false }: { slug: string; isForum?: boolean }) {
   const pathname = usePathname();
-  const items = isForum ? [...NAV_ITEMS, FORUM_NAV_ITEM] : NAV_ITEMS;
+  // Item Keanggotaan tampil untuk SEMUA tipe tenant (tautan grup WhatsApp); bagian khusus forum
+  // di dalam halamannya disaring di server. `isForum` dipertahankan agar pemanggil tidak berubah.
+  void isForum;
+  const items = [...NAV_ITEMS, FORUM_NAV_ITEM];
 
   return (
     <nav className="flex flex-row gap-1 overflow-x-auto lg:flex-col">

@@ -2693,6 +2693,39 @@ Bagian ANGGOTA dari § 9c selesai. Bagian PJ/sekretariat belum (menunggu mesin
 **Belum:** mention tombol "Gabung Grup WhatsApp" di pesan (kartunya belum dibangun, § 9b); notifikasi
 PJ; verifikasi manual end-to-end.
 
+### 9f. STATUS EKSEKUSI kartu "Gabung Grup WhatsApp" (2026-10-10) — SELESAI KODE, belum dites
+
+Langkah 5b § 9b selesai, berlaku untuk SEMUA tipe tenant (cabang, marhalah, forum).
+
+- **Penyimpanan tautan (menyimpang dari rencana § 9b):** setting terpisah `whatsapp_group_url`
+  (group `general`), BUKAN field di `membership_config` — karena `membership_config` forum-only
+  sedangkan fitur ini lintas tipe tenant. Kosong disimpan sebagai string kosong (kolom
+  `settings.value` jsonb NOT NULL), bukan null. Validasi `lib/whatsapp-group.ts`
+  (`https://chat.whatsapp.com/<kode>`) di titik simpan DAN titik buka.
+- **Admin:** form "Tautan grup WhatsApp" di `/app/{slug}/settings/keanggotaan`. Item nav
+  "Keanggotaan" kini tampil untuk semua tipe tenant; bagian syarat iuran/info/nomor tetap
+  forum-only (halaman non-forum hanya menampilkan form grup). Form memuat catatan keamanan:
+  aktifkan "Setujui peserta baru" dan reset tautan bila bocor. Aksi `saveWhatsappGroupUrlAction`
+  memakai `getTenantAccess` + `canManageUsers` (pola aksi settings lain).
+- **Anggota:** kartu `WhatsappGroupCard` di `/akun` (desktop + mobile) hanya untuk anggota AKTIF
+  tanpa overlay (forum: `forum_status='active'`; cabang/marhalah: baris ada + eligible) di tenant
+  yang tautannya terisi. **Tautan asli tidak ada di props/HTML** — keluar dari server hanya lewat
+  `openWhatsappGroupAction` (`akun/group-actions.ts`) yang memvalidasi sesi + keanggotaan aktif
+  ulang di server. Tab dibuka sinkron dengan klik lalu diarahkan setelah server menjawab (Safari
+  memblokir `window.open` setelah await).
+- **Catatan klik:** kolom baru `tenant_memberships.wa_group_joined_at` + `wa_group_joined_via`
+  (`click` | `self`), hanya dicatat pertama kali (COALESCE). Tombol "Saya sudah di grup" untuk
+  anggota lama (laporan diri). Anggota boleh menekan "Buka Grup" ulang kapan saja.
+- **Notifikasi aktif (§ 9e):** pesan kini menambahkan arahan "gabung grup lewat kartu di halaman
+  tersebut" HANYA bila tautan terisi; tautan asli tetap tidak dikirim lewat pesan. Variabel template
+  baru `{{groupHint}}` (template custom tenant yang sudah ada tidak berubah).
+- **Migration `0072_membership_wa_group.sql` WAJIB dijalankan di VPS** (bersama `0071`).
+
+**Belum:** ringkasan sekretariat "sudah aktif tapi belum masuk grup" (menunggu mesin notifikasi
+pengurus); verifikasi manual: isi tautan → anggota aktif melihat kartu → klik buka grup tercatat →
+"Saya sudah di grup" menandai → anggota non-aktif/ditangguhkan TIDAK melihat kartu dan aksi
+ditolak server.
+
 ### 10. Alur tambahan dari user
 
 > Alur tambahan diterima 2026-10-10: **notifikasi PJ/pengurus** (sekretariat dapat kabar pendaftar baru forum, bendahara memverifikasi uang masuk). Karena berlaku lintas modul, direncanakan terpisah di `docs/arsitektur-notifikasi-pengurus.md`; notifikasi "pendaftar baru" untuk sekretariat menjadi bagian dari rencana itu dan akan disambungkan ke langkah 3d/4 stepper di atas.

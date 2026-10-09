@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import type { Level, Module } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/phone";
 import { FORUM_MEMBERSHIP_NUMBER_FORMATS, type ForumMembershipNumberFormat } from "@/lib/forum-membership-number";
+import { isValidWhatsappGroupUrl, WHATSAPP_GROUP_SETTING_KEY } from "@/lib/whatsapp-group";
 
 type ActionResult = { error?: string };
 type StrictActionResult = { success: true } | { success: false; error: string };
@@ -1258,5 +1259,30 @@ export async function saveMembershipConfigAction(
 
   revalidatePath(`/app/${slug}/settings/keanggotaan`);
   revalidatePath(`/${slug}/gabung`);
+  return {};
+}
+
+
+// ── Tautan grup WhatsApp tenant (SEMUA tipe tenant: cabang, marhalah, forum) ───────────────
+// Disimpan di settings key "whatsapp_group_url" group "general" — BUKAN di membership_config
+// (itu forum-only). Dibuka anggota aktif lewat kartu di /akun (akun/group-actions.ts); tautan
+// asli tidak pernah dikirim lewat pesan. Kosong = fitur nonaktif. Lihat
+// docs/arsitektur-gabung-forum.md § 9b.
+export async function saveWhatsappGroupUrlAction(slug: string, url: string): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
+
+  const trimmed = url.trim();
+  if (trimmed && !isValidWhatsappGroupUrl(trimmed)) {
+    return { error: "Tautan harus berbentuk https://chat.whatsapp.com/xxxxxxxx (tautan undangan grup WhatsApp)." };
+  }
+
+  const tenantDb = createTenantDb(slug);
+  // String kosong (bukan null): kolom settings.value jsonb NOT NULL. Kosong = fitur nonaktif.
+  await upsertSetting(tenantDb, WHATSAPP_GROUP_SETTING_KEY, "general", trimmed);
+
+  revalidatePath(`/app/${slug}/settings/keanggotaan`);
+  revalidatePath(`/${slug}/akun`);
   return {};
 }

@@ -71,6 +71,11 @@ export const tenantMemberships = pgTable("tenant_memberships", {
   // lib/membership-activated.server.ts + docs/arsitektur-gabung-forum.md § 9c.
   activationNotifiedAt: timestamp("activation_notified_at", { withTimezone: true }),
 
+  // Catatan bergabung grup WhatsApp tenant (migration 0072): kapan pertama kali tombol "Gabung
+  // Grup" ditekan / anggota melapor sudah di grup, dan lewat jalur apa. NULL = belum tercatat.
+  waGroupJoinedAt:  timestamp("wa_group_joined_at", { withTimezone: true }),
+  waGroupJoinedVia: text("wa_group_joined_via", { enum: ["click", "self"] }),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

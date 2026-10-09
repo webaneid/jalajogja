@@ -6,6 +6,7 @@ import {
 import { sendWaNotification } from "@/lib/whatsapp";
 import { renderTemplateString } from "@/lib/wa-templates";
 import { resolveWaTemplateText, resolveOrgName, waAppUrl } from "@/lib/wa-notify";
+import { isValidWhatsappGroupUrl, WHATSAPP_GROUP_SETTING_KEY } from "@/lib/whatsapp-group";
 import { sendTenantMail, sendPlatformMail, isPlatformMailConfigured, type TenantSmtpConfig } from "@/lib/mail";
 
 // Notifikasi ke ANGGOTA saat keanggotaannya di sebuah tenant menjadi aktif: nomor anggota + arahan
@@ -79,7 +80,15 @@ export async function notifyMembershipActivated(opts: {
     if (person.memberNumber)  numberLines.push(`Nomor Anggota IKPM: *${person.memberNumber}*`);
     const numberInfo = numberLines.length > 0 ? `\n${numberLines.join("\n")}\n` : "";
 
-    const vars = { name: person.name, orgName, numberInfo, akunUrl };
+    // Arahan grup HANYA bila admin sudah mengisi tautan — tautan aslinya TIDAK dimasukkan ke
+    // pesan (dibuka lewat kartu di /akun yang butuh login + keanggotaan aktif).
+    const groupUrl  = await getSetting<string>(tenantDb, WHATSAPP_GROUP_SETTING_KEY, "general");
+    const hasGroup  = isValidWhatsappGroupUrl(groupUrl);
+    const groupHint = hasGroup
+      ? "\nSetelah masuk, gabung ke grup WhatsApp organisasi lewat kartu *Gabung Grup WhatsApp* di halaman tersebut.\n"
+      : "";
+
+    const vars = { name: person.name, orgName, numberInfo, akunUrl, groupHint };
 
     // ── 1. WhatsApp ───────────────────────────────────────────────────────────────
     const waTarget = person.whatsapp || person.phone;
@@ -103,6 +112,7 @@ export async function notifyMembershipActivated(opts: {
         ? `<p>${numberLines.map((l) => escapeHtml(l.replace(/\*/g, ""))).join("<br/>")}</p>`
         : ""}
       <p><a href="${escapeHtml(akunUrl)}">Lihat kartu keanggotaan Anda</a></p>
+      ${hasGroup ? "<p>Setelah masuk, gabung ke grup WhatsApp organisasi lewat kartu <strong>Gabung Grup WhatsApp</strong> di halaman tersebut.</p>" : ""}
       <p>Wassalamu'alaikum wr. wb.<br/>${escapeHtml(orgName)}</p>`;
 
     const smtp = await getSetting<TenantSmtpConfig>(tenantDb, "smtp_config", "mail");
