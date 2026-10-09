@@ -70,6 +70,9 @@ export const WA_TEMPLATE_DEFAULTS: Record<string, string> = {
   member_welcome:
     "🌟 *Selamat Datang di {{orgName}}!*\n\nHalo {{name}}, selamat bergabung!\n\nNomor Anggota: *{{memberNumber}}*\n\nLengkapi profil Anda di:\n{{profileUrl}}\n\nWassalamu'alaikum wr. wb.",
 
+  membership_activated:
+    "✅ *Keanggotaan Aktif — {{orgName}}*\n\nHalo {{name}}, keanggotaan Anda di {{orgName}} sudah *aktif*.\n{{numberInfo}}\nLihat kartu keanggotaan Anda di:\n{{akunUrl}}\n\nWassalamu'alaikum wr. wb.",
+
   profile_incomplete_reminder:
     "📋 *Lengkapi Profil Anda*\n\nHalo {{name}}, sudah 2 minggu sejak Anda bergabung di {{orgName}}.\n\nBeberapa data profil Anda masih kosong:\n{{missingList}}\n\nYuk lengkapi di:\n{{profileUrl}}",
 

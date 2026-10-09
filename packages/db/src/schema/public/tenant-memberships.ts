@@ -66,6 +66,11 @@ export const tenantMemberships = pgTable("tenant_memberships", {
   // Lokal Forum".
   membershipNumber: text("membership_number"),
 
+  // Penanda notifikasi "keanggotaan aktif" sudah dikirim (sekali per anggota per tenant) —
+  // NULL = belum. Migration 0071 mem-backfill baris yang sudah aktif. Lihat
+  // lib/membership-activated.server.ts + docs/arsitektur-gabung-forum.md § 9c.
+  activationNotifiedAt: timestamp("activation_notified_at", { withTimezone: true }),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

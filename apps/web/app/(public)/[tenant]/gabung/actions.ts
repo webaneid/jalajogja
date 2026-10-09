@@ -12,6 +12,7 @@ import { enabledModuleList } from "@/lib/ekosistem-modules";
 import { generateForumMembershipNumber } from "@/lib/forum-membership-number.server";
 import { hasPaymentRequirement } from "@/lib/membership-config";
 import { activateForumMembership, claimablePaidItems } from "@/lib/forum-activation.server";
+import { notifyMembershipActivated } from "@/lib/membership-activated.server";
 import type { MembershipConfigData } from "../../../(dashboard)/app/[tenant]/settings/actions";
 
 type ActionResult<T = void> =
@@ -126,6 +127,8 @@ export async function joinForumAction(slug: string): Promise<ActionResult<{ tena
       membershipNumber,
     });
   }
+
+  void notifyMembershipActivated({ slug, memberId: identity.memberId });
 
   revalidatePath(`/${slug}/akun`);
   revalidatePath(`/${slug}/gabung`);

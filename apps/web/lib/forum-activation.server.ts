@@ -6,6 +6,7 @@ import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 import { enabledModuleList } from "@/lib/ekosistem-modules";
 import { generateForumMembershipNumber } from "@/lib/forum-membership-number.server";
 import { isRequirementSatisfied } from "@/lib/membership-config";
+import { notifyMembershipActivated } from "@/lib/membership-activated.server";
 import type { MembershipConfigData } from "@/app/(dashboard)/app/[tenant]/settings/actions";
 
 // SATU-SATUNYA implementasi aktivasi keanggotaan forum berbasis pembayaran syarat iuran.
@@ -233,5 +234,7 @@ export async function activateForumMembership(opts: {
     if (inserted.length === 0) return { outcome: "already_active" };
   }
 
+  // Beri tahu anggota (idempoten lewat penanda; fire-and-forget, tidak menggagalkan aktivasi).
+  void notifyMembershipActivated({ slug, memberId });
   return { outcome: "activated" };
 }

@@ -2655,6 +2655,44 @@ biasa lunas → tombol klaim muncul → klaim → aktif; (4) donasi biasa TANPA 
 mengaktifkan; (5) klaim parsial (produk saja yang kurang); (6) suspended/rejected tampil pesan
 yang benar; (7) checkout dengan nomor beda format tidak lagi meminta OTP.
 
+### 9e. STATUS EKSEKUSI notifikasi "keanggotaan aktif" ke anggota (2026-10-10) — SELESAI KODE, belum dites
+
+Bagian ANGGOTA dari § 9c selesai. Bagian PJ/sekretariat belum (menunggu mesin
+`docs/arsitektur-notifikasi-pengurus.md`).
+
+- **Fungsi tunggal** `notifyMembershipActivated({ slug, memberId })` — `lib/membership-activated.server.ts`.
+  Fire-and-forget, tidak pernah throw. Isi pesan: nama, **nomor anggota forum** (jika ada,
+  `tenant_memberships.membership_number`) dan **nomor anggota IKPM** (`members.member_number`,
+  global) — hanya baris yang terisi —, serta tautan `/akun` (custom-domain-aware via `waAppUrl`).
+  **Koreksi § 9c:** nomor anggota IKPM global ternyata ADA (`members.member_number`); sebelumnya
+  tertulis hanya nomor lokal tenant.
+- **Kanal:** WA lebih dulu (`sendWaNotification`, event baru `membership_activated`, teks bisa
+  diedit admin); jika WA tidak terkirim **karena alasan apa pun** (belum dikonfigurasi, belum
+  verified, event dimatikan, gagal kirim) → email (SMTP tenant, fallback SMTP platform). Tanpa
+  kontak sama sekali → tidak terkirim.
+- **Idempoten & at-most-once:** kolom baru `tenant_memberships.activation_notified_at`, di-claim
+  lewat `UPDATE … WHERE activation_notified_at IS NULL AND status='active' [AND forum_status='active'] RETURNING`.
+  Kalau kedua kanal gagal, penanda TIDAK dikembalikan (anggota lama tidak boleh tiba-tiba menerima
+  pesan terlambat bila admin baru menyalakan WA/SMTP kemudian).
+- **Migration `0071_membership_activation_notified.sql` WAJIB dijalankan di VPS.** Ia mem-backfill
+  semua baris yang SUDAH aktif sebagai "sudah diberi tahu" — tanpa ini seluruh anggota lama akan
+  menerima pesan massal saat membuka `/akun`. Baris forum `pending` sengaja dibiarkan NULL.
+- **Titik pemicu:** (1) `activateForumMembership` saat `activated` (bayar/klaim/aktivasi ulang);
+  (2) `joinForumAction` (gratis); (3) `approveForumMembershipAction` (admin); (4) jaring pengaman
+  di `/akun` — forum yang sudah aktif lewat jalur lain (mis. ditambah admin) dan cabang/marhalah
+  yang baris keanggotaannya ada DAN `checkMemberEligibility` eligible (keputusan user: ikut standar
+  yang ada).
+- **Tidak memicu:** import massal Excel dan wizard tambah-anggota admin tidak mengirim saat
+  disimpan (menghindari ratusan pesan sekaligus); anggota-nya diberi tahu lazy saat pertama
+  membuka `/akun`. Perilaku sama untuk anggota yang di-auto-populate platform ke cabang baru.
+- **Event WA baru `membership_activated`:** default `true` untuk koneksi WA BARU. Tenant yang sudah
+  terkoneksi tidak punya kuncinya → dianggap mati untuk WA (anggota tetap dapat email bila
+  tersedia) sampai admin menyalakannya di `/settings/notifications` → "Anggota & Pengurus" →
+  "Keanggotaan aktif".
+
+**Belum:** mention tombol "Gabung Grup WhatsApp" di pesan (kartunya belum dibangun, § 9b); notifikasi
+PJ; verifikasi manual end-to-end.
+
 ### 10. Alur tambahan dari user
 
 > Alur tambahan diterima 2026-10-10: **notifikasi PJ/pengurus** (sekretariat dapat kabar pendaftar baru forum, bendahara memverifikasi uang masuk). Karena berlaku lintas modul, direncanakan terpisah di `docs/arsitektur-notifikasi-pengurus.md`; notifikasi "pendaftar baru" untuk sekretariat menjadi bagian dari rencana itu dan akan disambungkan ke langkah 3d/4 stepper di atas.

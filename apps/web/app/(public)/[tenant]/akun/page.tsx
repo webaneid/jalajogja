@@ -12,6 +12,7 @@ import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekos
 import { enabledModuleList, resolveEkosistemModuleLabel, type EkosistemModule } from "@/lib/ekosistem-modules";
 import { MemberCard } from "@/components/akun/mobile/member-card";
 import { MembershipEligibilityOverlay } from "@/components/akun/membership-eligibility-overlay";
+import { notifyMembershipActivated } from "@/lib/membership-activated.server";
 import { resolveForumJoinProgress, type ForumJoinStage } from "@/lib/forum-join-progress.server";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
@@ -166,6 +167,9 @@ export default async function AkunPage({ params }: { params: Params }) {
           overlayDirectoryIncompleteModule = progress.directoryIncompleteModule;
           overlayPendingInvoiceId = progress.invoiceId;
         } else {
+          // Jaring pengaman: aktif lewat jalur yang tidak memicu notifikasi sendiri (mis. ditambah
+          // admin) → beri tahu saat anggota pertama kali membuka /akun. Idempoten (penanda DB).
+          void notifyMembershipActivated({ slug, memberId: identity.memberId });
           // Sudah aktif tapi data belum eligible (mis. di-auto-join admin): tetap ingatkan
           // lengkapi data, seperti perilaku sebelumnya.
           const eligibility = await checkMemberEligibility(identity.memberId, enabledModulesArr);
@@ -185,6 +189,10 @@ export default async function AkunPage({ params }: { params: Params }) {
           showEligibilityOverlay = true;
           overlayMissing = eligibility.missing;
           overlayDirectoryIncompleteModule = eligibility.directoryIncompleteModule;
+        } else if (overlayIsJoined) {
+          // Cabang/marhalah: "aktif" = baris keanggotaan ada DAN data eligible (keputusan user
+          // 2026-10-10: ikut standar eligibility yang ada). Sekali saja — idempoten (penanda DB).
+          void notifyMembershipActivated({ slug, memberId: identity.memberId });
         }
       }
     }

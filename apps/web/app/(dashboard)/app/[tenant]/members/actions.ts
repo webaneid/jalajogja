@@ -1,5 +1,6 @@
 "use server";
 
+import { notifyMembershipActivated } from "@/lib/membership-activated.server";
 import { eq, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import {
@@ -1120,6 +1121,7 @@ export async function approveForumMembershipAction(
     });
 
     if (result.success) {
+      void notifyMembershipActivated({ slug, memberId });
       revalidatePath(`/app/${slug}/members`);
       revalidatePath(`/app/${slug}/members/${memberId}`);
     }
