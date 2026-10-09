@@ -2590,9 +2590,12 @@ invoice-lunas + klaim + aktivasi ulang), `joinForumAction` (gratis), aksi admin 
 terkirim" supaya anggota tidak menerima pesan dua kali bila fungsi aktivasi terpanggil ulang.
 Kegagalan kirim tidak boleh menggagalkan aktivasi (fire-and-forget, `try/catch` sendiri).
 
-**Terbuka:** untuk cabang/marhalah, kapan tepatnya "aktif"? (auto-join terjadi saat registrasi,
-sedangkan overlay baru hilang setelah data eligible). Usulan: notifikasi terkirim saat baris
-keanggotaan ada DAN data sudah eligible, sekali saja.
+**Cabang/marhalah — DIPUTUSKAN user (2026-10-10): ikut standar eligibility yang sudah ada.**
+Tidak ada alur baru: keanggotaan otomatis (auto-join) dan "eligible" dihitung oleh
+`checkMemberEligibility()` seperti sekarang (cabang/marhalah tidak serumit forum — tanpa syarat
+iuran/`/gabung`). Pemicu notifikasi aktif untuk cabang/marhalah = saat baris keanggotaan ada DAN
+`checkMemberEligibility` eligible, sekali saja (penanda idempotent yang sama). Titik pemanggil
+konkret diverifikasi saat eksekusi.
 
 ### 10. Alur tambahan dari user
 
