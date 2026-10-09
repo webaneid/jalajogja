@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, and }        from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { revalidatePath }  from "next/cache";
 import { headers }         from "next/headers";
 import { db, tenants, tenantMemberships, createTenantDb, getSetting } from "@jalajogja/db";
@@ -11,6 +11,7 @@ import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 import { enabledModuleList } from "@/lib/ekosistem-modules";
 import { generateForumMembershipNumber } from "@/lib/forum-membership-number.server";
 import { hasPaymentRequirement } from "@/lib/membership-config";
+import { activateForumMembership, claimablePaidItems } from "@/lib/forum-activation.server";
 import type { MembershipConfigData } from "../../../(dashboard)/app/[tenant]/settings/actions";
 
 type ActionResult<T = void> =
@@ -130,4 +131,75 @@ export async function joinForumAction(slug: string): Promise<ActionResult<{ tena
   revalidatePath(`/${slug}/gabung`);
 
   return { success: true, data: { tenantName: tenantRow.name } };
+}
+
+/**
+ * Klaim pembayaran LUNAS yang sudah ada (donasi/produk yang dibayar lewat jalur biasa, bukan
+ * /gabung) sebagai syarat iuran forum. Aksi eksplisit member — donasi organik tidak pernah
+ * mengaktifkan keanggotaan sendiri (keputusan "Pemisahan Donasi vs Registrasi Forum" tetap
+ * berlaku). Mekanisme: item lunas milik member ini yang cocok syarat di-flag
+ * forGabungRegistration, lalu aktivasi dicek lewat helper bersama (mode "retrigger"). Klaim
+ * parsial (mis. donasi lama diklaim, produk dibeli baru) tersimpan karena flag-nya permanen.
+ *
+ * Keamanan: memberId HANYA dari sesi; kandidat item diturunkan server-side dari invoice lunas
+ * dengan invoices.member_id = memberId sesi — client tidak mengirim id invoice/item apa pun.
+ * Lihat docs/arsitektur-gabung-forum.md § "RENCANA — Pendaftaran Forum Bertahap" § 4.
+ */
+export async function claimForumWithExistingPaymentAction(
+  slug: string,
+): Promise<ActionResult<{ activated: boolean; message: string }>> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return { success: false, error: "Anda harus login terlebih dahulu." };
+
+  const identity = await getAkunIdentity(session.user.id);
+  if (!identity || identity.type !== "member" || !identity.memberId) {
+    return { success: false, error: "Hanya anggota IKPM yang bisa bergabung ke forum." };
+  }
+
+  const [tenantRow] = await db
+    .select({ id: tenants.id, tenantType: tenants.tenantType })
+    .from(tenants)
+    .where(eq(tenants.slug, slug))
+    .limit(1);
+  if (!tenantRow || tenantRow.tenantType !== "forum") {
+    return { success: false, error: "Tenant ini bukan forum." };
+  }
+
+  try {
+    const tenantDb = createTenantDb(slug);
+    const claim = await claimablePaidItems({ tenantDb, memberId: identity.memberId });
+    if (claim.itemRowIds.length === 0) {
+      return { success: false, error: "Tidak ada pembayaran lunas Anda yang bisa dipakai untuk syarat forum ini." };
+    }
+
+    const { db: tdb, schema } = tenantDb;
+    await tdb
+      .update(schema.invoiceItems)
+      .set({ forGabungRegistration: true })
+      .where(inArray(schema.invoiceItems.id, claim.itemRowIds));
+
+    const res = await activateForumMembership({
+      slug, tenantDb, memberId: identity.memberId, mode: "retrigger",
+    });
+
+    revalidatePath(`/${slug}/akun`);
+    revalidatePath(`/${slug}/gabung`);
+
+    switch (res.outcome) {
+      case "activated":
+      case "already_active":
+        return { success: true, data: { activated: true, message: "Pembayaran Anda dihitung — keanggotaan aktif." } };
+      case "ineligible":
+        return { success: true, data: { activated: false, message: "Pembayaran Anda sudah dihitung. Lengkapi data Anda agar keanggotaan aktif." } };
+      case "requirement_unmet":
+        return { success: true, data: { activated: false, message: "Pembayaran Anda sudah dihitung, namun masih ada syarat lain yang perlu dipenuhi di halaman ini." } };
+      case "blocked_status":
+        return { success: false, error: "Keanggotaan Anda ditangguhkan atau ditolak admin — hubungi pengurus." };
+      default:
+        return { success: false, error: "Pembayaran tidak dapat dipakai untuk syarat forum ini." };
+    }
+  } catch (err) {
+    console.error("[claimForumWithExistingPaymentAction]", err);
+    return { success: false, error: "Gagal memproses klaim. Coba lagi." };
+  }
 }

@@ -20,6 +20,14 @@ const OTP_TTL_MINUTES   = 5;
 const RATE_LIMIT_MAX    = 3;  // per phone, per jam
 const RATE_LIMIT_WINDOW = 60; // menit
 
+// Pesan saat WA gateway tenant tidak bisa dipakai. Untuk checkout_verify jangan jadi jalan buntu:
+// pemilik akun yang SUDAH LOGIN tidak diminta OTP untuk datanya sendiri (record milik sesi
+// diabaikan saat mencocokkan nomor — lihat checkoutAction), jadi arahkan ke sana.
+function gatewayDownMessage(type: string, base: string): string {
+  if (type !== "checkout_verify") return base;
+  return `${base} Verifikasi lewat WhatsApp belum tersedia. Jika Anda sudah punya akun, masuk (login) terlebih dahulu lalu ulangi checkout, atau gunakan nomor HP lain.`;
+}
+
 export async function POST(request: NextRequest) {
   // Rate limit per-IP — pelengkap limit per-phone di bawah. Limit per-phone
   // sendiri tidak mencegah satu IP mengirim OTP ke BANYAK nomor berbeda
@@ -167,7 +175,7 @@ export async function POST(request: NextRequest) {
     // Verifikasi WA dikonfigurasi sebelum kirim (kecuali untuk login — boleh kirim meski belum verified)
     const waCfg = notifCfg["whatsapp_config"] as WaNotifConfig | undefined;
     if (!waCfg?.device_id || !waCfg.verified) {
-      return NextResponse.json({ error: "WhatsApp Gateway belum dikonfigurasi oleh admin.", ...foundExtra }, { status: 503 });
+      return NextResponse.json({ error: gatewayDownMessage(validType, "WhatsApp Gateway belum dikonfigurasi oleh admin."), ...foundExtra }, { status: 503 });
     }
 
   } catch {
@@ -199,7 +207,9 @@ export async function POST(request: NextRequest) {
       event_disabled: "Notifikasi OTP belum diaktifkan admin.",
       send_failed:    "Gagal mengirim pesan WhatsApp. Coba lagi.",
     };
-    const errorMsg = reasonMap[result.reason] ?? "Gagal mengirim OTP.";
+    const errorMsg = result.reason === "send_failed"
+      ? reasonMap.send_failed
+      : gatewayDownMessage(validType, reasonMap[result.reason] ?? "Gagal mengirim OTP.");
     return NextResponse.json({ error: errorMsg, ...foundExtra }, { status: 503 });
   }
 

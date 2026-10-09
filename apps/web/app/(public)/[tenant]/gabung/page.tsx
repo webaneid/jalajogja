@@ -13,7 +13,9 @@ import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekos
 import { enabledModuleList, resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 import { hasPaymentRequirement, isRequirementSatisfied } from "@/lib/membership-config";
 import type { MembershipConfigData } from "../../../(dashboard)/app/[tenant]/settings/actions";
+import { resolveForumJoinProgress } from "@/lib/forum-join-progress.server";
 import { JoinForumButton } from "./join-forum-button";
+import { ClaimExistingPaymentCard } from "./claim-existing-payment-card";
 import { GabungItemWidget } from "./gabung-item-widget";
 import { GabungCheckoutButton } from "./gabung-checkout-button";
 import { CheckCircle2, ArrowRight, Info } from "lucide-react";
@@ -103,6 +105,32 @@ export default async function GabungPage({ params }: { params: Params }) {
   const eligibility = await checkMemberEligibility(identity.memberId, enabledModulesArr);
   // Label custom nama modul (2026-08-07, /ekosistem/pengaturan).
   const moduleLabels = await getEkosistemModuleLabels(tenantDb);
+
+  // Langkah pendaftaran (sumber kebenaran sama dengan overlay /akun). Juga mengaktifkan otomatis
+  // kalau pembayaran berflag sudah lunas dan data kini lengkap.
+  const progress = await resolveForumJoinProgress({
+    slug, tenantId: tenantRow.id, tenantDb,
+    memberId: identity.memberId, enabledModules: enabledModulesConfig,
+  });
+  if (progress.stage === "active") redirect(`${baseUrl}/akun`);
+  if (progress.stage === "suspended" || progress.stage === "rejected") {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md space-y-4 text-center">
+          <h1 className="text-2xl font-bold">
+            {progress.stage === "suspended" ? "Keanggotaan Ditangguhkan" : "Pendaftaran Tidak Disetujui"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {progress.stage === "suspended"
+              ? <>Keanggotaan Anda di <strong>{tenantRow.name}</strong> sedang ditangguhkan.</>
+              : <>Pendaftaran Anda di <strong>{tenantRow.name}</strong> tidak disetujui.</>}{" "}
+            Silakan hubungi pengurus untuk informasi lebih lanjut.
+          </p>
+          <a href={`${baseUrl}/akun`} className="btn btn-outline-dark btn-md">← Kembali ke Akun</a>
+        </div>
+      </div>
+    );
+  }
 
   // Konfigurasi forum (info pendaftaran + syarat iuran opsional) — dibaca selalu, terlepas
   // status eligibility, karena teks info organisasi relevan ditampilkan ke semua calon
@@ -310,6 +338,27 @@ export default async function GabungPage({ params }: { params: Params }) {
 
         {eligibility.eligible ? (
           <div className="space-y-4">
+            {progress.invoiceId && (
+              <div className="rounded-2xl border border-border bg-primary/[0.04] p-4 text-sm space-y-2">
+                <p>
+                  {progress.stage === "awaiting_confirmation"
+                    ? "Bukti pembayaran Anda sudah kami terima dan menunggu konfirmasi pengurus."
+                    : "Anda masih punya pembayaran yang belum diselesaikan untuk bergabung."}
+                </p>
+                <a href={`${baseUrl}/invoice/${progress.invoiceId}`} className="btn btn-outline-dark btn-sm">
+                  {progress.stage === "awaiting_confirmation" ? "Lihat Invoice" : "Lanjutkan Pembayaran →"}
+                </a>
+              </div>
+            )}
+            {progress.claim && (
+              <ClaimExistingPaymentCard
+                slug={slug}
+                tenantName={tenantRow.name}
+                hasProduct={progress.claim.hasProduct}
+                hasCampaign={progress.claim.hasCampaign}
+                satisfiedAfterClaim={progress.claim.satisfiedAfterClaim}
+              />
+            )}
             {useCheckoutFlow ? (
               <div className="space-y-4">
                 <GabungItemWidget

@@ -4,7 +4,6 @@ import { eq, and, desc, sql, count, inArray, ilike, or } from "drizzle-orm";
 import type { InvoiceStatus } from "@jalajogja/db";
 import { revalidatePath } from "next/cache";
 import { createTenantDb, generateFinancialNumber, settleInstallmentSchedules, publicSellingPrice } from "@jalajogja/db";
-import { db as publicDb, tenants, tenantMemberships, getSetting } from "@jalajogja/db";
 import {
   findVoucherByCode,
   countCustomerRedemptions,
@@ -28,12 +27,7 @@ import {
   type TenantTx,
 } from "@/lib/event-registration-sync.server";
 import { getTenantTimezone, formatInTz, tzLabel, anchorTodayUtc, todayInTz, localDatetimeToUtcIso } from "@/lib/tenant-timezone.server";
-import { checkMemberEligibility } from "@/lib/member-eligibility";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
-import { enabledModuleList } from "@/lib/ekosistem-modules";
-import { generateForumMembershipNumber } from "@/lib/forum-membership-number.server";
-import { isRequirementSatisfied } from "@/lib/membership-config";
-import type { MembershipConfigData as MembershipConfig } from "../../settings/actions";
+import { activateForumMembership } from "@/lib/forum-activation.server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1133,118 +1127,10 @@ async function activateForumMembershipIfApplicable(
   invoiceId: string,
   memberId:  string | null,
 ): Promise<void> {
-  if (!memberId) return;
-
-  const [tenantRow] = await publicDb
-    .select({ id: tenants.id, tenantType: tenants.tenantType })
-    .from(tenants)
-    .where(eq(tenants.slug, slug))
-    .limit(1);
-  if (!tenantRow || tenantRow.tenantType !== "forum") return;
-
-  const config = await getSetting<MembershipConfig>(tenantDb, "membership_config", "forum");
-  if (!config) return;
-  // Nol produk & campaign dikonfigurasi sama sekali → tidak ada apa pun untuk dicocokkan.
-  if (!config.requiredProductId && !config.requiredCampaignId) return;
-
-  const { db, schema } = tenantDb;
-
-  // Produk BERVARIASI: itemId di invoice_items adalah variation id (product_variations.id),
-  // bukan requiredProductId (products.id) langsung — kumpulkan seluruh variationId milik
-  // requiredProductId dulu supaya match tetap benar untuk produk variable. Bug laten
-  // ditemukan+ditutup 2026-08-06, lihat docs/arsitektur-gabung-forum.md § "Redesain /gabung".
-  const productRelevantIds = new Set<string>();
-  if (config?.requiredProductId) {
-    productRelevantIds.add(config.requiredProductId);
-    const variationRows = await db
-      .select({ id: schema.productVariations.id })
-      .from(schema.productVariations)
-      .where(eq(schema.productVariations.productId, config.requiredProductId));
-    for (const v of variationRows) productRelevantIds.add(v.id);
-  }
-
-  const items = await db
-    .select({
-      itemType: schema.invoiceItems.itemType,
-      itemId:   schema.invoiceItems.itemId,
-      // Wajib true — donasi/pembelian ORGANIK (lewat halaman produk/campaign biasa, bukan dari
-      // link ?forGabung=1 di /gabung) TIDAK PERNAH boleh mengaktifkan keanggotaan forum meski
-      // itemId-nya kebetulan cocok syarat iuran. Lihat docs/arsitektur-backbone-ikpm.md
-      // § "Pemisahan Donasi vs Registrasi Forum".
-      forGabungRegistration: schema.invoiceItems.forGabungRegistration,
-    })
-    .from(schema.invoiceItems)
-    .where(eq(schema.invoiceItems.invoiceId, invoiceId));
-
-  const hasProduct  = items.some((it) => it.itemType === "product"  && it.forGabungRegistration && it.itemId && productRelevantIds.has(it.itemId));
-  const hasCampaign = items.some((it) => it.itemType === "donation" && it.forGabungRegistration && it.itemId === config?.requiredCampaignId);
-
-  // Precondition WAJIB, terpisah dari isRequirementSatisfied di bawah: invoice ini harus
-  // GENUINELY mengandung minimal satu item forGabung yang cocok konfigurasi. Tanpa gate
-  // ini, invoice organik (donasi/beli produk biasa TANPA lewat /gabung sama sekali) bisa
-  // lolos vacuous-true di isRequirementSatisfied() kalau slot yang bersangkutan kebetulan
-  // TIDAK admin-wajibkan (productRequired/campaignRequired=false) — persis kelas bug yang
-  // sudah dikunci di "Pemisahan Donasi vs Registrasi Forum" (arsitektur-gabung-forum.md),
-  // JANGAN dihilangkan lagi. Setelah lolos gate ini, isRequirementSatisfied menentukan
-  // apakah komitmen yang ADA sudah cukup LENGKAP (menghormati flag wajib/opsional per-item
-  // admin — bukan berarti "ada gabung item apa saja langsung aktif").
-  if (!hasProduct && !hasCampaign) return;
-
-  if (!isRequirementSatisfied(config, { product: hasProduct, campaign: hasCampaign })) return;
-
-  const enabledModulesConfig = await getEnabledEkosistemModules(tenantDb);
-  const eligibility = await checkMemberEligibility(memberId, enabledModuleList(enabledModulesConfig));
-  if (!eligibility.eligible) return;
-
-  const [existing] = await publicDb
-    .select({
-      id:               tenantMemberships.id,
-      forumStatus:      tenantMemberships.forumStatus,
-      membershipNumber: tenantMemberships.membershipNumber,
-    })
-    .from(tenantMemberships)
-    .where(and(
-      eq(tenantMemberships.tenantId, tenantRow.id),
-      eq(tenantMemberships.memberId, memberId),
-    ))
-    .limit(1);
-  if (existing?.forumStatus === "active") return;
-
-  const now = new Date();
-
-  // Nomor keanggotaan lokal forum (opsional) — generate SEKALI saja, pertahankan yang lama
-  // kalau sudah ada (mis. member sempat suspended lalu aktif lagi lewat pembayaran).
-  let membershipNumber = existing?.membershipNumber ?? null;
-  if (!membershipNumber && config.membershipNumberFormat) {
-    membershipNumber = await generateForumMembershipNumber({
-      tenantId: tenantRow.id,
-      memberId,
-      format:   config.membershipNumberFormat,
-      joinDate: now,
-    });
-  }
-
-  if (existing) {
-    await publicDb.update(tenantMemberships)
-      .set({
-        status: "active", membershipType: "forum", forumStatus: "active",
-        approvedAt: now, forumInvoiceId: invoiceId, membershipNumber, updatedAt: now,
-      })
-      .where(eq(tenantMemberships.id, existing.id));
-  } else {
-    await publicDb.insert(tenantMemberships).values({
-      tenantId:       tenantRow.id,
-      memberId,
-      status:         "active",
-      membershipType: "forum",
-      forumStatus:    "active",
-      joinedAt:       now.toISOString().split("T")[0],
-      approvedAt:     now,
-      forumInvoiceId: invoiceId,
-      registeredVia:  "self",
-      membershipNumber,
-    });
-  }
+  // Logika inti ada di lib/forum-activation.server.ts (satu implementasi bersama dengan aksi
+  // klaim + pemicu ulang). Hasil (outcome) sengaja diabaikan di sini — kegagalan/ketidakcocokan
+  // bukan error untuk pencatatan pembayaran.
+  await activateForumMembership({ slug, tenantDb, memberId, mode: "invoice-paid", invoiceId });
 }
 
 // ─── confirmInvoicePaymentAction ──────────────────────────────────────────────

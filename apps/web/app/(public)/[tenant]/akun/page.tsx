@@ -12,6 +12,7 @@ import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekos
 import { enabledModuleList, resolveEkosistemModuleLabel, type EkosistemModule } from "@/lib/ekosistem-modules";
 import { MemberCard } from "@/components/akun/mobile/member-card";
 import { MembershipEligibilityOverlay } from "@/components/akun/membership-eligibility-overlay";
+import { resolveForumJoinProgress, type ForumJoinStage } from "@/lib/forum-join-progress.server";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
   ShoppingBag, AlertCircle, Building2, BookOpen, ImageIcon, Briefcase, ClipboardList,
@@ -135,6 +136,7 @@ export default async function AkunPage({ params }: { params: Params }) {
   // docs/arsitektur-gabung-forum.md § "Koreksi: Komitmen Cart Selalu Menahan Aktivasi Sampai
   // Bayar".
   let overlayPendingInvoiceId: string | null = null;
+  let overlayForumStage: ForumJoinStage | undefined;
 
   if (isMember && identity.memberId) {
     const [browsedTenantRow] = await db
@@ -148,47 +150,28 @@ export default async function AkunPage({ params }: { params: Params }) {
       overlayIsForum    = browsedTenantRow.tenantType === "forum";
 
       if (overlayIsForum) {
-        const [forumMembershipRow] = await db
-          .select({ forumStatus: tenantMemberships.forumStatus })
-          .from(tenantMemberships)
-          .where(and(
-            eq(tenantMemberships.tenantId, browsedTenantRow.id),
-            eq(tenantMemberships.memberId, identity.memberId),
-          ))
-          .limit(1);
+        // Langkah pendaftaran forum diturunkan di SATU tempat (lib/forum-join-progress.server.ts)
+        // supaya overlay ini dan halaman /gabung tidak pernah bertentangan. Fungsi ini juga
+        // mengaktifkan otomatis kalau pembayaran berflag sudah lunas + data kini lengkap.
+        const progress = await resolveForumJoinProgress({
+          slug, tenantId: browsedTenantRow.id, tenantDb,
+          memberId: identity.memberId, enabledModules: enabledModulesConfig,
+        });
 
-        const isJoined = forumMembershipRow?.forumStatus === "active";
-        overlayIsJoined = isJoined;
-
-        // Ada invoice belum lunas hasil komitmen /gabung? Kalau ada, itu PRIORITAS mutlak di
-        // atas ajakan "Lengkapi Data"/"Gabung X" — user sudah memilih untuk membayar, overlay
-        // harus mengarahkan mereka melunasi, bukan menyuruh mulai dari awal lagi. Query-based
-        // (bukan baris tenant_memberships eager-written) — lihat § "Koreksi..." di
-        // docs/arsitektur-gabung-forum.md untuk alasan.
-        let pendingInvoiceId: string | null = null;
-        if (!isJoined) {
-          const { db: tdb, schema } = tenantDb;
-          const [pendingInvoiceRow] = await tdb
-            .select({ id: schema.invoices.id })
-            .from(schema.invoices)
-            .innerJoin(schema.invoiceItems, eq(schema.invoiceItems.invoiceId, schema.invoices.id))
-            .where(and(
-              eq(schema.invoices.memberId, identity.memberId),
-              inArray(schema.invoices.status, ["pending", "waiting_verification", "partial", "overdue"]),
-              eq(schema.invoiceItems.forGabungRegistration, true),
-            ))
-            .limit(1);
-          pendingInvoiceId = pendingInvoiceRow?.id ?? null;
-        }
-
-        if (pendingInvoiceId) {
-          showEligibilityOverlay  = true;
-          overlayPendingInvoiceId = pendingInvoiceId;
+        overlayIsJoined = progress.stage === "active";
+        overlayForumStage = progress.stage;
+        if (progress.stage !== "active") {
+          showEligibilityOverlay = true;
+          overlayMissing = progress.missing;
+          overlayDirectoryIncompleteModule = progress.directoryIncompleteModule;
+          overlayPendingInvoiceId = progress.invoiceId;
         } else {
+          // Sudah aktif tapi data belum eligible (mis. di-auto-join admin): tetap ingatkan
+          // lengkapi data, seperti perilaku sebelumnya.
           const eligibility = await checkMemberEligibility(identity.memberId, enabledModulesArr);
-          if (!eligibility.eligible || !isJoined) {
+          if (!eligibility.eligible) {
             showEligibilityOverlay = true;
-            overlayMissing = eligibility.missing; // kosong = eligible, komponen tampilkan "Gabung X"
+            overlayMissing = eligibility.missing;
             overlayDirectoryIncompleteModule = eligibility.directoryIncompleteModule;
           }
         }
@@ -337,6 +320,7 @@ export default async function AkunPage({ params }: { params: Params }) {
               enabledModules={enabledModulesConfig}
               moduleLabels={moduleLabels}
               pendingInvoiceId={overlayPendingInvoiceId}
+              forumStage={overlayForumStage}
             />
           )}
         </div>
@@ -410,6 +394,7 @@ export default async function AkunPage({ params }: { params: Params }) {
               enabledModules={enabledModulesConfig}
               moduleLabels={moduleLabels}
               pendingInvoiceId={overlayPendingInvoiceId}
+              forumStage={overlayForumStage}
             />
           )}
         </div>

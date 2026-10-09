@@ -3,6 +3,7 @@ import type { MemberEligibilityField } from "@/lib/member-eligibility";
 import type { EkosistemModule, EkosistemModulesConfig, EkosistemModuleLabels } from "@/lib/ekosistem-modules";
 import { ALL_EKOSISTEM_MODULES, resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 import { DirectoryChoicePopover } from "@/components/akun/directory-choice-popover";
+import type { ForumJoinStage } from "@/lib/forum-join-progress.server";
 
 // Overlay glass-effect yang menutupi kartu keanggotaan di /akun — standar UMUM untuk
 // SEMUA tipe tenant (cabang/marhalah/forum), bukan cuma forum. Kartu di belakangnya
@@ -64,11 +65,17 @@ type Props = {
   // konsep komitmen pembayaran gabung. Lihat docs/arsitektur-gabung-forum.md § "Koreksi:
   // Komitmen Cart Selalu Menahan Aktivasi Sampai Bayar".
   pendingInvoiceId?: string | null;
+  // Langkah pendaftaran forum hasil resolveForumJoinProgress() — menambah 4 kondisi di atas
+  // pendingInvoiceId/eligibility: suspended, rejected, awaiting_confirmation (bukti bayar sudah
+  // dikirim, tunggu konfirmasi), claimable (ada pembayaran lunas lama yang bisa dipakai klaim).
+  // Hanya diisi untuk forum. Lihat docs/arsitektur-gabung-forum.md § "RENCANA — Pendaftaran
+  // Forum Bertahap & Dipandu".
+  forumStage?: ForumJoinStage;
 };
 
 export function MembershipEligibilityOverlay({
   tenantName, missing, directoryIncompleteModule, baseUrl, isForum, isJoined, enabledModules,
-  pendingInvoiceId, moduleLabels,
+  pendingInvoiceId, moduleLabels, forumStage,
 }: Props) {
   const eligible             = missing.length === 0;
   const onlyDirectoryMissing = missing.length === 1 && missing[0] === "directory";
@@ -94,7 +101,29 @@ export function MembershipEligibilityOverlay({
   let message: ReactNode;
   let action:  ReactNode;
 
-  if (pendingInvoiceId) {
+  if (forumStage === "suspended") {
+    message = (
+      <>Keanggotaan Anda di <strong>{tenantName}</strong> sedang ditangguhkan. Silakan hubungi
+        pengurus untuk informasi lebih lanjut.</>
+    );
+    action = null;
+  } else if (forumStage === "rejected") {
+    message = (
+      <>Pendaftaran Anda di <strong>{tenantName}</strong> tidak disetujui. Silakan hubungi
+        pengurus bila ada pertanyaan.</>
+    );
+    action = null;
+  } else if (forumStage === "awaiting_confirmation" && pendingInvoiceId) {
+    message = (
+      <>Bukti pembayaran Anda untuk <strong>{tenantName}</strong> sudah kami terima dan sedang
+        menunggu konfirmasi pengurus. Keanggotaan aktif otomatis setelah terkonfirmasi.</>
+    );
+    action = (
+      <a href={`${baseUrl}/invoice/${pendingInvoiceId}`} className="btn btn-outline-dark btn-sm">
+        Lihat Invoice
+      </a>
+    );
+  } else if (pendingInvoiceId) {
     message = (
       <>Anda sudah memilih untuk mendukung <strong>{tenantName}</strong> — selesaikan
         pembayaran untuk melengkapi keanggotaan Anda.</>
@@ -104,6 +133,12 @@ export function MembershipEligibilityOverlay({
         Lunasi Pembayaran →
       </a>
     );
+  } else if (forumStage === "claimable" && eligible) {
+    message = (
+      <>Data Anda sudah lengkap dan kami menemukan pembayaran Anda sebelumnya yang bisa dihitung
+        sebagai syarat bergabung ke <strong>{tenantName}</strong>.</>
+    );
+    action = <a href={`${baseUrl}/gabung`} className="btn btn-primary btn-md">Gunakan Pembayaran Saya →</a>;
   } else if (eligible) {
     message = <>Data Anda lengkap. Jika ingin mendaftar menjadi anggota <strong>{tenantName}</strong>, klik tombol di bawah ini:</>;
     action  = <a href={`${baseUrl}/gabung`} className="btn btn-primary btn-md">Gabung {tenantName}</a>;

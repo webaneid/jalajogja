@@ -2597,6 +2597,64 @@ iuran/`/gabung`). Pemicu notifikasi aktif untuk cabang/marhalah = saat baris kea
 `checkMemberEligibility` eligible, sekali saja (penanda idempotent yang sama). Titik pemanggil
 konkret diverifikasi saat eksekusi.
 
+### 9d. STATUS EKSEKUSI stepper forum (2026-10-10) — langkah 1–5 SELESAI KODE, belum dites browser
+
+**Selesai (type-check bersih, belum build penuh, belum dites di browser):**
+
+| Langkah | Hasil | File |
+|---|---|---|
+| 1. Helper aktivasi bersama | `activateForumMembership()` mode `invoice-paid`/`retrigger`; `claimablePaidItems()`. Hook invoice-lunas lama kini hanya pembungkus tipis | `lib/forum-activation.server.ts`, `finance/billing/actions.ts` |
+| 2. Penghitung langkah | `resolveForumJoinProgress()` → stage `active/suspended/rejected/awaiting_confirmation/pay_invoice/complete_data/claimable/ready` | `lib/forum-join-progress.server.ts` |
+| 2b. UI | Overlay `/akun` + `/gabung` memakai fungsi yang sama; pesan baru untuk ditangguhkan, ditolak, menunggu konfirmasi, bisa klaim | `membership-eligibility-overlay.tsx`, `akun/page.tsx`, `gabung/page.tsx` |
+| 3. Klaim | `claimForumWithExistingPaymentAction` + kartu "Gunakan Pembayaran Saya" | `gabung/actions.ts`, `claim-existing-payment-card.tsx` |
+| 4. Aktivasi ulang | Dijalankan saat `/akun` atau `/gabung` dibuka (lihat penyimpangan b) | `resolveForumJoinProgress` |
+| 5. OTP checkout | Perbandingan nomor dinormalisasi E.164 di UI; pesan WA-gateway-mati kini menunjuk jalan keluar | `checkout-form.tsx`, `api/akun/send-otp/route.ts` |
+
+**Penyimpangan dari rencana (dan alasannya):**
+
+a. **Klaim = menandai (flag) item lunas milik member, lalu memakai mode `retrigger`** — bukan mode
+   `claim` terpisah di helper. Dengan begitu klaim parsial (donasi lama + beli produk baru)
+   tersimpan permanen dan jalur lain (hook invoice-lunas, retrigger) otomatis ikut benar.
+b. **Aktivasi ulang berjalan lazy saat halaman dibuka**, bukan di hook setiap aksi simpan data.
+   Alasan: data eligibility disimpan lewat ±6 jalur berbeda; semua berujung user kembali ke `/akun`
+   atau `/gabung`. Konsekuensi: aktivasi menunggu user membuka halaman itu; notifikasi
+   "sudah aktif" (§ 9c) nanti harus dipicu dari titik ini juga.
+c. **`require_approval` TIDAK ADA di konfigurasi forum saat ini** (`MembershipConfigData` hanya
+   punya produk/campaign/info/format nomor). Keputusan "klaim mengikuti require_approval" jadi
+   belum berlaku — status `pending` saat ini hanya berasal dari anggota yang ditambahkan admin.
+   Perlu diputuskan apakah setting persetujuan admin dibangun (fitur baru) atau tidak.
+d. **Mode `invoice-paid` kini kumulatif**: menghitung semua invoice lunas berflag milik member
+   (donasi di invoice A + produk di invoice B), sebelumnya hanya invoice yang baru lunas. Syarat
+   "invoice pemicu harus memuat item berflag yang cocok" tetap (mencegah donasi organik dan
+   pembelian biasa member yang ditangguhkan mengaktifkan keanggotaan).
+
+**Temuan yang BELUM diubah (perlu keputusan):**
+
+- `joinForumAction` (join gratis) mengaktifkan ulang baris `suspended`/`rejected` selama forum
+  tidak mewajibkan pembayaran. Halaman `/gabung` kini memblokir keduanya di UI, tetapi server
+  action-nya sendiri masih mengizinkan. Perlu guard di server bila itu tidak disengaja.
+- Gate OTP § 6 poin 3 (record tamu/ganda milik sendiri) TIDAK diubah — keputusan keamanan terbuka.
+
+**Review keamanan (checklist `arsitektur-keamanan.md`):**
+
+✅ `memberId` HANYA dari sesi (`getAkunIdentity`); client tidak mengirim id invoice/item.
+✅ Item yang di-flag diturunkan server dari invoice `status='paid'` dengan `invoices.member_id` =
+   member sesi; `slug` divalidasi ke `tenants` (bertipe forum) sebelum `createTenantDb`.
+✅ Tanpa raw SQL, tanpa secret baru, respons hanya pesan (tidak membocorkan data).
+✅ `public.tenant_memberships` selalu difilter `tenantId` hasil lookup server.
+✅ Aktivasi idempoten (`onConflictDoNothing` + update dibatasi `id`+`tenantId`); `retrigger`
+   tidak menimpa `suspended`/`rejected`.
+❓ Pastikan manual: `activateForumMembership` pada `verifySubmittedPaymentAction` dipanggil SETELAH
+   status invoice benar-benar `paid` ter-commit (helper kini membaca status `paid` dari DB).
+❓ Aktivasi lazy menulis ke DB saat render halaman (idempoten, hanya milik sesi sendiri) — dinilai
+   dapat diterima, tetapi tercatat.
+
+**Verifikasi manual yang masih wajib (belum dilakukan):** (1) bayar syarat via `/gabung` →
+konfirmasi → aktif; (2) bayar dulu, lengkapi data belakangan → buka `/akun` → aktif; (3) donasi
+biasa lunas → tombol klaim muncul → klaim → aktif; (4) donasi biasa TANPA klaim tidak
+mengaktifkan; (5) klaim parsial (produk saja yang kurang); (6) suspended/rejected tampil pesan
+yang benar; (7) checkout dengan nomor beda format tidak lagi meminta OTP.
+
 ### 10. Alur tambahan dari user
 
 > Alur tambahan diterima 2026-10-10: **notifikasi PJ/pengurus** (sekretariat dapat kabar pendaftar baru forum, bendahara memverifikasi uang masuk). Karena berlaku lintas modul, direncanakan terpisah di `docs/arsitektur-notifikasi-pengurus.md`; notifikasi "pendaftar baru" untuk sekretariat menjadi bagian dari rencana itu dan akan disambungkan ke langkah 3d/4 stepper di atas.

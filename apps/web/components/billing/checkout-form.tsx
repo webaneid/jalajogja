@@ -13,6 +13,7 @@ import {
   type VoucherPreview,
 } from "@/app/(public)/[tenant]/cart/actions";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { normalizePhone } from "@/lib/phone";
 import { isSafeExternalUrl } from "@/lib/safe-url";
 import { isFreeShippingMatch } from "@/lib/free-shipping-match";
 
@@ -185,7 +186,8 @@ export function CheckoutForm({
     lastCheckedPhoneRef.current = trimmed;
     // Nomor bawaan akun yang sedang login = sudah terbukti milik user (sesi login) — tidak
     // perlu OTP. Server tetap memeriksa sendiri (checkoutAction), ini murni UX.
-    if (defaults?.phone && trimmed === defaults.phone) return;
+    // Bandingkan SETELAH normalisasi E.164 — "0812…" vs "+62812…" adalah nomor yang sama.
+    if (defaults?.phone && normalizePhone(trimmed) === normalizePhone(defaults.phone)) return;
     void requestContactOtp(trimmed);
   }
 
