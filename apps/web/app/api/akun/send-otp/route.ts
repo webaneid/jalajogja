@@ -15,6 +15,7 @@ import { normalizePhone }             from "@/lib/phone";
 import { rateLimitGuard }             from "@/lib/rate-limit";
 import { maskPhone }                  from "@/lib/mask-phone";
 import type { WaNotifConfig }         from "@/lib/whatsapp";
+import { isWaOtpAvailable, isEmailOtpSendable, sendCheckoutOtpEmail } from "@/lib/checkout-otp-channel.server";
 
 const OTP_TTL_MINUTES   = 5;
 const RATE_LIMIT_MAX    = 3;  // per phone, per jam
@@ -99,6 +100,11 @@ export async function POST(request: NextRequest) {
   // OTP sama sekali — balas sukses generik `found:false` (BUKAN error) supaya client tahu
   // lanjut isi manual tanpa menampilkan pesan error apa pun. Ini murni kemudahan transaksi,
   // BUKAN alur klaim keanggotaan. Lihat docs/arsitektur-billing.md § 16.
+  // Kanal OTP checkout (diisi di blok di bawah). Email HANYA dari sumber terverifikasi
+  // (verifiedEmail) — lihat docs/arsitektur-billing.md § "Gate OTP checkout — kanal email".
+  let checkoutWaOk = false;
+  let checkoutEmail: string | undefined;
+
   if (validType === "checkout_verify") {
     // Rate limit TERPISAH dan lebih ketat dari budget generik di atas — endpoint ini terpicu
     // otomatis (blur field, bukan klik tombol eksplisit seperti register/login) dan mengirim WA
@@ -108,9 +114,19 @@ export async function POST(request: NextRequest) {
     if (checkoutIpBlocked) return checkoutIpBlocked;
 
     try {
-      const { db: checkoutTenantDb, schema: checkoutSchema } = createTenantDb(slug);
+      const checkoutHandle = createTenantDb(slug);
+      const { db: checkoutTenantDb, schema: checkoutSchema } = checkoutHandle;
       const match = await resolveCheckoutContact(db, checkoutTenantDb, checkoutSchema, phone);
       if (!match.found) {
+        return NextResponse.json({ ok: true, found: false });
+      }
+      checkoutWaOk = await isWaOtpAvailable(checkoutHandle);
+      if (match.verifiedEmail && await isEmailOtpSendable(checkoutHandle)) {
+        checkoutEmail = match.verifiedEmail;
+      }
+      // Tidak ada kanal sama sekali → jangan kirim apa pun dan jangan buka data. checkoutAction
+      // menghitung ulang kanal di server dan melanjutkan sebagai tamu tak tertaut.
+      if (!checkoutWaOk && !checkoutEmail) {
         return NextResponse.json({ ok: true, found: false });
       }
     } catch (err) {
@@ -174,7 +190,7 @@ export async function POST(request: NextRequest) {
 
     // Verifikasi WA dikonfigurasi sebelum kirim (kecuali untuk login — boleh kirim meski belum verified)
     const waCfg = notifCfg["whatsapp_config"] as WaNotifConfig | undefined;
-    if (!waCfg?.device_id || !waCfg.verified) {
+    if (validType !== "checkout_verify" && (!waCfg?.device_id || !waCfg.verified)) {
       return NextResponse.json({ error: gatewayDownMessage(validType, "WhatsApp Gateway belum dikonfigurasi oleh admin."), ...foundExtra }, { status: 503 });
     }
 
@@ -198,6 +214,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Template WA tidak ditemukan." }, { status: 500 });
   }
 
+  // Checkout: WA dulu (bila tersedia), gagal/tidak tersedia → email terdaftar dengan kode yang sama.
+  if (validType === "checkout_verify") {
+    let delivered = false;
+    let channel: "wa" | "email" = "wa";
+    if (checkoutWaOk) {
+      delivered = (await sendWaNotification({ slug, event: eventKey, to: phone, message })).ok;
+    }
+    if (!delivered && checkoutEmail) {
+      delivered = await sendCheckoutOtpEmail({ tenantDb: tenantClient, to: checkoutEmail, code, orgName, expiryMinutes: OTP_TTL_MINUTES });
+      channel = "email";
+    }
+    if (!delivered) {
+      return NextResponse.json({ error: "Gagal mengirim kode verifikasi. Coba kirim ulang.", ...foundExtra }, { status: 503 });
+    }
+    void channel; // jenis kanal sengaja tidak dikirim ke klien (hindari bocor info)
+    return NextResponse.json({ ok: true, expiresIn: OTP_TTL_MINUTES, found: true });
+  }
+
   const result = await sendWaNotification({ slug, event: eventKey, to: phone, message });
 
   if (!result.ok) {
@@ -217,6 +251,5 @@ export async function POST(request: NextRequest) {
     ok: true,
     expiresIn: OTP_TTL_MINUTES,
     phoneMasked,
-    ...(validType === "checkout_verify" ? { found: true } : {}),
   });
 }

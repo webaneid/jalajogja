@@ -390,7 +390,7 @@ export function CheckoutForm({
       return;
     }
     if (contactCheck.status === "found" || contactCheck.status === "failed") {
-      setError("Masukkan kode OTP yang dikirim ke WhatsApp Anda untuk lanjut.");
+      setError("Masukkan kode OTP yang dikirim ke WhatsApp atau email terdaftar Anda untuk lanjut.");
       return;
     }
     setError("");
@@ -536,7 +536,7 @@ export function CheckoutForm({
               <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
                 <p className="text-xs text-foreground">
                   Nomor ini terdaftar di sistem kami. Masukkan kode OTP yang dikirim via WhatsApp
-                  untuk mengisi otomatis data Anda.
+                  atau email terdaftar untuk mengisi otomatis data Anda.
                 </p>
                 <div className="flex gap-2">
                   <input
@@ -562,7 +562,7 @@ export function CheckoutForm({
                 )}
                 <button
                   type="button"
-                  onClick={() => void requestContactOtp(phone.trim(), { notice: "Kode baru dikirim — cek WhatsApp Anda." })}
+                  onClick={() => void requestContactOtp(phone.trim(), { notice: "Kode baru dikirim — cek WhatsApp atau email terdaftar Anda." })}
                   disabled={contactCheck.verifyPending}
                   className="text-xs text-primary underline disabled:opacity-50"
                 >

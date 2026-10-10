@@ -2,6 +2,7 @@
 
 import { cookies, headers } from "next/headers";
 import { checkRateLimit, getClientIpFromHeaders } from "@/lib/rate-limit";
+import { isWaOtpAvailable, isEmailOtpSendable } from "@/lib/checkout-otp-channel.server";
 import { eq, and, or, inArray, sql, gt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, resolveIdentity, resolveCheckoutContact, verification, generateUniqueCode, generateInstallmentScheduleCode, settleInstallmentSchedules } from "@jalajogja/db";
@@ -565,7 +566,18 @@ export async function checkoutAction(
       memberId:  sessionSelf?.memberId,
       profileId: sessionSelf?.profileId,
     });
-    if (contactMatch.found) {
+    // Nomor cocok data lama tapi TIDAK ADA kanal OTP sama sekali (WA tenant tak tersedia DAN tak ada
+    // email terverifikasi) → jangan buntukan pembeli: lanjut sebagai TAMU TAK TERTAUT (identitas
+    // tidak di-resolve dari nomor/email, tak ada data lama terbuka). Server menghitung kanal SENDIRI —
+    // klien tak bisa meminta jalur ini. Lihat docs/arsitektur-billing.md § "Gate OTP checkout — kanal email".
+    let unlinkedGuest = false;
+    if (contactMatch.found && !customer.verifyToken) {
+      const waOk    = await isWaOtpAvailable(tenantDb);
+      const emailOk = !!contactMatch.verifiedEmail && await isEmailOtpSendable(tenantDb);
+      if (!waOk && !emailOk) unlinkedGuest = true;
+    }
+
+    if (contactMatch.found && !unlinkedGuest) {
       if (!customer.verifyToken) {
         if (!checkRateLimit(`checkout-registered:${clientIp}`, 20, 10 * 60_000).allowed) {
           return { success: false, error: "Terlalu banyak percobaan. Coba lagi beberapa menit lagi." };
@@ -598,8 +610,9 @@ export async function checkoutAction(
 
     const identity = await resolveIdentity(db, {
       betterAuthUserId: session?.user?.id ?? null,
-      phone: normalizePhone(customer.phone),
-      email: customer.email?.trim() || null,
+      // Tamu tak tertaut: jangan cocokkan nomor/email ke member/profile mana pun (hanya sesi login).
+      phone: unlinkedGuest ? null : normalizePhone(customer.phone),
+      email: unlinkedGuest ? null : (customer.email?.trim() || null),
     });
 
     const memberId  = identity.memberId;
@@ -662,8 +675,10 @@ export async function checkoutAction(
         const identityConditions = [
           memberId  ? eq(schema.invoices.memberId, memberId)          : null,
           profileId ? eq(schema.invoices.profileId, profileId)        : null,
-          normalizedPhone ? eq(schema.invoices.customerPhone, normalizedPhone) : null,
-          emailTrim ? eq(schema.invoices.customerEmail, emailTrim)    : null,
+          // Tamu tak tertaut: nomor/email tak terbukti milik pembeli → JANGAN dipakai mencocokkan invoice
+          // orang lain (bisa membuka invoiceId milik pemegang nomor). Hanya identitas dari sesi.
+          normalizedPhone && !unlinkedGuest ? eq(schema.invoices.customerPhone, normalizedPhone) : null,
+          emailTrim && !unlinkedGuest ? eq(schema.invoices.customerEmail, emailTrim)    : null,
         ].filter((c): c is NonNullable<typeof c> => c !== null);
 
         if (identityConditions.length > 0) {

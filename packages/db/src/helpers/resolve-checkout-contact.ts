@@ -28,6 +28,10 @@ export type CheckoutContactMatch = {
   name?:    string;
   email?:   string;
   address?: string;
+  // Email dari sumber TERVERIFIKASI saja (members.contacts / profiles) — satu-satunya email yang boleh
+  // menerima OTP verifikasi. TIDAK PERNAH dari riwayat invoice tamu (bisa diisi penyerang).
+  // Jangan dikirim ke klien.
+  verifiedEmail?: string;
 };
 
 // Diekspor (bukan cuma internal resolveCheckoutContact) — dipakai ulang oleh
@@ -144,5 +148,33 @@ export async function resolveCheckoutContact(
     }
   }
 
-  return { found: !!(name || email || address), name, email, address };
+  // ── Email untuk OTP (kanal cadangan bila WA tak ada) ────────────────────────────────
+  // phone & email di data anggota/akun bisa diubah pemiliknya TANPA verifikasi, jadi "email tercatat"
+  // belum membuktikan kepemilikan NOMOR. Maka email hanya dipakai bila: (1) nomor ini cocok TEPAT SATU
+  // record members+profiles (kalau >1 → ambigu: bisa jadi penyerang menyalin nomor korban), dan
+  // (2) tidak ada riwayat invoice tamu tenant ini untuk nomor itu (alamat tamu bukan milik pemegang
+  // email itu). Selain itu → tidak ada kanal email → checkout lanjut sebagai tamu tak tertaut.
+  let verifiedEmail: string | undefined;
+  const memberMatches = await publicDb
+    .select({ email: contacts.email })
+    .from(members)
+    .innerJoin(contacts, eq(contacts.id, members.contactId))
+    .where(and(eq(contacts.phone, phone), self?.memberId ? ne(members.id, self.memberId) : undefined))
+    .limit(2);
+  const profileMatches = await publicDb
+    .select({ email: profiles.email, deletedAt: profiles.deletedAt })
+    .from(profiles)
+    .where(and(eq(profiles.phone, phone), self?.profileId ? ne(profiles.id, self.profileId) : undefined))
+    .limit(2);
+  const liveProfiles = profileMatches.filter((p) => !p.deletedAt);
+  if (memberMatches.length + liveProfiles.length === 1) {
+    const [hist] = await tenantDb
+      .select({ id: schema.invoices.id })
+      .from(schema.invoices)
+      .where(eq(schema.invoices.customerPhone, phone))
+      .limit(1);
+    if (!hist) verifiedEmail = (memberMatches[0]?.email ?? liveProfiles[0]?.email)?.trim() || undefined;
+  }
+
+  return { found: !!(name || email || address), name, email, address, verifiedEmail };
 }

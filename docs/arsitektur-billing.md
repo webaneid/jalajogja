@@ -2535,3 +2535,30 @@ jawaban "terdaftar" (tanpa `verifyToken` ATAU `verifyToken` salah/kedaluwarsa) 2
 aktifkan `real_ip_header CF-Connecting-IP` + `set_real_ip_from` rentang Cloudflare, lalu batas boleh diperkecil.
 Risiko sisa yang diterima: perbedaan jawaban/waktu respons masih membedakan nomor terdaftar (hanya dibatasi laju).
 Review keamanan (subagent) dijalankan; endpoint lain (`/api/wa/available`, `lookup-member`) belum diperiksa untuk oracle serupa.
+
+
+## Gate OTP checkout — kanal email + jalur tamu bila tak ada kanal (2026-10-10)
+
+**Masalah:** nomor HP cocok data lama → OTP WA wajib. Tenant tanpa WA aktif (atau gateway gagal) = pembeli buntu.
+
+**Keputusan (usul user: kirim OTP ke email):**
+1. Urutan kanal untuk `checkout_verify`: (a) WhatsApp ke nomor yang diketik (nomor itu sendiri = nomor tercatat yang cocok) bila WA tenant
+   aktif+terhubung+event OTP aktif; (b) bila WA tidak tersedia ATAU kirim gagal → **email ke email TERCATAT** (SMTP tenant → SMTP platform) dengan kode yang sama.
+2. **Email tujuan hanya dari `public.members` (contacts.email) atau `public.profiles.email`** — TIDAK PERNAH dari riwayat invoice tamu
+   (penyerang bisa membuat invoice berisi nomor korban + emailnya sendiri, lalu "membuktikan" kepemilikan nomor). Field baru
+   `verifiedEmail` di `resolveCheckoutContact`, dihitung terpisah dari `email` untuk auto-isi.
+3. Email tidak pernah ditampilkan ke klien (bahkan tersamarkan) — respons hanya `channel: "wa"|"email"`; pesan UI generik "kode dikirim ke WhatsApp/email terdaftar".
+4. **Tidak ada kanal sama sekali** (WA tak tersedia DAN tak ada `verifiedEmail`): send-otp membalas `found:false` (tanpa OTP, tanpa data
+   terbuka). `checkoutAction` menghitung ulang kanal di server; bila memang tak ada → checkout lanjut sebagai **tamu tak tertaut**:
+   `resolveIdentity` dipanggil TANPA nomor/email (hanya sesi), jadi invoice tidak ditautkan ke member/profile mana pun dan tak ada data
+   lama yang terbuka. Aman karena yang dilindungi gate ini (auto-isi PII + penautan identitas) tidak terjadi di jalur ini.
+5. Rate limit send-otp (3/jam per nomor, 5/10 menit per IP untuk checkout_verify) berlaku sama untuk email.
+
+**Hasil review keamanan (subagent) & perbaikan:** (High) `contacts.phone/email` bisa diubah pemilik tanpa verifikasi, jadi
+email tercatat belum membuktikan NOMOR — kanal email kini hanya bila nomor cocok TEPAT SATU record members+profiles
+(>1 = ambigu → tanpa kanal) DAN tak ada riwayat invoice tamu tenant ini untuk nomor itu; selain itu → tamu tak tertaut.
+(Medium) jalur tamu tak tertaut melewati cek duplikat tiket berbasis nomor/email (agar tak membuka invoiceId orang lain).
+(Low) respons send-otp tak lagi memuat jenis kanal. **Diterima (keterbatasan lama):** voucher `restrictPhone/Email` &
+`usageLimitPerCustomer` memakai nomor/email dari klien tanpa bukti kepemilikan (juga untuk tamu biasa) — wajibkan login bila
+voucher eksklusif anggota. Tindak lanjut terpisah: `resolveIdentity` mencocokkan email klien tanpa OTP (lama, bukan regresi);
+keunikan `contacts.phone` belum dipastikan.
