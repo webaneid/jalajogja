@@ -77,9 +77,8 @@ Migration `0070_producers.sql` (loop tenant aktif; `CREATE TABLE IF NOT EXISTS` 
   (b) baris sumber benar milik `member_id` itu (`source.member_id = member_id`). `source_id`/`member_id` dari client
   TIDAK dipercaya. Tanpa ini admin tenant A bisa memasukkan usaha anggota tenant B (IDOR).
 - **Aturan "anggota tenant"** — SATU fungsi bersama dengan Harga Anggota (`lib/session-type.server.ts`; sekarang
-  duplikat di `event/actions.ts`): `tenant_memberships.status IN ('active','alumni')`; tenant forum wajib
-  `forum_status = 'active'`. ⚠️ Kata user semula "anggota tenant **aktif**" — implementasi sekarang ikut aturan tiket
-  event (aktif + alumni). **Kalau user mau "aktif saja", ubah di SATU fungsi itu** (berlaku juga untuk Harga Anggota).
+  duplikat di `event/actions.ts`): `tenant_memberships.status = 'active'` (alumni BUKAN anggota — keputusan user 2026-10-10); tenant forum wajib
+  `forum_status = 'active'`. Aturan ini dipakai juga Harga Anggota (`session-type.server.ts`) — ubah di SATU fungsi itu. Syarat tiket event (`event/actions.ts`) masih aktif+alumni (keputusan terpisah).
 - **Hak akses**: semua aksi/halaman produsen = `getTenantAccess(slug)` + `hasFullAccess(tenantUser, "toko")`. Pengguna
   baca-saja tidak melihat kartu produsen (nomor pribadi anggota).
 - **Anti-kebocoran publik**: query produk publik wajib `select` kolom eksplisit (sudah begitu) — `producer_id` tidak
@@ -133,7 +132,7 @@ produsen per transaksi (sama seperti modal: perubahan produsen pada produk tidak
 
 Admin-only (tidak pernah publik) · pesantren = milik anggota · fallback WhatsApp usaha→telepon usaha→WhatsApp pemilik · fallback alamat ke
 alamat rumah pemilik · daftar produsen terpisah yang dipakai banyak produk · aturan anggota tenant sama dengan Harga Anggota ·
-produsen hanya untuk produk tenant. **Terbuka satu hal**: apakah alumni dihitung anggota (lihat § 5).
+produsen hanya untuk produk tenant. Alumni dihitung anggota? **Sudah diputuskan 2026-10-10: tidak** (lihat § 5).
 
 ## 12. Catatan implementasi (2026-10-09)
 

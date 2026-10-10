@@ -1531,8 +1531,8 @@ induk, dan rentang harga kartu produk variabel yang mengabaikan tier.
 - Produk lama: **dibiarkan apa adanya** (tanpa backfill). `public_price` kosong → resolver jatuh ke
   `price` (laba tampil nol sampai admin mengoreksi). `public_price` yang sudah terisi dipakai untuk
   SEMUA orang.
-- "Anggota tenant" = `tenant_memberships` tenant ini dengan `status IN ('active','alumni')` (aturan
-  sama dengan tiket event `requiresMembership`); khusus tenant tipe **forum** wajib juga
+- "Anggota tenant" = `tenant_memberships` tenant ini dengan `status = 'active'` SAJA (**diubah user 2026-10-10:
+  alumni BUKAN anggota**; sebelumnya aktif+alumni mengikuti tiket event — tiket event belum diubah); khusus tenant tipe **forum** wajib juga
   `forum_status = 'active'` (opt-in resmi — bukan pending/rejected/suspended). Tidak punya baris itu =
   hanya anggota IKPM (`ikpm`). Catatan: aturan tiket event TIDAK mengecek `forum_status` — celah
   lama, tidak disentuh di sini.

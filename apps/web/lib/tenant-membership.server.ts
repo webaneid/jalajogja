@@ -1,17 +1,16 @@
 // SATU aturan "anggota tenant" untuk seluruh app (Harga Anggota via session-type.server.ts, Produsen
 // anggota via lib/producer.server.ts). Ubah di SINI kalau aturannya berubah — berlaku ke semuanya.
 //
-// Aturan: baris tenant_memberships untuk tenant itu dengan status IN ('active','alumni'); khusus tenant
-// tipe FORUM wajib forum_status = 'active' (forum = opt-in, harus resmi — bukan pending/rejected/
-// suspended). ⚠️ User sempat bilang "anggota tenant aktif"; implementasi ikut aturan tiket event
-// (aktif + alumni). Kalau mau "aktif saja": ubah MEMBERSHIP_STATUSES di bawah (berlaku juga untuk
-// Harga Anggota). Catatan: syarat tiket event (event/actions.ts) memakai query sendiri dan TIDAK
-// mengecek forum_status — celah lama, sengaja tidak disentuh di sini.
+// Aturan: baris tenant_memberships untuk tenant itu dengan status 'active' SAJA; khusus tenant tipe
+// FORUM wajib forum_status = 'active' (forum = opt-in, harus resmi — bukan pending/rejected/suspended).
+// KEPUTUSAN USER 2026-10-10: status "alumni" BUKAN anggota (tidak dapat Harga Anggota, tidak dihitung
+// pemilik Produsen anggota). Sebelumnya aktif+alumni. Catatan: syarat tiket event (event/actions.ts)
+// memakai query sendiri (masih aktif+alumni, tidak cek forum_status) — keputusan terpisah, belum disentuh.
 import "server-only";
 import { and, eq, inArray, type SQL } from "drizzle-orm";
 import { db, tenantMemberships } from "@jalajogja/db";
 
-export const MEMBERSHIP_STATUSES = ["active", "alumni"] as const;
+export const MEMBERSHIP_STATUSES = ["active"] as const;
 
 /** Kondisi WHERE atas `tenant_memberships` untuk "anggota sah tenant ini" (tanpa kondisi memberId). */
 export function tenantMembershipConditions(tenantId: string, tenantType: string | null | undefined): SQL[] {
