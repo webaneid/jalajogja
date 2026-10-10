@@ -102,6 +102,12 @@ export async function resolvePjRecipients(
 
 // ── Kirim satu pesan ke satu penerima: WA dulu, gagal apa pun → email ─────────────────────
 
+// Teks bebas dari pelanggan (nama/bank) masuk ke pesan bendahara — netralkan format WA, baris baru,
+// dan tautan supaya tidak bisa dipakai menyisipkan pesan palsu/phishing.
+function cleanUserText(s: string | null | undefined, max = 40): string {
+  return (s ?? "").replace(/https?:\/\/\S+/gi, "").replace(/[*_~`]/g, "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -160,6 +166,13 @@ export async function runPjDigests(now = new Date()): Promise<{ keuangan: number
     .where(eq(tenants.isActive, true));
 
   const sent = { keuangan: 0, keanggotaan: 0 };
+
+  // Tautan kedaluwarsa > 30 hari dihapus (menyimpan nomor HP penerima — jangan disimpan selamanya).
+  try {
+    await db.delete(pjVerificationLinks).where(sql`${pjVerificationLinks.expiresAt} < now() - interval '30 days'`);
+  } catch (err) {
+    console.error("[runPjDigests] bersih-bersih tautan gagal:", err);
+  }
 
   for (const t of activeTenants) {
     try {
@@ -259,6 +272,7 @@ async function sendKeuanganDigest(opts: {
     module:         "keuangan",
     recipientName:  recipient.name,
     recipientPhone: recipient.phone!,
+    recipientUserId: recipient.userId,
     paymentIds:     pending.map((p) => p.paymentId),
     expiresAt:      new Date(Date.now() + PJ_LINK_TTL_HOURS * 3_600_000),
   });
@@ -272,8 +286,8 @@ async function sendKeuanganDigest(opts: {
     const claimed  = parseFloat(String(p.amount));
     const base     = parseFloat(String(p.total));
     const code     = p.uniqueCode ?? 0;
-    const sender   = p.payerName || p.customerName;
-    const via      = [p.method === "qris" ? "QRIS" : p.method === "cash" ? "Tunai" : "Transfer", p.payerBank].filter(Boolean).join(" ");
+    const sender   = cleanUserText(p.payerName || p.customerName) || "(tanpa nama)";
+    const via      = [p.method === "qris" ? "QRIS" : p.method === "cash" ? "Tunai" : "Transfer", cleanUserText(p.payerBank, 20)].filter(Boolean).join(" ");
     return `${i + 1}. *${sender}* — dikirim *Rp ${waRupiah(claimed)}*\n` +
            `   Tagihan Rp ${waRupiah(base)}${code ? ` + kode unik ${code} = Rp ${waRupiah(base + code)}` : ""}\n` +
            `   ${p.invoiceNumber} • ${via} • ${formatInTz(when, tz, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`;

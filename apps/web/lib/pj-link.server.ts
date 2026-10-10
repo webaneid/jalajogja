@@ -1,8 +1,8 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
-import { and, eq } from "drizzle-orm";
-import { db, tenants, pjVerificationLinks, members, contacts, createTenantDb, type PjVerificationLink } from "@jalajogja/db";
+import { and, asc, eq } from "drizzle-orm";
+import { db, tenants, pjVerificationLinks, createTenantDb, type PjVerificationLink } from "@jalajogja/db";
 import { hashPjToken } from "@/lib/pj-notification.server";
 
 // Akses halaman verifikasi PJ via tautan: validasi token + sesi buka-kunci (cookie bertanda tangan).
@@ -75,28 +75,19 @@ export async function hasPjUnlockCookie(link: PjVerificationLink): Promise<boole
 
 /**
  * Tenant user yang dicatat sebagai pemegang jurnal untuk verifikasi via tautan: user dashboard milik
- * PJ (dicocokkan lewat nomor HP-nya di data anggota), kalau tidak ada → owner tenant.
+ * PJ yang tersimpan di tautan (dibuat saat digest dikirim) — diverifikasi masih ada di tenant ini;
+ * kalau tidak ada → owner tenant (yang tertua). Identitas PJ sebenarnya selalu ada di tabel audit
+ * dan di deskripsi jurnal.
  */
-export async function resolvePjActorUserId(slug: string, recipientPhone: string): Promise<string | null> {
+export async function resolvePjActorUserId(slug: string, link: PjVerificationLink): Promise<string | null> {
   const { db: tdb, schema } = createTenantDb(slug);
 
-  const people = await db
-    .select({ id: members.id })
-    .from(members)
-    .innerJoin(contacts, eq(contacts.id, members.contactId))
-    .where(eq(contacts.whatsapp, recipientPhone))
-    .limit(5);
-  const byPhone = people.length > 0 ? people : await db
-    .select({ id: members.id })
-    .from(members)
-    .innerJoin(contacts, eq(contacts.id, members.contactId))
-    .where(eq(contacts.phone, recipientPhone))
-    .limit(5);
-
-  for (const p of byPhone) {
-    const [u] = await tdb.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.memberId, p.id)).limit(1);
+  if (link.recipientUserId) {
+    const [u] = await tdb.select({ id: schema.users.id }).from(schema.users)
+      .where(eq(schema.users.id, link.recipientUserId)).limit(1);
     if (u) return u.id;
   }
-  const [owner] = await tdb.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.role, "owner")).limit(1);
+  const [owner] = await tdb.select({ id: schema.users.id }).from(schema.users)
+    .where(eq(schema.users.role, "owner")).orderBy(asc(schema.users.createdAt)).limit(1);
   return owner?.id ?? null;
 }

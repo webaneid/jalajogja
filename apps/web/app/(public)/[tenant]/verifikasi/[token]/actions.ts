@@ -39,26 +39,36 @@ export async function unlockPjLinkAction(slug: string, token: string, pin: strin
       : "Tautan tidak valid atau sudah kedaluwarsa." };
   }
 
+  // Hitung percobaan SECARA ATOMIK SEBELUM membandingkan — tebakan paralel tidak bisa melewati batas:
+  // hanya yang mendapat hitungan ≤ batas yang boleh dibandingkan; sisanya ditolak tanpa dicek.
+  const [att] = await db
+    .update(pjVerificationLinks)
+    .set({ failedAttempts: sql`${pjVerificationLinks.failedAttempts} + 1` })
+    .where(and(eq(pjVerificationLinks.id, loaded.link.id), sql`${pjVerificationLinks.lockedAt} IS NULL`))
+    .returning({ n: pjVerificationLinks.failedAttempts });
+  if (!att || att.n > PJ_MAX_ATTEMPTS) {
+    await db.update(pjVerificationLinks).set({ lockedAt: new Date() })
+      .where(and(eq(pjVerificationLinks.id, loaded.link.id), sql`${pjVerificationLinks.lockedAt} IS NULL`));
+    return { ok: false, error: "Terlalu banyak salah. Tautan ini dikunci." };
+  }
+
   const expected = lastFourDigits(loaded.link.recipientPhone);
   const given    = (pin ?? "").replace(/\D/g, "");
   const a = Buffer.from(given), b = Buffer.from(expected);
   const match = expected.length === 4 && given.length === 4 && a.length === b.length && timingSafeEqual(a, b);
 
   if (!match) {
-    // Hitung salah secara ATOMIK; kunci tautan saat mencapai batas.
-    const [row] = await db
-      .update(pjVerificationLinks)
-      .set({
-        failedAttempts: sql`${pjVerificationLinks.failedAttempts} + 1`,
-        lockedAt: sql`CASE WHEN ${pjVerificationLinks.failedAttempts} + 1 >= ${PJ_MAX_ATTEMPTS} THEN now() ELSE ${pjVerificationLinks.lockedAt} END`,
-      })
-      .where(and(eq(pjVerificationLinks.id, loaded.link.id), sql`${pjVerificationLinks.lockedAt} IS NULL`))
-      .returning({ failed: pjVerificationLinks.failedAttempts, locked: pjVerificationLinks.lockedAt });
-    if (row?.locked) return { ok: false, error: "Terlalu banyak salah. Tautan ini dikunci." };
-    const left = Math.max(0, PJ_MAX_ATTEMPTS - (row?.failed ?? PJ_MAX_ATTEMPTS));
-    return { ok: false, error: `Kata sandi salah. Sisa percobaan: ${left}.` };
+    if (att.n >= PJ_MAX_ATTEMPTS) {
+      await db.update(pjVerificationLinks).set({ lockedAt: new Date() })
+        .where(and(eq(pjVerificationLinks.id, loaded.link.id), sql`${pjVerificationLinks.lockedAt} IS NULL`));
+      return { ok: false, error: "Terlalu banyak salah. Tautan ini dikunci." };
+    }
+    return { ok: false, error: `Kata sandi salah. Sisa percobaan: ${PJ_MAX_ATTEMPTS - att.n}.` };
   }
 
+  // Benar: kembalikan hitungan hanya bila belum terkunci.
+  await db.update(pjVerificationLinks).set({ failedAttempts: 0 })
+    .where(and(eq(pjVerificationLinks.id, loaded.link.id), sql`${pjVerificationLinks.lockedAt} IS NULL`));
   await setPjUnlockCookie(loaded.link);
   revalidatePath(`/${slug}/verifikasi/${token}`);
   return { ok: true };
@@ -115,9 +125,23 @@ export async function pjVerifyPaymentAction(
       return { ok: false, error: "Nominal tidak valid." };
     }
     amount = Math.round(amount);
+
+    // Jalur tanpa login dibatasi: nominal tidak boleh jauh di atas yang pantas (tagihan tersisa atau
+    // yang diklaim pembayar). Selisih besar → minta bendahara memakai dashboard.
+    const [inv] = await tdb
+      .select({ total: schema.invoices.total, uniqueCode: schema.invoices.uniqueCode, paid: schema.invoices.paidAmount })
+      .from(schema.payments)
+      .innerJoin(schema.invoices, eq(schema.invoices.id, schema.payments.sourceId))
+      .where(eq(schema.payments.id, paymentId))
+      .limit(1);
+    const remaining = inv ? parseFloat(String(inv.total)) + (inv.uniqueCode ?? 0) - parseFloat(String(inv.paid)) : 0;
+    const ceiling   = 2 * Math.max(remaining, parseFloat(String(payment.amount)));
+    if (amount > ceiling) {
+      return { ok: false, error: "Nominal terlalu jauh dari tagihan. Untuk selisih sebesar ini, verifikasi lewat dashboard." };
+    }
   }
 
-  const actorUserId = await resolvePjActorUserId(slug, link.recipientPhone);
+  const actorUserId = await resolvePjActorUserId(slug, link);
   if (!actorUserId) return { ok: false, error: "Tenant belum punya pengguna dashboard — hubungi admin." };
 
   const res = await verifySubmittedPaymentCore({

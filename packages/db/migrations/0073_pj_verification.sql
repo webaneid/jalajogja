@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS public.pj_verification_links (
   module           TEXT NOT NULL CHECK (module IN ('keuangan')),
   recipient_name   TEXT NOT NULL,
   recipient_phone  TEXT NOT NULL,            -- E.164; 4 digit terakhir = kata sandi halaman
+  recipient_user_id UUID,                    -- tenant users.id PJ (bila punya akun dashboard) — pemegang jurnal
   payment_ids      JSONB NOT NULL DEFAULT '[]'::jsonb,  -- snapshot id pembayaran di digest
   expires_at       TIMESTAMPTZ NOT NULL,
   failed_attempts  INTEGER NOT NULL DEFAULT 0,

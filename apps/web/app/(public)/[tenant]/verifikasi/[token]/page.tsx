@@ -11,6 +11,7 @@ import { PjUnlockForm, PjPaymentList, type PjPaymentRow } from "./verification-c
 export const metadata: Metadata = {
   title: "Verifikasi Pembayaran",
   robots: { index: false, follow: false },
+  referrer: "no-referrer", // token ada di URL — jangan bocor lewat header Referer
 };
 
 function Card({ title, message }: { title: string; message: string }) {

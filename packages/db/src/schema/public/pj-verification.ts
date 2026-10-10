@@ -11,6 +11,7 @@ export const pjVerificationLinks = pgTable("pj_verification_links", {
   module:         text("module", { enum: ["keuangan"] }).notNull(),
   recipientName:  text("recipient_name").notNull(),
   recipientPhone: text("recipient_phone").notNull(),
+  recipientUserId: uuid("recipient_user_id"),
   paymentIds:     jsonb("payment_ids").$type<string[]>().notNull().default([]),
   expiresAt:      timestamp("expires_at", { withTimezone: true }).notNull(),
   failedAttempts: integer("failed_attempts").notNull().default(0),

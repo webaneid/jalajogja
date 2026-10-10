@@ -238,3 +238,15 @@ browser, dua PJ menekan bersamaan, jam cron pada VPS.
 **Catatan:** pesan digest berupa teks di kode (belum editable per tenant seperti template WA lain).
 **Menyusul:** digest toko/donasi/event; cadangan bila semua bendahara berhalangan; tampilan penanda "tidak ada"
 di dashboard admin.
+
+### 8.2 Hasil review keamanan (subagent `security-auditor`, 2026-10-10) — temuan sudah diperbaiki
+
+0 Critical, 0 High. Diperbaiki: (Medium) nominal "diterima, nominal berbeda" via tautan dibatasi ≤ 2× max(sisa tagihan,
+nominal diklaim) — selisih lebih besar diarahkan ke dashboard; (Low) hitungan salah kata sandi kini dinaikkan atomik SEBELUM
+membandingkan (tebakan paralel tak bisa melewati batas); `recipient_user_id` disimpan di tautan sebagai pemegang jurnal
+(menggantikan pencarian nomor HP global), fallback owner tertua; teks pelanggan di pesan digest dinetralkan (tautan, format
+WA, baris baru, panjang); tautan kedaluwarsa >30 hari dihapus oleh cron; halaman verifikasi `referrer: no-referrer`.
+Tidak diubah (pola lama): jurnal ditulis di luar transaksi (sama dengan `confirmInvoicePaymentAction`);
+perbandingan `x-cron-secret` non-konstan (sama dengan cron lain). Perlu dicek di VPS: PM2 satu instance (rate limit in-memory),
+`CRON_SECRET` + `BETTER_AUTH_SECRET` terisi, `x-real-ip` dari Nginx. Keputusan bisnis yang dikonfirmasi lewat desain:
+satu tautan membuka SEMUA pembayaran menunggu milik tenant (bukan hanya isi digest).
