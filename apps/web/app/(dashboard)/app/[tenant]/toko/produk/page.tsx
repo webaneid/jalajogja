@@ -6,6 +6,8 @@ import Link from "next/link";
 import { ProductListClient } from "@/components/toko/product-list-client";
 import { ProductTable, type ProductRow } from "@/components/toko/product-table-client";
 import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
+import { hasFullAccess } from "@/lib/permissions";
+import { resolveProducers, resolveInternalProducer } from "@/lib/producer.server";
 
 function formatRupiah(amount: number | string) {
   const n = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -65,6 +67,8 @@ export default async function ProdukPage({
         stock:       schema.products.stock,
         status:      schema.products.status,
         productType: schema.products.productType,
+        producerId:  schema.products.producerId,
+        mitraId:     schema.products.mitraId,
         images:      schema.products.images,
         updatedAt:   schema.products.updatedAt,
       })
@@ -106,6 +110,21 @@ export default async function ProdukPage({
   // Produk bervariasi: stok = jumlah stok variasi, stok utama diabaikan (docs/arsitektur-stok.md).
   const stockTotals  = await getVariableProductStockTotals(tenantClient.db, tenantClient.schema, variableIds);
 
+  // Kolom "Produsen" — ADMIN-ONLY (hasFullAccess toko); produk mitra tidak punya produsen. Batch, tanpa N+1.
+  // Pengguna tanpa akses penuh: produsenLabel null → kolom tidak dirender. docs/arsitektur-produsen.md § 7.4.
+  const canSeeProducer = hasFullAccess(access.tenantUser, "toko");
+  const producerNames = new Map<string, string>();
+  let internalProducerName: string | null = null;
+  if (canSeeProducer) {
+    const ref = { id: access.tenant.id, name: access.tenant.name, tenantType: access.tenant.tenantType };
+    const ids = [...new Set(rows.map((r) => r.producerId).filter((x): x is string => !!x))];
+    const resolved = await resolveProducers(tenantClient, ref, ids);
+    for (const [id, v] of resolved) producerNames.set(id, v.isActive ? v.name : `${v.name} (nonaktif)`);
+    if (rows.some((r) => !r.producerId && !r.mitraId)) {
+      internalProducerName = (await resolveInternalProducer(tenantClient, ref)).name;
+    }
+  }
+
   const tableRows: ProductRow[] = rows.map((product) => {
     const range = priceRanges.get(product.id);
     let priceLabel: string;
@@ -125,6 +144,9 @@ export default async function ProdukPage({
       stock:       product.productType === "variable" ? (stockTotals.get(product.id) ?? 0) : product.stock,
       productType: product.productType,
       status:      product.status,
+      producerLabel: !canSeeProducer || product.mitraId
+        ? null
+        : (product.producerId ? (producerNames.get(product.producerId) ?? "—") : internalProducerName),
     };
   });
 
@@ -169,7 +191,7 @@ export default async function ProdukPage({
       </form>
 
       {/* Tabel produk */}
-      <ProductTable slug={slug} products={tableRows} />
+      <ProductTable slug={slug} products={tableRows} showProducer={canSeeProducer} />
 
       {/* Pagination */}
       {totalPages > 1 && (

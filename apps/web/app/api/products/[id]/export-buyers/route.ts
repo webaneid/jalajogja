@@ -42,12 +42,14 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { createTenantDb } from "@jalajogja/db";
+import { eq } from "drizzle-orm";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasReadAccess, hasFullAccess } from "@/lib/permissions";
 import { displayPhone } from "@/lib/phone";
 import { resolveProductBuyers } from "@/lib/product-buyers.server";
 import { isValidUuid } from "@/lib/is-uuid";
 import { buildProductReport, buildProductConclusion } from "@/lib/product-report";
+import { resolveProducers, resolveInternalProducer } from "@/lib/producer.server";
 
 function fmtDate(d: Date): string {
   return new Date(d).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
@@ -142,8 +144,25 @@ export async function GET(
   if (includeCost) {
     const rep = buildProductReport(rows);
     const rp  = (n: number) => "Rp" + Math.round(n).toLocaleString("id-ID");
+    // Produsen produk (admin-only, sama dengan modal): nama + WhatsApp/kontak. Produk mitra tidak punya produsen.
+    let producerName = "", producerPhone = "";
+    const { db: pdb, schema: ps } = tenantClient;
+    const [pRow] = await pdb.select({ producerId: ps.products.producerId, mitraId: ps.products.mitraId })
+      .from(ps.products).where(eq(ps.products.id, productId)).limit(1);
+    if (pRow && !pRow.mitraId) {
+      const ref = { id: access.tenant.id, name: access.tenant.name, tenantType: access.tenant.tenantType };
+      const view = pRow.producerId
+        ? (await resolveProducers(tenantClient, ref, [pRow.producerId])).get(pRow.producerId) ?? null
+        : await resolveInternalProducer(tenantClient, ref);
+      if (view) {
+        producerName  = view.isActive ? view.name : `${view.name} (nonaktif)`;
+        producerPhone = view.phone ? displayPhone(view.phone.value) : "";
+      }
+    }
+
     const summary: Array<Array<string | number>> = [
       ["Laporan Produk", product.name],
+      ...(producerName ? [["Produsen", producerName], ["WhatsApp/Kontak Produsen", producerPhone || "-"]] : []),
       ["Dihitung dari pesanan LUNAS (produk tenant)", ""],
       [],
       ["Pendapatan Produk", rep.revenue],

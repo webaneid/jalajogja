@@ -16,6 +16,7 @@ export type ProductRow = {
   stock:       number;
   productType: string;
   status:      string;
+  producerLabel?: string | null;   // admin-only; null = produk mitra / tanpa akses
 };
 
 const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
@@ -29,7 +30,7 @@ const TYPE_MAP: Record<string, string> = {
   variable: "Variasi",
 };
 
-export function ProductTable({ slug, products: initialProducts }: { slug: string; products: ProductRow[] }) {
+export function ProductTable({ slug, products: initialProducts, showProducer = false }: { slug: string; products: ProductRow[]; showProducer?: boolean }) {
   const [products, setProducts] = useState<ProductRow[]>(initialProducts);
   const [delId,    setDelId]    = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -59,13 +60,14 @@ export function ProductTable({ slug, products: initialProducts }: { slug: string
 
   return (
     <div className="border border-border rounded-lg overflow-x-auto">
-      <table className="w-full text-sm min-w-[760px]">
+      <table className="w-full text-sm min-w-[900px]">
         <thead>
           <tr className="border-b border-border bg-muted/40">
             <th className="px-4 py-3" />
             <th className="text-left px-4 py-3 font-medium text-muted-foreground">Produk</th>
             <th className="text-left px-4 py-3 font-medium text-muted-foreground">Harga</th>
             <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stok</th>
+            {showProducer && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Produsen</th>}
             <th className="text-left px-4 py-3 font-medium text-muted-foreground">Tipe</th>
             <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
             <th className="px-4 py-3" />
@@ -94,6 +96,7 @@ export function ProductTable({ slug, products: initialProducts }: { slug: string
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap">{p.priceLabel}</td>
                 <td className="px-4 py-3 text-muted-foreground">{p.stock}</td>
+                {showProducer && <td className="px-4 py-3 text-muted-foreground"><div className="truncate max-w-[160px]">{p.producerLabel ?? "—"}</div></td>}
                 <td className="px-4 py-3 text-muted-foreground">{TYPE_MAP[p.productType] ?? p.productType}</td>
                 <td className="px-4 py-3">
                   <Badge variant={st.variant}>{st.label}</Badge>

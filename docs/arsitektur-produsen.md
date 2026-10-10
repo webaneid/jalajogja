@@ -122,7 +122,7 @@ ada-tidaknya WhatsApp) — **tidak** mengirim nomor/alamat ke picker. Tidak ada 
    beda: tidak cek forum_status) + `lib/producer-resolve.ts` (murni, 12 skenario fallback diuji) + `lib/producer.server.ts`.
 2. ✅ API picker `/api/ref/producer-sources` + `toko/produsen/actions.ts` + halaman `/toko/produsen` (+ menu "Produsen" di TokoNav).
 3. ✅ Combobox "Produsen" di form produk (edit + baru; disembunyikan untuk produk mitra) + kartu "Produsen" di detail produk admin.
-4. (Opsional) kolom daftar produk + export.
+4. ✅ (2026-10-10, kode selesai, belum dites browser/deploy) kolom "Produsen" di daftar produk admin (`/toko/produk`, hanya `hasFullAccess(toko)`, produk mitra "—", batch tanpa N+1) + baris "Produsen" & "WhatsApp/Kontak Produsen" di sheet "Ringkasan" export pembeli (hanya `hasFullAccess`, sama dengan modal; produk mitra tanpa baris itu).
 
 ## 10. Di luar cakupan (sengaja)
 
