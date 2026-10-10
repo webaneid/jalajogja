@@ -24,6 +24,9 @@ export type WaNotifKey =
   | "membership_activated"
   | "pj_digest_keuangan"
   | "pj_digest_keanggotaan"
+  | "pj_digest_toko"
+  | "pj_digest_donasi"
+  | "pj_digest_event"
   | "profile_incomplete_reminder"
   | "officer_invite"
   | "letter_sign_request"
@@ -63,6 +66,9 @@ export const WA_NOTIF_DEFAULTS: WaNotifConfig["notifications"] = {
   membership_activated:    true,
   pj_digest_keuangan:      false,   // dikirim dengan skipEventToggle — tidak memakai sakelar ini
   pj_digest_keanggotaan:   false,
+  pj_digest_toko:          false,
+  pj_digest_donasi:        false,
+  pj_digest_event:         false,
   profile_incomplete_reminder: false,
   officer_invite:          false,
   letter_sign_request:     false,

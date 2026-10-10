@@ -4,7 +4,7 @@
 
 export const PJ_CONFIG_KEY = "officer_notification_config";
 
-export const PJ_MODULES = ["keuangan", "keanggotaan"] as const;
+export const PJ_MODULES = ["keuangan", "keanggotaan", "toko", "donasi", "event"] as const;
 export type PjModule = typeof PJ_MODULES[number];
 
 export const PJ_MODULE_LABELS: Record<PjModule, { label: string; hint: string }> = {
@@ -16,9 +16,21 @@ export const PJ_MODULE_LABELS: Record<PjModule, { label: string; hint: string }>
     label: "Keanggotaan (Sekretariat)",
     hint:  "Menerima ringkasan harian (16.00) anggota baru yang aktif dan yang perlu ditindaklanjuti.",
   },
+  toko: {
+    label: "Toko (Pesanan)",
+    hint:  "Menerima ringkasan harian (16.00) pesanan yang sudah dibayar tetapi belum diproses.",
+  },
+  donasi: {
+    label: "Donasi",
+    hint:  "Menerima ringkasan harian (16.00) donasi yang masuk dalam 24 jam terakhir.",
+  },
+  event: {
+    label: "Event (Pendaftar)",
+    hint:  "Menerima ringkasan harian (16.00) pendaftar event baru dalam 24 jam terakhir.",
+  },
 };
 
-export const PJ_MAX_TARGETS: Record<PjModule, number> = { keuangan: 3, keanggotaan: 1 };
+export const PJ_MAX_TARGETS: Record<PjModule, number> = { keuangan: 3, keanggotaan: 1, toko: 1, donasi: 1, event: 1 };
 
 export type PjTarget =
   | { type: "officer";  officerId: string }

@@ -250,3 +250,21 @@ Tidak diubah (pola lama): jurnal ditulis di luar transaksi (sama dengan `confirm
 perbandingan `x-cron-secret` non-konstan (sama dengan cron lain). Perlu dicek di VPS: PM2 satu instance (rate limit in-memory),
 `CRON_SECRET` + `BETTER_AUTH_SECRET` terisi, `x-real-ip` dari Nginx. Keputusan bisnis yang dikonfirmasi lewat desain:
 satu tautan membuka SEMUA pembayaran menunggu milik tenant (bukan hanya isi digest).
+
+### 8.3 Putaran 2 — digest TOKO, DONASI, EVENT (2026-10-10)
+
+Mesin sama (konfigurasi PJ per modul, satu penerima, WA→email, penanda per modul+jam), jadwal harian **16.00**
+zona waktu tenant, TIDAK mengirim pesan kosong. Tanpa tautan verifikasi — murni informasi + tautan dashboard.
+Isi:
+- **Toko:** semua pesanan (baris pengiriman penjual `tenant`, invoice `paid`) yang masih berstatus `pending`
+  (belum diproses) — seperti keuangan, terus muncul sampai diproses. Memuat pemesan, nomor invoice, barang, kurir/ambil sendiri.
+- **Donasi:** donasi yang dikonfirmasi 24 jam terakhir (invoice lunas berisi item donasi): donatur ("Anonim" bila
+  anonim), campaign, nominal + total. Hanya yang BARU (bukan kumulatif).
+- **Event:** pendaftar baru 24 jam terakhir (bukan `cancelled`): nama, HP, event.
+Tidak ada migration baru. Kunci event WA baru `pj_digest_toko|donasi|event` (dikirim dengan `skipEventToggle`).
+
+**Review keamanan putaran 2 (subagent, 2026-10-10):** 0 Critical/High. Diperbaiki: donasi bisa terhitung ganda bila satu
+invoice punya >1 payment lunas dalam jendela (kini dedup per item), digest event hanya menghitung status `confirmed`/`attended`
+(tiket berbayar `pending` tidak dihitung), nama penerima dinetralkan. Disengaja: digest toko tidak dibatasi waktu
+(pengingat sampai diproses); nomor HP pendaftar event ikut dikirim ke PJ (sepadan digest keanggotaan); bila WA dan email
+gagal, digest hari itu tidak dicoba ulang (sama dengan keuangan).

@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomBytes } from "crypto";
-import { and, asc, eq, gte, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import {
   db, tenants, tenantMemberships, members, contacts, pjVerificationLinks,
   createTenantDb, getSetting, upsertSetting,
@@ -11,7 +11,7 @@ import { sendTenantMail, sendPlatformMail, isPlatformMailConfigured, type Tenant
 import { getTenantTimezone, formatInTz, todayInTz } from "@/lib/tenant-timezone.server";
 import { normalizePhone, displayPhone } from "@/lib/phone";
 import {
-  PJ_CONFIG_KEY, type OfficerNotificationConfig, type PjTarget,
+  PJ_CONFIG_KEY, type OfficerNotificationConfig, type PjTarget, type PjModule,
 } from "@/lib/pj-config";
 import { isValidWhatsappGroupUrl, WHATSAPP_GROUP_SETTING_KEY } from "@/lib/whatsapp-group";
 import type { MembershipConfigData } from "@/app/(dashboard)/app/[tenant]/settings/actions";
@@ -34,6 +34,7 @@ export const PJ_LINK_TTL_HOURS = 36;
 const KEUANGAN_SLOT_HOURS = [13, 16, 18] as const;
 const DAILY_DIGEST_HOUR   = 16;
 const STATE_KEY           = "pj_digest_state";
+const DAILY_MODULES       = ["keanggotaan", "toko", "donasi", "event"] as const;
 
 export function hashPjToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -159,13 +160,13 @@ type DigestState = Record<string, string>;
 /**
  * Dipanggil cron (tiap jam). Aman dipanggil berulang: penanda per modul+jam mencegah kirim ganda.
  */
-export async function runPjDigests(now = new Date()): Promise<{ keuangan: number; keanggotaan: number }> {
+export async function runPjDigests(now = new Date()): Promise<Record<PjModule, number>> {
   const activeTenants = await db
     .select({ id: tenants.id, slug: tenants.slug, tenantType: tenants.tenantType })
     .from(tenants)
     .where(eq(tenants.isActive, true));
 
-  const sent = { keuangan: 0, keanggotaan: 0 };
+  const sent: Record<PjModule, number> = { keuangan: 0, keanggotaan: 0, toko: 0, donasi: 0, event: 0 };
 
   // Tautan kedaluwarsa > 30 hari dihapus (menyimpan nomor HP penerima — jangan disimpan selamanya).
   try {
@@ -199,15 +200,23 @@ export async function runPjDigests(now = new Date()): Promise<{ keuangan: number
         }
       }
 
-      const kea = config.keanggotaan;
-      if (kea?.enabled && kea.targets.length > 0 && hour === DAILY_DIGEST_HOUR) {
+      // Ringkasan harian (16.00 lokal): satu PJ per modul, tidak pernah pesan kosong.
+      if (hour === DAILY_DIGEST_HOUR) {
         const stamp = `${localDate}T${hour}`;
-        if (state.keanggotaan !== stamp) {
-          state.keanggotaan = stamp;
-          await upsertSetting(tenantDb, STATE_KEY, "notif", state);
-          sent.keanggotaan += await sendKeanggotaanDigest({
-            slug: t.slug, tenantId: t.id, tenantType: t.tenantType, tenantDb, targets: kea.targets, now,
-          });
+        for (const mod of DAILY_MODULES) {
+          const mc = config[mod];
+          if (!mc?.enabled || mc.targets.length === 0 || state[mod] === stamp) continue;
+          state[mod] = stamp;
+          await upsertSetting(tenantDb, STATE_KEY, "notif", state); // tandai SEBELUM kirim
+          try {
+            sent[mod] += mod === "keanggotaan"
+              ? await sendKeanggotaanDigest({
+                  slug: t.slug, tenantId: t.id, tenantType: t.tenantType, tenantDb, targets: mc.targets, now,
+                })
+              : await sendActivityDigest({ slug: t.slug, tenantDb, tz, module: mod, targets: mc.targets, now });
+          } catch (err) {
+            console.error(`[runPjDigests] ${t.slug}/${mod} gagal:`, err);
+          }
         }
       }
     } catch (err) {
@@ -296,7 +305,7 @@ async function sendKeuanganDigest(opts: {
 
   const waText =
     `💰 *Verifikasi Pembayaran — ${orgName}*\n\n` +
-    `Assalamu'alaikum ${recipient.name}, ada *${pending.length}* pembayaran yang belum diverifikasi:\n\n` +
+    `Assalamu'alaikum ${cleanUserText(recipient.name, 60)}, ada *${pending.length}* pembayaran yang belum diverifikasi:\n\n` +
     `${lines.join("\n\n")}${more}\n\n` +
     `Cek mutasi rekening/QRIS lalu verifikasi tanpa login lewat tautan ini:\n${url}\n\n` +
     `Kata sandi: *4 digit terakhir nomor HP Anda*. Tautan berlaku ${PJ_LINK_TTL_HOURS} jam.`;
@@ -400,7 +409,7 @@ async function sendKeanggotaanDigest(opts: {
 
   const waText =
     `📋 *Ringkasan Keanggotaan — ${orgName}*\n\n` +
-    `Assalamu'alaikum ${recipient.name},\n\n${parts.join("\n\n")}\n\n` +
+    `Assalamu'alaikum ${cleanUserText(recipient.name, 60)},\n\n${parts.join("\n\n")}\n\n` +
     `Dashboard: ${dashboardUrl}`;
 
   const via = await deliverToRecipient({
@@ -411,3 +420,137 @@ async function sendKeanggotaanDigest(opts: {
   return via === "none" ? 0 : 1;
 }
 
+
+
+// ── Digest TOKO / DONASI / EVENT ─────────────────────────────────────────────────────────
+// Informasi saja (tanpa tautan verifikasi) + tautan ke dashboard. Lihat docs § 8.3.
+
+async function sendActivityDigest(opts: {
+  slug: string; tenantDb: TenantDbHandle; tz: string;
+  module: "toko" | "donasi" | "event"; targets: PjTarget[]; now: Date;
+}): Promise<number> {
+  const { slug, tenantDb, tz, module: mod, targets, now } = opts;
+  const { db: tdb, schema } = tenantDb;
+  const since = new Date(now.getTime() - 24 * 3_600_000);
+  const MAX = 10;
+  const when = (d: Date) => formatInTz(d, tz, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+  let title = "";
+  let body  = "";
+  let path  = "";
+
+  if (mod === "toko") {
+    title = "Pesanan Toko"; path = "toko/pesanan";
+    // Semua pesanan lunas yang belum diproses (bukan hanya yang baru) — pengingat otomatis.
+    const lines = await tdb
+      .select({
+        invoiceId:    schema.invoiceShippingLines.invoiceId,
+        courier:      schema.invoiceShippingLines.courier,
+        service:      schema.invoiceShippingLines.service,
+        method:       schema.invoiceShippingLines.deliveryMethod,
+        cityName:     schema.invoices.shippingCityName,
+        invoiceNumber: schema.invoices.invoiceNumber,
+        customerName: schema.invoices.customerName,
+        createdAt:    schema.invoices.createdAt,
+      })
+      .from(schema.invoiceShippingLines)
+      .innerJoin(schema.invoices, eq(schema.invoices.id, schema.invoiceShippingLines.invoiceId))
+      .where(and(
+        eq(schema.invoiceShippingLines.sellerType, "tenant"),
+        eq(schema.invoiceShippingLines.status, "pending"),
+        eq(schema.invoices.status, "paid"),
+      ))
+      .orderBy(asc(schema.invoices.createdAt))
+      .limit(100);
+    if (lines.length === 0) return 0;
+
+    const ids = [...new Set(lines.map((l) => l.invoiceId))];
+    const items = await tdb
+      .select({ invoiceId: schema.invoiceItems.invoiceId, name: schema.invoiceItems.name, qty: schema.invoiceItems.quantity })
+      .from(schema.invoiceItems)
+      .where(and(inArray(schema.invoiceItems.invoiceId, ids), eq(schema.invoiceItems.itemType, "product")));
+    const itemsBy = new Map<string, string[]>();
+    for (const it of items) itemsBy.set(it.invoiceId, [...(itemsBy.get(it.invoiceId) ?? []), `${cleanUserText(it.name, 40)} ×${it.qty}`]);
+
+    const rows = lines.slice(0, MAX).map((l, i) => {
+      const ship = l.method === "pickup" ? "Ambil sendiri" : [l.courier?.toUpperCase(), l.service].filter(Boolean).join(" ") + (l.cityName ? ` → ${cleanUserText(l.cityName, 30)}` : "");
+      return `${i + 1}. *${cleanUserText(l.customerName) || "(tanpa nama)"}* — ${l.invoiceNumber}\n   ${(itemsBy.get(l.invoiceId) ?? ["(tanpa barang)"]).slice(0, 3).join(", ")}\n   ${ship || "-"} • dipesan ${when(l.createdAt)}`;
+    });
+    body = `Ada *${lines.length}* pesanan yang sudah dibayar dan belum diproses:\n\n${rows.join("\n\n")}${lines.length > MAX ? `\n…dan ${lines.length - MAX} lainnya.` : ""}`;
+  }
+
+  if (mod === "donasi") {
+    title = "Donasi Masuk"; path = "donasi";
+    const allRows = await tdb
+      .select({
+        itemId:    schema.invoiceItems.id,
+        name:      schema.invoices.customerName,
+        itemName:  schema.invoiceItems.name,
+        desc:      schema.invoiceItems.description,
+        total:     schema.invoiceItems.total,
+        confirmed: schema.payments.confirmedAt,
+      })
+      .from(schema.invoiceItems)
+      .innerJoin(schema.invoices, eq(schema.invoices.id, schema.invoiceItems.invoiceId))
+      .innerJoin(schema.invoicePayments, eq(schema.invoicePayments.invoiceId, schema.invoices.id))
+      .innerJoin(schema.payments, eq(schema.payments.id, schema.invoicePayments.paymentId))
+      .where(and(
+        eq(schema.invoiceItems.itemType, "donation"),
+        eq(schema.invoices.status, "paid"),
+        eq(schema.payments.status, "paid"),
+        gte(schema.payments.confirmedAt, since),
+      ))
+      .orderBy(asc(schema.payments.confirmedAt))
+      .limit(100);
+    // Satu item bisa ikut >1 payment lunas dalam jendela waktu (JOIN) — hitung sekali per item.
+    const seen = new Set<string>();
+    const rows = allRows.filter((r) => (seen.has(r.itemId) ? false : (seen.add(r.itemId), true)));
+    if (rows.length === 0) return 0;
+
+    const total = rows.reduce((s, r) => s + parseFloat(String(r.total)), 0);
+    const list = rows.slice(0, MAX).map((r, i) => {
+      const donor = (r.desc ?? "").trim().toLowerCase() === "anonim" ? "Anonim" : (cleanUserText(r.name) || "(tanpa nama)");
+      return `${i + 1}. *${donor}* — Rp ${waRupiah(parseFloat(String(r.total)))}\n   ${cleanUserText(r.itemName, 60)}${r.confirmed ? ` • ${when(r.confirmed)}` : ""}`;
+    });
+    body = `Donasi yang dikonfirmasi 24 jam terakhir: *${rows.length}* donasi, total *Rp ${waRupiah(total)}*.\n\n${list.join("\n")}${rows.length > MAX ? `\n…dan ${rows.length - MAX} lainnya.` : ""}`;
+  }
+
+  if (mod === "event") {
+    title = "Pendaftar Event"; path = "event/acara";
+    const rows = await tdb
+      .select({
+        name:    schema.eventRegistrations.attendeeName,
+        phone:   schema.eventRegistrations.attendeePhone,
+        at:      schema.eventRegistrations.createdAt,
+        event:   schema.events.title,
+      })
+      .from(schema.eventRegistrations)
+      .leftJoin(schema.events, eq(schema.events.id, schema.eventRegistrations.eventId))
+      .where(and(
+        gte(schema.eventRegistrations.createdAt, since),
+        // pending = tiket berbayar yang belum lunas — bukan pendaftar sungguhan.
+        inArray(schema.eventRegistrations.status, ["confirmed", "attended"]),
+      ))
+      .orderBy(asc(schema.eventRegistrations.createdAt))
+      .limit(100);
+    if (rows.length === 0) return 0;
+
+    const list = rows.slice(0, MAX).map((r, i) =>
+      `${i + 1}. *${cleanUserText(r.name) || "(tanpa nama)"}*${r.phone ? ` — ${displayPhone(r.phone)}` : ""}\n   ${cleanUserText(r.event, 60) || "-"} • ${when(r.at)}`);
+    body = `Pendaftar event baru 24 jam terakhir: *${rows.length}* orang.\n\n${list.join("\n")}${rows.length > MAX ? `\n…dan ${rows.length - MAX} lainnya.` : ""}`;
+  }
+
+  const [recipient] = await resolvePjRecipients(tenantDb, targets);
+  if (!recipient) return 0;
+
+  const orgName = await resolveOrgName(tenantDb, slug);
+  const appBase = (process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com").replace(/\/$/, "");
+  const waText =
+    `🔔 *${title} — ${orgName}*\n\nAssalamu'alaikum ${cleanUserText(recipient.name, 60)},\n\n${body}\n\nDashboard: ${appBase}/app/${slug}/${path}`;
+
+  const via = await deliverToRecipient({
+    slug, tenantDb, event: `pj_digest_${mod}` as WaNotifKey, recipient,
+    subject: `${title} — ${orgName}`, waText,
+  });
+  return via === "none" ? 0 : 1;
+}
