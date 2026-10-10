@@ -1193,7 +1193,7 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
      Security review (subagent) sudah dijalankan 2x, temuan diperbaiki. Belum diuji: kirim WA/email sungguhan.
   Aturan kerja baru: type-check → security review → baru commit (memory `feedback_security_review_before_commit`).
   Belum dikerjakan / terbuka: rate limit `checkoutAction`, alternatif gate OTP checkout untuk tenant tanpa WA, produsen fase 4,
-  harga produk mitra, laporan per produsen, aturan "alumni dihitung anggota?", cadangan PJ keuangan, template digest PJ editable.
+  harga produk mitra (DITUNDA user), laporan per produsen (rencana di `docs/arsitektur-produsen.md` § 14, DITUNDA user), aturan "alumni dihitung anggota?" (SELESAI: bukan anggota), cadangan PJ keuangan + template digest PJ (SELESAI).
 - Sesi 2026-10-08/09 (SEMUA sudah deploy + terverifikasi): fix gate OTP checkout, model harga Dasar/Publik/Anggota, Laporan Produk,
   stok produk bervariasi, produsen produk fase 1–3 — lihat memory `project_session_log_20261009`.
 - Backlog lama belum dikonfirmasi statusnya (perlu verifikasi manual apakah sudah dikerjakan di

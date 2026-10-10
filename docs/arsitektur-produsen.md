@@ -159,3 +159,24 @@ publik; form produk hanya menerima id+nama produsen. **Diperbaiki**: `normalizeP
 WhatsApp custom tak efektif → server kini wajib `^\+\d{8,15}$`; tautan `wa.me` hanya digit. **Dipertimbangkan lalu DITARIK atas keputusan user**:
 menyembunyikan kontak pemilik yang sudah keluar tenant (privasi) — user memilih data tetap tampil dengan lencana, karena ini alat internal admin.
 **Diterima (risiko rendah)**: tidak ada unique index `(source_type, source_id)` — dua klik bersamaan bisa membuat duplikat (admin-only).
+
+## 14. RENCANA — Laporan per produsen (DITUNDA atas keputusan user 2026-10-10, belum dikerjakan)
+
+Status: **hanya rencana**, belum ada kode. User memilih menunda ("nanti aja"); lanjutkan saat siap. Tidak perlu migration.
+
+**Dasar:** Laporan Produk (`lib/product-report.ts`, `buildProductReport`) sudah per produk, dan `products.producer_id` sudah ada. Laporan
+per produsen = jumlah laporan semua produk milik satu produsen (pakai ulang `resolveProductBuyers` + `buildProductReport`; tanpa rumus baru).
+
+**Usulan (belum disetujui user):**
+- Halaman admin `/toko/produsen/[id]` (dibuka dari baris produsen), hanya `hasFullAccess(toko)` (memuat modal = rahasia bisnis).
+- Isi: ringkasan (unit terjual, pendapatan, modal ke produsen, keuntungan, piutang) + tabel per produk + export Excel
+  (sheet ringkasan produsen + satu sheet per produk). Baris "Internal" untuk produk tanpa produsen agar total cocok dengan laporan produk.
+- Hanya pesanan LUNAS yang dihitung; belum lunas = piutang (aturan sama dengan laporan produk). Produk mitra tidak ikut.
+- Filter periode (tanggal dari/sampai) untuk rekap bulanan; tanpa filter = semua waktu.
+
+**Contoh angka untuk menyepakati arti kolom** (produsen "Bu Siti"): Kue A modal 10.000 / jual 15.000 / 20 unit lunas; Kue B modal 20.000 /
+jual 30.000 / 5 unit lunas → terjual 25 unit, pendapatan 450.000, modal ke produsen 300.000, keuntungan 150.000.
+
+**Keputusan yang masih menunggu user:** (1) "modal ke produsen" ditampilkan sebagai "Yang harus dibayar ke produsen" atau laporan biasa
+(usulan: laporan biasa; catat pembayaran ke produsen = fitur terpisah yang lebih besar); (2) setuju filter periode + isi export di atas.
+Setelah disetujui: urutan SOP (docs → kode → `tsc` → security review → commit).
