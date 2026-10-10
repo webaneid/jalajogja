@@ -289,3 +289,18 @@ dapat dua pesan (dibandingkan ke SEMUA penerima utama); `renderTemplateString` m
 mencetak fungsi). Catatan desain: "tanpa PJ utama" = tak satu pun PJ utama yang bisa dihubungi (mis. tak punya HP); bila daftar
 PJ utama dikosongkan sama sekali, modul otomatis nonaktif (cadangan ikut tak jalan) — diisi minimal satu PJ utama. Risiko orang
 dalam diterima: admin bisa menulis teks bebas (termasuk tautan lain) ke bendahara — setara hak admin yang ada.
+
+### 8.5 Status deploy & checklist uji (2026-10-11)
+
+**Sudah:** kode di-push (`99875ec`) dan di-deploy; migration `0073` jalan; cron tiap jam terpasang di crontab user `webane`:
+`0 * * * * curl -s -H "x-cron-secret: $CRON_SECRET" https://jalakarta.com/api/cron/pj-digest >> /var/log/jalajogja-cron.log 2>&1`
+(`CRON_SECRET` didefinisikan di crontab; sama dengan baris `stock-check`). Panggilan manual → `{"ok":true,"sent":{"keuangan":0,...}}`
+(0 karena belum ada PJ / bukan jam digest). Server berjam UTC, digest mengikuti jam lokal tenant (13/16/18 WIB = 06/09/11 UTC).
+**Belum diuji sungguhan (lanjutkan di sesi berikutnya):**
+1. Log `/var/log/jalajogja-cron.log` terisi `ok:true` setelah menit 0 (cek `sudo grep webane /var/log/syslog | tail`).
+2. Isi PJ satu tenant uji di `/settings/notifications` (nomor HP sendiri), buat satu pembayaran `submitted`, panggil/ tunggu jam 13/16/18 WIB:
+   WA/email masuk? tautan `/{slug}/verifikasi/{token}` terbuka, kata sandi = 4 digit HP, tombol Benar / nominal berbeda / Tidak ada jalan?
+3. Digest harian 16.00 (keanggotaan/toko/donasi/event), cadangan keuangan (eskalasi >48 jam), edit teks template PJ.
+4. OTP checkout via email (tenant tanpa WA), kolom Produsen di `/toko/produk` + export pembeli (belum dilihat di browser).
+**Pelajaran:** lihat `docs/lessons-learned.md` [2026-10-11] — log cron yang tak bisa ditulis membuat cron TIDAK jalan.
+

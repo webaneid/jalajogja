@@ -264,3 +264,5 @@ admin, header detail produk admin, daftar produk di pembuatan pesanan manual, wi
 (sebelumnya produk bervariasi dengan stok utama 0 ikut terhitung "rendah" padahal variasinya banyak), dan form produk
 (kolom Stok utama disembunyikan untuk produk bervariasi, diganti total dari variasi). Helper:
 `getVariableProductStockTotals()` di `packages/db/src/helpers/stock.ts`.
+
+> **Catatan 2026-10-11:** cron `stock-check` (10:00 harian) ternyata gagal menulis log (`/var/log/jalajogja-cron.log` tak bisa ditulis user `webane`) sehingga tidak berjalan sampai izin file diperbaiki hari ini. Cek log setelah jam 10.00 UTC berikutnya untuk memastikan hasilnya wajar (auto-cancel invoice kedaluwarsa dll baru benar-benar aktif sekarang). Lihat lessons-learned [2026-10-11].

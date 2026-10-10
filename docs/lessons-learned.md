@@ -850,3 +850,7 @@
 
 <!-- Semua chunk log kronologis (0, A, B, C, D, 2, 5, 6, 7, 8) + section "## Lessons Learned"/"Arsitektur Modul Toko"/"Arsitektur Login Universal" lama sudah selesai dimigrasikan -->
 
+## [2026-10-11] Cron dengan redirect `>> /var/log/...` diam-diam TIDAK jalan bila file log tak bisa ditulis user cron
+**Masalah:** baris crontab `stock-check` (`>> /var/log/jalajogja-cron.log 2>&1`) tidak pernah menghasilkan apa pun: user `webane` tidak boleh membuat file di `/var/log` (`touch` → Permission denied). Shell membuka file redirect SEBELUM menjalankan perintah; gagal buka → curl tidak dijalankan sama sekali, tanpa pesan error. Akibatnya cron stok (`/api/cron/stock-check`, `docs/arsitektur-stok.md`) kemungkinan besar tidak berjalan di produksi sampai 2026-10-11.
+**Fix:** `sudo touch /var/log/jalajogja-cron.log && sudo chown webane:webane ...`.
+**Pencegahan:** setiap kali memasang cron baru: (1) uji `touch` file lognya sebagai user cron; (2) JANGAN buang output ke `/dev/null` (kegagalan tak terlihat); (3) cek `tail` log setelah menit 0 pertama; (4) placeholder di instruksi (mis. `ISI_NILAI_CRON_SECRET`) harus jelas diganti — user hampir menyimpannya apa adanya; (5) `$CRON_SECRET` di crontab hanya ada bila didefinisikan di crontab itu sendiri, tidak otomatis dari `.env.local`.

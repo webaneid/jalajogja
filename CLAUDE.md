@@ -1182,9 +1182,10 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 > Riwayat detail tiap perbaikan ada di `docs/lessons-learned.md` dan `docs/arsitektur-*.md` masing-masing modul.
 
 - **Sesi 2026-10-10 — ringkasan** (detail + keputusan: memory `project_session_log_20261010` dan dokumen masing-masing).
-  Status git: 4 commit BELUM di-push/deploy (`9898350`, `9bedfa4`, `8f75b5d`, `99d53a3`); sebelumnya (`246d8c4` dst, stepper forum +
-  notifikasi aktif + kartu grup WA) SUDAH deploy + dicek user. Migration yang WAJIB di VPS: `0073_pj_verification.sql`
-  (`0071`/`0072` sudah jalan).
+  Status git: SEMUA sudah di-push (`99875ec`, 2026-10-11) dan di-deploy ke VPS (migration `0073` jalan; build+restart OK; user cek "lainnya aman").
+  Cron `pj-digest` TIAP JAM sudah dipasang di crontab user `webane` (log `/var/log/jalajogja-cron.log`); panggilan manual → `{"ok":true,"sent":{...0}}`.
+  MASIH HARUS dicek user: (a) log cron setelah 00:00 UTC (07:00 WIB) berisi `ok:true`; (b) uji kirim sungguhan WA/email digest + tautan
+  verifikasi (isi PJ 1 tenant uji + 1 pembayaran "menunggu verifikasi", tunggu jam 13/16/18 WIB) — `docs/arsitektur-notifikasi-pengurus.md` § 8.5.
   1. **Forum: persetujuan pengurus opsional** (`requireApproval` di `/settings/keanggotaan`) + suspend/reject TIDAK bisa diaktifkan
      ulang oleh anggota (hanya admin; tombol "Setujui Kembali" untuk rejected) — `docs/arsitektur-gabung-forum.md` § 9g.
   2. **Notifikasi PJ** — verifikasi bendahara via tautan tanpa login (`/{slug}/verifikasi/{token}`, kata sandi = 4 digit HP PJ) +
@@ -1192,8 +1193,11 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
      `lib/payment-verification.server.ts`; cron `/api/cron/pj-digest` TIAP JAM (belum dipasang di VPS) — `docs/arsitektur-notifikasi-pengurus.md` § 8.
      Security review (subagent) sudah dijalankan 2x, temuan diperbaiki. Belum diuji: kirim WA/email sungguhan.
   Aturan kerja baru: type-check → security review → baru commit (memory `feedback_security_review_before_commit`).
-  Belum dikerjakan / terbuka: rate limit `checkoutAction`, alternatif gate OTP checkout untuk tenant tanpa WA, produsen fase 4,
-  harga produk mitra (DITUNDA user), laporan per produsen (rencana di `docs/arsitektur-produsen.md` § 14, DITUNDA user), aturan "alumni dihitung anggota?" (SELESAI: bukan anggota), cadangan PJ keuangan + template digest PJ (SELESAI).
+  Selesai sesi ini juga: rate limit checkout, OTP checkout via email, produsen fase 4, cadangan PJ + template digest editable, alumni BUKAN anggota
+  (tiket khusus anggota dijaga server), lookup-member menyamarkan nama (stambuk/email).
+  Terbuka / ditunda (detail: memory `project_session_log_20261010` bagian "Backlog"): harga produk mitra (DITUNDA user), laporan per produsen
+  (rencana `docs/arsitektur-produsen.md` § 14, DITUNDA user), tindak lanjut `resolveIdentity` email, voucher `restrictPhone/Email`, filter
+  `forum_status` di direktori publik (diputuskan: tampil semua dulu), `real_ip_header CF-Connecting-IP` (opsional).
 - Sesi 2026-10-08/09 (SEMUA sudah deploy + terverifikasi): fix gate OTP checkout, model harga Dasar/Publik/Anggota, Laporan Produk,
   stok produk bervariasi, produsen produk fase 1–3 — lihat memory `project_session_log_20261009`.
 - Backlog lama belum dikonfirmasi statusnya (perlu verifikasi manual apakah sudah dikerjakan di
