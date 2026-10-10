@@ -37,11 +37,31 @@ export type PjTarget =
   | { type: "division"; divisionId: string }
   | { type: "contact";  name: string; phone?: string; email?: string };
 
-export type PjModuleConfig = { enabled: boolean; targets: PjTarget[] };
+// `backup` hanya untuk keuangan: penerima cadangan bila pembayaran >48 jam belum diverifikasi atau tak ada PJ utama yang terhubung.
+export type PjModuleConfig = { enabled: boolean; targets: PjTarget[]; backup?: PjTarget | null };
 export type OfficerNotificationConfig = Partial<Record<PjModule, PjModuleConfig>>;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parseTarget(t: unknown, normalizePhone: (raw: string) => string | null): PjTarget | null {
+  if (!t || typeof t !== "object") return null;
+  const tt = t as Record<string, unknown>;
+  if (tt.type === "officer" && typeof tt.officerId === "string" && UUID_RE.test(tt.officerId)) {
+    return { type: "officer", officerId: tt.officerId };
+  }
+  if (tt.type === "division" && typeof tt.divisionId === "string" && UUID_RE.test(tt.divisionId)) {
+    return { type: "division", divisionId: tt.divisionId };
+  }
+  if (tt.type === "contact") {
+    const name  = typeof tt.name === "string" ? tt.name.trim().slice(0, 100) : "";
+    const phone = typeof tt.phone === "string" && tt.phone.trim() ? normalizePhone(tt.phone.trim()) : null;
+    const email = typeof tt.email === "string" && EMAIL_RE.test(tt.email.trim()) ? tt.email.trim().slice(0, 200) : null;
+    if (!name || (!phone && !email)) return null;
+    return { type: "contact", name, ...(phone ? { phone } : {}), ...(email ? { email } : {}) };
+  }
+  return null;
+}
 
 /**
  * Validasi + bersihkan input mentah (dari klien) menjadi konfigurasi yang aman disimpan.
@@ -66,22 +86,13 @@ export function sanitizePjConfig(
 
     const targets: PjTarget[] = [];
     for (const t of rawTargets) {
-      if (!t || typeof t !== "object") continue;
-      const tt = t as Record<string, unknown>;
-      if (tt.type === "officer" && typeof tt.officerId === "string" && UUID_RE.test(tt.officerId)) {
-        targets.push({ type: "officer", officerId: tt.officerId });
-      } else if (tt.type === "division" && typeof tt.divisionId === "string" && UUID_RE.test(tt.divisionId)) {
-        targets.push({ type: "division", divisionId: tt.divisionId });
-      } else if (tt.type === "contact") {
-        const name  = typeof tt.name === "string" ? tt.name.trim().slice(0, 100) : "";
-        const phone = typeof tt.phone === "string" && tt.phone.trim() ? normalizePhone(tt.phone.trim()) : null;
-        const email = typeof tt.email === "string" && EMAIL_RE.test(tt.email.trim()) ? tt.email.trim().slice(0, 200) : null;
-        if (!name || (!phone && !email)) continue;
-        targets.push({ type: "contact", name, ...(phone ? { phone } : {}), ...(email ? { email } : {}) });
-      }
+      const parsed = parseTarget(t, normalizePhone);
+      if (parsed) targets.push(parsed);
       if (targets.length >= PJ_MAX_TARGETS[mod]) break;
     }
-    out[mod] = { enabled, targets };
+    // Cadangan: hanya keuangan, satu orang.
+    const backup = mod === "keuangan" ? parseTarget((m as { backup?: unknown }).backup, normalizePhone) : null;
+    out[mod] = mod === "keuangan" ? { enabled, targets, backup } : { enabled, targets };
   }
   return out;
 }

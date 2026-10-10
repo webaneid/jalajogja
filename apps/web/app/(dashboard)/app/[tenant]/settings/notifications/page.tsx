@@ -7,6 +7,7 @@ import type { WaNotifConfig } from "@/lib/whatsapp";
 import { PjSettingsForm } from "@/components/settings/pj-settings-form";
 import { canManageUsers } from "@/lib/permissions";
 import { PJ_CONFIG_KEY, type OfficerNotificationConfig } from "@/lib/pj-config";
+import { PJ_DIGEST_TEMPLATE_SETTING_KEY, type PjDigestTemplateKey } from "@/lib/pj-digest-templates";
 import { db, members } from "@jalajogja/db";
 import { eq, inArray } from "drizzle-orm";
 
@@ -56,6 +57,7 @@ export default async function NotificationsSettingsPage({
     pjDivisions = divisionRows.map((d) => ({ value: d.id, label: d.name }));
   }
   const pjConfig = (settings[PJ_CONFIG_KEY] as OfficerNotificationConfig | undefined) ?? {};
+  const pjTemplates = (settings[PJ_DIGEST_TEMPLATE_SETTING_KEY] as Partial<Record<PjDigestTemplateKey, string>> | undefined) ?? {};
 
   return (
     <div className="space-y-8">
@@ -92,7 +94,7 @@ export default async function NotificationsSettingsPage({
               Bendahara juga mendapat tautan untuk memverifikasi pembayaran tanpa login.
             </p>
           </div>
-          <PjSettingsForm slug={slug} officers={pjOfficers} divisions={pjDivisions} defaultConfig={pjConfig} />
+          <PjSettingsForm slug={slug} officers={pjOfficers} divisions={pjDivisions} defaultConfig={pjConfig} customTemplates={pjTemplates} />
         </section>
       )}
 

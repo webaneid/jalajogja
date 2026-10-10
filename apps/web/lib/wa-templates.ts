@@ -119,7 +119,8 @@ export const WA_TEMPLATE_DEFAULTS: Record<string, string> = {
 // Ganti semua {{key}} dengan vars[key] — string replace murni, tidak pernah eval JS.
 // Placeholder yang tidak ada di vars diganti string kosong (bukan error).
 export function renderTemplateString(tpl: string, vars: WaTemplateVars): string {
-  return tpl.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => vars[key] ?? "");
+  return tpl.replace(/\{\{(\w+)\}\}/g, (_match, key: string) =>
+    Object.prototype.hasOwnProperty.call(vars, key) ? (vars[key] ?? "") : "");
 }
 
 // Render pakai template default kode — tanpa cek override tenant.

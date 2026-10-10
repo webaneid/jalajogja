@@ -3,7 +3,7 @@
 import { getTenantAccess } from "@/lib/tenant";
 import { canManageUsers } from "@/lib/permissions";
 import { createTenantDb, db, tenants, members, tenantMemberships, contacts, refProvinces, refRegencies, refDistricts, refVillages } from "@jalajogja/db";
-import { upsertSettings, upsertSetting } from "@jalajogja/db";
+import { upsertSettings, upsertSetting, getSetting } from "@jalajogja/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
@@ -12,6 +12,9 @@ import { normalizePhone } from "@/lib/phone";
 import { FORUM_MEMBERSHIP_NUMBER_FORMATS, type ForumMembershipNumberFormat } from "@/lib/forum-membership-number";
 import { isValidWhatsappGroupUrl, WHATSAPP_GROUP_SETTING_KEY } from "@/lib/whatsapp-group";
 import { sanitizePjConfig, PJ_CONFIG_KEY, PJ_MODULES } from "@/lib/pj-config";
+import {
+  isPjDigestTemplateKey, pjTemplateRequiresUrl, PJ_DIGEST_TEMPLATE_MAX_LENGTH, PJ_DIGEST_TEMPLATE_SETTING_KEY,
+} from "@/lib/pj-digest-templates";
 
 type ActionResult = { error?: string };
 type StrictActionResult = { success: true } | { success: false; error: string };
@@ -1322,10 +1325,43 @@ export async function savePjConfigAction(slug: string, input: unknown): Promise<
       : t.type === "division" ? divisionIds.has(t.divisionId)
       : true,
     );
+    if (m.backup) {
+      const b = m.backup;
+      const ok = b.type === "officer" ? officerIds.has(b.officerId)
+        : b.type === "division" ? divisionIds.has(b.divisionId) : true;
+      if (!ok) m.backup = null;
+    }
     if (m.enabled && m.targets.length === 0) m.enabled = false; // aktif tanpa penerima tidak berarti
   }
 
   await upsertSetting(tenantDb, PJ_CONFIG_KEY, "notif", clean);
+  revalidatePath(`/app/${slug}/settings/notifications`);
+  return {};
+}
+
+
+// Teks kerangka digest PJ yang bisa diedit per tenant. Lihat docs/arsitektur-notifikasi-pengurus.md § 8.4.
+// text kosong/null = kembali ke default kode. Hanya yang boleh mengelola pengguna.
+export async function savePjDigestTemplateAction(slug: string, key: string, text: string | null): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
+  if (!isPjDigestTemplateKey(key)) return { error: "Jenis pesan tidak dikenal." };
+
+  const trimmed = (text ?? "").trim();
+  if (trimmed.length > PJ_DIGEST_TEMPLATE_MAX_LENGTH) {
+    return { error: `Teks terlalu panjang (maks. ${PJ_DIGEST_TEMPLATE_MAX_LENGTH} karakter).` };
+  }
+  if (trimmed && pjTemplateRequiresUrl(key) && !trimmed.includes("{{url}}")) {
+    return { error: "Teks ini wajib memuat {{url}} — tanpa tautan, bendahara tidak bisa memverifikasi." };
+  }
+
+  const tenantDb = createTenantDb(slug);
+  const current = (await getSetting<Record<string, string>>(tenantDb, PJ_DIGEST_TEMPLATE_SETTING_KEY, "notif")) ?? {};
+  const next = { ...current };
+  if (trimmed) next[key] = trimmed; else delete next[key];
+
+  await upsertSetting(tenantDb, PJ_DIGEST_TEMPLATE_SETTING_KEY, "notif", next);
   revalidatePath(`/app/${slug}/settings/notifications`);
   return {};
 }

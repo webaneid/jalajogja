@@ -268,3 +268,24 @@ invoice punya >1 payment lunas dalam jendela (kini dedup per item), digest event
 (tiket berbayar `pending` tidak dihitung), nama penerima dinetralkan. Disengaja: digest toko tidak dibatasi waktu
 (pengingat sampai diproses); nomor HP pendaftar event ikut dikirim ke PJ (sepadan digest keanggotaan); bila WA dan email
 gagal, digest hari itu tidak dicoba ulang (sama dengan keuangan).
+
+### 8.4 Putaran 3 — cadangan PJ keuangan + teks digest bisa diedit (2026-10-10)
+
+**Cadangan PJ keuangan (menjawab § 6.2 "bila seluruh bendahara berhalangan").** Satu penerima cadangan opsional
+(`keuangan.backup`, tipe sama dengan PJ biasa, WAJIB punya nomor HP — kata sandi tautan = 4 digit HP-nya). Dipakai dua cara:
+(a) **eskalasi:** pada slot 16.00, pembayaran yang masih `submitted` lebih dari **48 jam** dikirim ke cadangan (sekali sehari, tautan
+verifikasi sendiri; isi = hanya yang >48 jam); (b) **tanpa penerima utama:** bila tak satu pun PJ utama bisa dihubungi (tak ada nomor HP /
+tak ter-resolve), SEMUA yang menunggu dikirim ke cadangan. Ambang 48 jam tetap (bukan setelan). Teks: kunci template `keuangan_backup`.
+
+**Teks digest bisa diedit per tenant.** Disimpan di `settings` (group `notif`, key `pj_digest_templates`, `{kunci: teks}`), sintaks
+`{{variabel}}` yang sama dengan template WA lain (`renderTemplateString`, string-replace murni). Default di kode
+(`lib/pj-digest-templates.ts`, client-safe). Enam kunci: `keuangan`, `keuangan_backup`, `keanggotaan`, `toko`, `donasi`, `event`.
+Daftar variabel per kunci ditampilkan di editor. Validasi simpan: maks 2000 karakter; template keuangan/cadangan WAJIB memuat `{{url}}`
+(tanpa tautan, bendahara tak bisa memverifikasi). Isi daftar (`{{list}}`) tetap dibangun kode dan sudah dinetralkan; hanya kerangka
+pesan yang diedit. Email memakai teks yang sama (sudah di-escape). Hak edit = `canManageUsers`. Tanpa migration.
+
+**Review keamanan putaran 3 (subagent):** 0 Critical/High/Medium. Diperbaiki (Low): cadangan yang juga PJ utama lain tak lagi
+dapat dua pesan (dibandingkan ke SEMUA penerima utama); `renderTemplateString` memakai `hasOwnProperty` (`{{constructor}}` tak lagi
+mencetak fungsi). Catatan desain: "tanpa PJ utama" = tak satu pun PJ utama yang bisa dihubungi (mis. tak punya HP); bila daftar
+PJ utama dikosongkan sama sekali, modul otomatis nonaktif (cadangan ikut tak jalan) — diisi minimal satu PJ utama. Risiko orang
+dalam diterima: admin bisa menulis teks bebas (termasuk tautan lain) ke bendahara — setara hak admin yang ada.

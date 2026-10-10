@@ -14,6 +14,10 @@ import {
   PJ_CONFIG_KEY, type OfficerNotificationConfig, type PjTarget, type PjModule,
 } from "@/lib/pj-config";
 import { isValidWhatsappGroupUrl, WHATSAPP_GROUP_SETTING_KEY } from "@/lib/whatsapp-group";
+import { renderTemplateString } from "@/lib/wa-templates";
+import {
+  PJ_DIGEST_TEMPLATE_DEFAULTS, PJ_DIGEST_TEMPLATE_SETTING_KEY, type PjDigestTemplateKey,
+} from "@/lib/pj-digest-templates";
 import type { MembershipConfigData } from "@/app/(dashboard)/app/[tenant]/settings/actions";
 
 // Mesin notifikasi ke Penanggung Jawab (PJ) modul. Lihat docs/arsitektur-notifikasi-pengurus.md § 8.
@@ -99,6 +103,19 @@ export async function resolvePjRecipients(
     });
   }
   return out;
+}
+
+// Kerangka teks: override tenant (settings) bila ada & tidak kosong, kalau tidak default kode.
+async function renderPjTemplate(
+  tenantDb: TenantDbHandle, key: PjDigestTemplateKey, vars: Record<string, string>,
+): Promise<string> {
+  let tpl = PJ_DIGEST_TEMPLATE_DEFAULTS[key];
+  try {
+    const custom = await getSetting<Record<string, string>>(tenantDb, PJ_DIGEST_TEMPLATE_SETTING_KEY, "notif");
+    const t = custom?.[key];
+    if (typeof t === "string" && t.trim()) tpl = t;
+  } catch { /* pakai default */ }
+  return renderTemplateString(tpl, vars);
 }
 
 // ── Kirim satu pesan ke satu penerima: WA dulu, gagal apa pun → email ─────────────────────
@@ -194,8 +211,9 @@ export async function runPjDigests(now = new Date()): Promise<Record<PjModule, n
           state.keuangan = stamp;
           await upsertSetting(tenantDb, STATE_KEY, "notif", state); // tandai SEBELUM kirim
           sent.keuangan += await sendKeuanganDigest({
-            slug: t.slug, tenantId: t.id, tenantDb, tz, targets: keu.targets,
+            slug: t.slug, tenantId: t.id, tenantDb, tz, targets: keu.targets, backup: keu.backup, now,
             rotationIndex: dayOfYear(localDate) * KEUANGAN_SLOT_HOURS.length + slotIdx,
+            isEscalationSlot: hour === DAILY_DIGEST_HOUR,
           });
         }
       }
@@ -228,51 +246,20 @@ export async function runPjDigests(now = new Date()): Promise<Record<PjModule, n
 
 // ── Digest KEUANGAN ──────────────────────────────────────────────────────────────────
 
-async function sendKeuanganDigest(opts: {
+type PendingPayment = {
+  paymentId: string; amount: string; method: string; payerName: string | null; payerBank: string | null;
+  submittedAt: Date | null; createdAt: Date; invoiceNumber: string; total: string; uniqueCode: number | null;
+  customerName: string;
+};
+
+const ESCALATION_HOURS = 48;
+
+// Buat tautan verifikasi + kirim satu pesan keuangan ke satu penerima (WA→email). 1 = terkirim.
+async function dispatchKeuangan(opts: {
   slug: string; tenantId: string; tenantDb: TenantDbHandle; tz: string;
-  targets: PjTarget[]; rotationIndex: number;
+  recipient: PjRecipient; pending: PendingPayment[]; templateKey: "keuangan" | "keuangan_backup"; reason?: string;
 }): Promise<number> {
-  const { slug, tenantId, tenantDb, tz, targets, rotationIndex } = opts;
-  const { db: tdb, schema } = tenantDb;
-
-  // SEMUA yang masih belum diverifikasi — bukan hanya yang baru (pengingat otomatis).
-  const pending = await tdb
-    .select({
-      paymentId:     schema.payments.id,
-      amount:        schema.payments.amount,
-      method:        schema.payments.method,
-      payerName:     schema.payments.payerName,
-      payerBank:     schema.payments.payerBank,
-      submittedAt:   schema.payments.submittedAt,
-      createdAt:     schema.payments.createdAt,
-      invoiceNumber: schema.invoices.invoiceNumber,
-      total:         schema.invoices.total,
-      uniqueCode:    schema.invoices.uniqueCode,
-      customerName:  schema.invoices.customerName,
-    })
-    .from(schema.payments)
-    .innerJoin(schema.invoices, eq(schema.invoices.id, schema.payments.sourceId))
-    .where(and(
-      eq(schema.payments.status, "submitted"),
-      eq(schema.payments.sourceType, "invoice"),
-    ))
-    .orderBy(asc(schema.payments.submittedAt))
-    .limit(200);
-  if (pending.length === 0) return 0; // tidak mengirim pesan kosong
-
-  const recipients = await resolvePjRecipients(tenantDb, targets);
-  if (recipients.length === 0) return 0;
-
-  // Rotasi bergantian; lewati yang tidak punya nomor HP (kata sandi tautan = 4 digit HP-nya).
-  let recipient: PjRecipient | null = null;
-  for (let i = 0; i < recipients.length; i++) {
-    const cand = recipients[(rotationIndex + i) % recipients.length];
-    if (cand.phone && lastFourDigits(cand.phone).length === 4) { recipient = cand; break; }
-  }
-  if (!recipient) {
-    console.warn(`[pj-digest] ${slug}: tidak ada PJ keuangan dengan nomor HP — tautan verifikasi tidak dibuat.`);
-    return 0;
-  }
+  const { slug, tenantId, tenantDb, tz, recipient, pending, templateKey, reason } = opts;
 
   const { token, hash } = newPjToken();
   await db.insert(pjVerificationLinks).values({
@@ -303,19 +290,87 @@ async function sendKeuanganDigest(opts: {
   });
   const more = pending.length > MAX_LISTED ? `\n…dan ${pending.length - MAX_LISTED} lainnya (lihat di tautan).` : "";
 
-  const waText =
-    `💰 *Verifikasi Pembayaran — ${orgName}*\n\n` +
-    `Assalamu'alaikum ${cleanUserText(recipient.name, 60)}, ada *${pending.length}* pembayaran yang belum diverifikasi:\n\n` +
-    `${lines.join("\n\n")}${more}\n\n` +
-    `Cek mutasi rekening/QRIS lalu verifikasi tanpa login lewat tautan ini:\n${url}\n\n` +
-    `Kata sandi: *4 digit terakhir nomor HP Anda*. Tautan berlaku ${PJ_LINK_TTL_HOURS} jam.`;
+  const waText = await renderPjTemplate(tenantDb, templateKey, {
+    orgName, name: cleanUserText(recipient.name, 60), count: String(pending.length),
+    list: lines.join("\n\n"), more, url, ttlHours: String(PJ_LINK_TTL_HOURS), reason: reason ?? "",
+  });
 
   const via = await deliverToRecipient({
     slug, tenantDb, event: "pj_digest_keuangan", recipient,
-    subject: `Verifikasi Pembayaran — ${orgName} (${pending.length} menunggu)`,
+    subject: `${templateKey === "keuangan_backup" ? "Cadangan — " : ""}Verifikasi Pembayaran — ${orgName} (${pending.length} menunggu)`,
     waText,
   });
   return via === "none" ? 0 : 1;
+}
+
+async function sendKeuanganDigest(opts: {
+  slug: string; tenantId: string; tenantDb: TenantDbHandle; tz: string;
+  targets: PjTarget[]; backup: PjTarget | null | undefined; rotationIndex: number; isEscalationSlot: boolean; now: Date;
+}): Promise<number> {
+  const { slug, tenantId, tenantDb, tz, targets, backup, rotationIndex, isEscalationSlot, now } = opts;
+  const { db: tdb, schema } = tenantDb;
+
+  // SEMUA yang masih belum diverifikasi — bukan hanya yang baru (pengingat otomatis).
+  const pending: PendingPayment[] = await tdb
+    .select({
+      paymentId:     schema.payments.id,
+      amount:        schema.payments.amount,
+      method:        schema.payments.method,
+      payerName:     schema.payments.payerName,
+      payerBank:     schema.payments.payerBank,
+      submittedAt:   schema.payments.submittedAt,
+      createdAt:     schema.payments.createdAt,
+      invoiceNumber: schema.invoices.invoiceNumber,
+      total:         schema.invoices.total,
+      uniqueCode:    schema.invoices.uniqueCode,
+      customerName:  schema.invoices.customerName,
+    })
+    .from(schema.payments)
+    .innerJoin(schema.invoices, eq(schema.invoices.id, schema.payments.sourceId))
+    .where(and(
+      eq(schema.payments.status, "submitted"),
+      eq(schema.payments.sourceType, "invoice"),
+    ))
+    .orderBy(asc(schema.payments.submittedAt))
+    .limit(200);
+  if (pending.length === 0) return 0; // tidak mengirim pesan kosong
+
+  const hasPhone = (r: PjRecipient) => !!r.phone && lastFourDigits(r.phone).length === 4;
+  const recipients = await resolvePjRecipients(tenantDb, targets);
+
+  // Rotasi bergantian; lewati yang tidak punya nomor HP (kata sandi tautan = 4 digit HP-nya).
+  let recipient: PjRecipient | null = null;
+  for (let i = 0; i < recipients.length; i++) {
+    const cand = recipients[(rotationIndex + i) % recipients.length];
+    if (hasPhone(cand)) { recipient = cand; break; }
+  }
+
+  let sent = 0;
+  if (recipient) {
+    sent += await dispatchKeuangan({ slug, tenantId, tenantDb, tz, recipient, pending, templateKey: "keuangan" });
+  } else {
+    console.warn(`[pj-digest] ${slug}: tidak ada PJ keuangan utama yang bisa dihubungi.`);
+  }
+
+  // Cadangan (docs § 8.4): (a) tak ada PJ utama yang bisa dihubungi → kirim SEMUA; (b) slot 16.00 →
+  // yang menunggu > 48 jam.
+  if (backup) {
+    const cutoff = now.getTime() - ESCALATION_HOURS * 3_600_000;
+    const stale  = pending.filter((p) => (p.submittedAt ?? p.createdAt).getTime() < cutoff);
+    const list   = !recipient ? pending : (isEscalationSlot ? stale : []);
+    if (list.length > 0) {
+      const [bk] = await resolvePjRecipients(tenantDb, [backup]);
+      if (bk && hasPhone(bk) && !recipients.some((r) => r.phone && r.phone === bk.phone)) {
+        sent += await dispatchKeuangan({
+          slug, tenantId, tenantDb, tz, recipient: bk, pending: list, templateKey: "keuangan_backup",
+          reason: !recipient
+            ? "Penanggung jawab utama belum dapat dihubungi, sehingga seluruh pembayaran yang menunggu dikirim kepada Anda."
+            : `Ada ${list.length} pembayaran yang belum diverifikasi lebih dari ${ESCALATION_HOURS} jam.`,
+        });
+      }
+    }
+  }
+  return sent;
 }
 
 // ── Digest KEANGGOTAAN (sekretariat) ────────────────────────────────────────────────
@@ -407,10 +462,9 @@ async function sendKeanggotaanDigest(opts: {
     parts.push(`*Belum tercatat masuk grup WhatsApp:* ${notInGroup} anggota aktif.`);
   }
 
-  const waText =
-    `📋 *Ringkasan Keanggotaan — ${orgName}*\n\n` +
-    `Assalamu'alaikum ${cleanUserText(recipient.name, 60)},\n\n${parts.join("\n\n")}\n\n` +
-    `Dashboard: ${dashboardUrl}`;
+  const waText = await renderPjTemplate(tenantDb, "keanggotaan", {
+    orgName, name: cleanUserText(recipient.name, 60), ringkasan: parts.join("\n\n"), dashboardUrl,
+  });
 
   const via = await deliverToRecipient({
     slug, tenantDb, event: "pj_digest_keanggotaan", recipient,
@@ -545,8 +599,9 @@ async function sendActivityDigest(opts: {
 
   const orgName = await resolveOrgName(tenantDb, slug);
   const appBase = (process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com").replace(/\/$/, "");
-  const waText =
-    `🔔 *${title} — ${orgName}*\n\nAssalamu'alaikum ${cleanUserText(recipient.name, 60)},\n\n${body}\n\nDashboard: ${appBase}/app/${slug}/${path}`;
+  const waText = await renderPjTemplate(tenantDb, mod, {
+    orgName, name: cleanUserText(recipient.name, 60), ringkasan: body, dashboardUrl: `${appBase}/app/${slug}/${path}`,
+  });
 
   const via = await deliverToRecipient({
     slug, tenantDb, event: `pj_digest_${mod}` as WaNotifKey, recipient,
