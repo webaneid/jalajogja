@@ -447,6 +447,7 @@ email anggota lalu lolos "khusus anggota". Kini keputusan HAK memakai **identita
 dari nomor yang lolos OTP; identitas untuk menautkan data tetap `identity` lama. (Low) query tenant per item dipindah ke cache lokal;
 komentar/import dibersihkan; respons 500 `api/member-public/[id]` tak lagi membocorkan `err.message`.
 **Keputusan produk yang masih terbuka:** (1) direktori/statistik publik tenant FORUM belum memfilter `forum_status` — anggota forum
-yang pending/ditolak/ditangguhkan masih tampil (status `active` di baris tetap); (2) semantik `inactive` tampil publik — pastikan
+yang pending/ditolak/ditangguhkan masih tampil (status `active` di baris tetap). **Diputuskan user 2026-10-10: SEMENTARA
+dibiarkan tampil semua** (forum baru migrasi); tinjau ulang setelah data forum stabil; (2) semantik `inactive` tampil publik — **dikonfirmasi user 2026-10-10: aman, `inactive` belum pernah dipakai untuk menyembunyikan orang** (kalau kelak perlu, buat penanda sembunyi terpisah) — pastikan
 admin tidak memakai `inactive` untuk orang yang minta disembunyikan; (3) pembeli yang hanya memakai email anggota (tanpa login/OTP)
 sekarang ditolak untuk tiket khusus anggota — perilaku yang diinginkan.
