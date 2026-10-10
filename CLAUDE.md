@@ -1181,20 +1181,21 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 > Ini status singkat yang di-OVERWRITE tiap kali berubah, BUKAN log yang ditambah terus.
 > Riwayat detail tiap perbaikan ada di `docs/lessons-learned.md` dan `docs/arsitektur-*.md` masing-masing modul.
 
-- **Sesi 2026-10-08/09 — ringkasan** (urutan kerja; detail + keputusan user + koreksi ada di memory `project_session_log_20261009`
-  dan dokumen masing-masing). Status git: SEMUA sudah di-push, `origin/main` = `25d6024`; semua poin 1–5 sudah di-deploy ke VPS dan sudah dicek user ("semua fitur sudah saya cek").
-  1. **Fix gate OTP checkout** (`1ec09d1`, direvisi `545c24b`) — `docs/arsitektur-billing.md` § 16.x. DEPLOYED.
-  2. **Model harga Dasar(modal)/Publik/Anggota + flag khusus anggota tenant** (`43ef926`; migration `0069` jalan di 5 tenant) +
-     3 celah keamanan hasil review (`545c24b`) + harga konsisten di beranda (`e930d37`) — `docs/arsitektur-product.md`
-     § "Model Harga Baru". DEPLOYED, user: "aman".
-  3. **Laporan Produk** (keuntungan/uang masuk/ongkir/kode unik terpisah + export Excel; modal = Harga Dasar langsung, tanpa snapshot,
-     tanpa migration) — `docs/arsitektur-product.md` § "Laporan Produk". DEPLOYED + TERVERIFIKASI user (2026-10-09).
-  4. **Stok produk bervariasi** (stok utama diabaikan, stok = jumlah stok variasi aktif; tanpa migration) —
-     `docs/arsitektur-stok.md` § "Stok Produk Bervariasi". DEPLOYED + TERVERIFIKASI user (2026-10-09).
-  5. **Produsen produk** (admin-only: internal/anggota/custom; fase 1–3) — `docs/arsitektur-produsen.md`. DEPLOYED (2026-10-09), migration
-     `0070_producers.sql` sudah jalan; TERVERIFIKASI user (2026-10-09).
-  Belum dikerjakan / terbuka: rate limit `checkoutAction` (oracle nomor terdaftar), produsen fase 4 (kolom daftar/export), harga produk
-  mitra, laporan per produsen + login produsen, aturan "alumni dihitung anggota?" (satu fungsi `lib/tenant-membership.server.ts`).
+- **Sesi 2026-10-10 — ringkasan** (detail + keputusan: memory `project_session_log_20261010` dan dokumen masing-masing).
+  Status git: 4 commit BELUM di-push/deploy (`9898350`, `9bedfa4`, `8f75b5d`, `99d53a3`); sebelumnya (`246d8c4` dst, stepper forum +
+  notifikasi aktif + kartu grup WA) SUDAH deploy + dicek user. Migration yang WAJIB di VPS: `0073_pj_verification.sql`
+  (`0071`/`0072` sudah jalan).
+  1. **Forum: persetujuan pengurus opsional** (`requireApproval` di `/settings/keanggotaan`) + suspend/reject TIDAK bisa diaktifkan
+     ulang oleh anggota (hanya admin; tombol "Setujui Kembali" untuk rejected) — `docs/arsitektur-gabung-forum.md` § 9g.
+  2. **Notifikasi PJ** — verifikasi bendahara via tautan tanpa login (`/{slug}/verifikasi/{token}`, kata sandi = 4 digit HP PJ) +
+     digest keuangan 13/16/18 + digest harian 16.00 keanggotaan/toko/donasi/event; inti verifikasi bersama di
+     `lib/payment-verification.server.ts`; cron `/api/cron/pj-digest` TIAP JAM (belum dipasang di VPS) — `docs/arsitektur-notifikasi-pengurus.md` § 8.
+     Security review (subagent) sudah dijalankan 2x, temuan diperbaiki. Belum diuji: kirim WA/email sungguhan.
+  Aturan kerja baru: type-check → security review → baru commit (memory `feedback_security_review_before_commit`).
+  Belum dikerjakan / terbuka: rate limit `checkoutAction`, alternatif gate OTP checkout untuk tenant tanpa WA, produsen fase 4,
+  harga produk mitra, laporan per produsen, aturan "alumni dihitung anggota?", cadangan PJ keuangan, template digest PJ editable.
+- Sesi 2026-10-08/09 (SEMUA sudah deploy + terverifikasi): fix gate OTP checkout, model harga Dasar/Publik/Anggota, Laporan Produk,
+  stok produk bervariasi, produsen produk fase 1–3 — lihat memory `project_session_log_20261009`.
 - Backlog lama belum dikonfirmasi statusnya (perlu verifikasi manual apakah sudah dikerjakan di
   sesi lain atau masih tertunda): sertifikat PDF untuk donasi, fitur V8 (cek stok produk),
   Donasi Rutin (siklus R1-R7, termasuk subscriptions `/{slug}/akun/subscriptions`), dan Fase 5
