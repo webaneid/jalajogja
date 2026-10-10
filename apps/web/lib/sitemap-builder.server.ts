@@ -8,6 +8,7 @@
 // "sitemap"), convention itu hanya menghasilkan SATU <urlset> per file atau split via
 // generateSitemaps() yang memaksa nama `/sitemap/{id}.xml` — tidak cocok untuk kebutuhan nama
 // file arbitrer (demi kompatibilitas Yoast: `post-sitemap.xml`, `sitemap_index.xml`, dst).
+import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
 import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import {
@@ -171,7 +172,7 @@ export async function fetchPesantrenEntries(tenantSlug: string, baseUrl: string)
     .innerJoin(tenantMemberships, and(
       eq(tenantMemberships.memberId, memberOwnedPesantren.memberId),
       eq(tenantMemberships.tenantId, tenant.id),
-      inArray(tenantMemberships.status, ["active", "alumni"]),
+      inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
     ))
     .limit(ENTRY_CAP);
   return rows.map((r) => ({ loc: `${baseUrl}/pesantren/${r.id}`, lastmod: toIsoDate(r.updatedAt) }));
@@ -186,7 +187,7 @@ export async function fetchUsahaEntries(tenantSlug: string, baseUrl: string): Pr
     .innerJoin(tenantMemberships, and(
       eq(tenantMemberships.memberId, memberBusinesses.memberId),
       eq(tenantMemberships.tenantId, tenant.id),
-      inArray(tenantMemberships.status, ["active", "alumni"]),
+      inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
     ))
     .where(eq(memberBusinesses.isActive, true))
     .limit(ENTRY_CAP);

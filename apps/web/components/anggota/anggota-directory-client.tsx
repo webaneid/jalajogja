@@ -16,7 +16,7 @@ const GENDER_LABEL: Record<string, string> = {
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   active: { label: "Aktif",  cls: "bg-green-100 text-green-700 border-green-200"  },
-  alumni: { label: "Alumni", cls: "bg-blue-100  text-blue-700  border-blue-200"   },
+  inactive: { label: "Non-aktif", cls: "bg-gray-100 text-gray-600 border-gray-200" },
 };
 
 export type MemberRow = {
@@ -45,7 +45,7 @@ type MemberDetail = {
   domicileProvince: string | null;
   domicileRegency:  string | null;
   birthProvince:    string | null;
-  membershipStatus: "active" | "alumni";
+  membershipStatus: "active" | "inactive";
   phone:            string | null;
   whatsapp:         string | null;
   whatsappWaLink:   string | null;

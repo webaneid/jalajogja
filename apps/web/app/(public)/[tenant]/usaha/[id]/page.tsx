@@ -1,3 +1,4 @@
+import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
 import { notFound }   from "next/navigation";
 import { eq, and, inArray } from "drizzle-orm";
 import {
@@ -117,7 +118,7 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
     .innerJoin(tenantMemberships, and(
       eq(tenantMemberships.memberId, members.id),
       eq(tenantMemberships.tenantId, tenant.id),
-      inArray(tenantMemberships.status, ["active", "alumni"]),
+      inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
     ))
     .where(and(eq(memberBusinesses.id, id), eq(memberBusinesses.isActive, true)))
     .limit(1);

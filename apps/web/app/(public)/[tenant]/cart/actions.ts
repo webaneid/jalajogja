@@ -3,6 +3,8 @@
 import { cookies, headers } from "next/headers";
 import { checkRateLimit, getClientIpFromHeaders } from "@/lib/rate-limit";
 import { isWaOtpAvailable, isEmailOtpSendable } from "@/lib/checkout-otp-channel.server";
+import { isTenantMember } from "@/lib/tenant-membership.server";
+import { checkGeneralRegistrationEligibility } from "@/lib/member-eligibility";
 import { eq, and, or, inArray, sql, gt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, resolveIdentity, resolveCheckoutContact, verification, generateUniqueCode, generateInstallmentScheduleCode, settleInstallmentSchedules } from "@jalajogja/db";
@@ -571,6 +573,7 @@ export async function checkoutAction(
     // tidak di-resolve dari nomor/email, tak ada data lama terbuka). Server menghitung kanal SENDIRI —
     // klien tak bisa meminta jalur ini. Lihat docs/arsitektur-billing.md § "Gate OTP checkout — kanal email".
     let unlinkedGuest = false;
+    let otpVerified   = false; // nomor terbukti milik pembeli (OTP valid) — dipakai keputusan HAK AKSES di bawah
     if (contactMatch.found && !customer.verifyToken) {
       const waOk    = await isWaOtpAvailable(tenantDb);
       const emailOk = !!contactMatch.verifiedEmail && await isEmailOtpSendable(tenantDb);
@@ -598,6 +601,7 @@ export async function checkoutAction(
         }
         return { success: false, code: "otp_required", error: "Verifikasi OTP tidak valid atau sudah kadaluarsa. Ulangi proses verifikasi." };
       }
+      otpVerified = true;
     }
 
     // ── Lookup identitas via resolveIdentity ─────────────────────────────────
@@ -617,6 +621,16 @@ export async function checkoutAction(
 
     const memberId  = identity.memberId;
     const profileId = identity.profileId;
+
+    // Identitas TERBUKTI untuk keputusan HAK AKSES (tiket khusus anggota/terdaftar): hanya dari sesi login,
+    // atau dari nomor yang lolos OTP. `identity` di atas juga mencocokkan EMAIL/nomor mentah dari klien tanpa
+    // bukti kepemilikan (untuk menautkan invoice) — TIDAK boleh dipakai memberi hak. Lihat review keamanan 2026-10-10.
+    const proven = otpVerified
+      ? await resolveIdentity(db, { betterAuthUserId: session?.user?.id ?? null, phone: normalizePhone(customer.phone), email: null })
+      : sessionSelf;
+    const provenMemberId  = proven?.memberId  ?? null;
+    const provenProfileId = proven?.profileId ?? null;
+    let tenantRefForTickets: { id: string; tenantType: string | null } | null | undefined;
     let customerName = customer.name?.trim() || identity.resolvedName || "";
 
     if (!customerName) {
@@ -742,13 +756,33 @@ export async function checkoutAction(
             voucherTargetId  = resolved.productId;
           } else if (item.itemType === "ticket") {
             const [ticket] = await tx
-              .select({ price: schema.eventTickets.price, name: schema.eventTickets.name })
+              .select({
+                price: schema.eventTickets.price, name: schema.eventTickets.name,
+                requiresMembership: schema.eventTickets.requiresMembership,
+                requiresRegistration: schema.eventTickets.requiresRegistration,
+              })
               .from(schema.eventTickets)
               .where(eq(schema.eventTickets.id, item.itemId))
               .limit(1);
             // Sama seperti produk: tiket tak ditemukan → tolak, bukan pakai harga snapshot client.
             if (!ticket) {
               return { error: `Tiket "${item.name}" sudah tidak tersedia. Hapus dari keranjang lalu coba lagi.` };
+            }
+            // Syarat tiket DIJAGA DI SERVER (sebelumnya hanya di UI — non-anggota bisa memanggil aksi langsung).
+            // Identitas dari sesi / OTP terverifikasi (identity di atas), BUKAN dari input klien.
+            // Lihat docs/arsitektur-keanggotaan.md § "Definisi anggota per konteks".
+            if (ticket.requiresMembership) {
+              if (tenantRefForTickets === undefined) {
+                [tenantRefForTickets = null] = await db.select({ id: tenants.id, tenantType: tenants.tenantType }).from(tenants).where(eq(tenants.slug, slug)).limit(1);
+              }
+              if (!provenMemberId || !tenantRefForTickets || !(await isTenantMember(provenMemberId, tenantRefForTickets))) {
+                return { error: `Tiket "${item.name}" hanya untuk anggota aktif. Silakan login sebagai anggota terlebih dahulu.` };
+              }
+            }
+            if (ticket.requiresRegistration) {
+              const reg = await checkGeneralRegistrationEligibility(provenMemberId, provenProfileId);
+              if (!reg.hasAccount) return { error: `Tiket "${item.name}" mengharuskan Anda login/daftar akun terlebih dahulu.` };
+              if (!reg.eligible)   return { error: `Tiket "${item.name}" mengharuskan data pribadi Anda lengkap. Lengkapi dulu di halaman Akun.` };
             }
             unitPrice = parseFloat(String(ticket.price));
           }

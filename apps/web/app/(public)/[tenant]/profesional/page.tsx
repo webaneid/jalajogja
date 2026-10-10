@@ -1,3 +1,4 @@
+import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
 import { notFound }   from "next/navigation";
 import { eq, and, or, inArray, ilike, count, sql } from "drizzle-orm";
 import {
@@ -95,13 +96,13 @@ export default async function ProfesionalDirectoryPage({
     .innerJoin(tenantMemberships, and(
       eq(tenantMemberships.memberId, members.id),
       eq(tenantMemberships.tenantId, tenant.id),
-      inArray(tenantMemberships.status, ["active", "alumni"]),
+      inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
     ))
     .where(eq(memberProfessionals.isActive, true));
 
   const whereConditions = [
     eq(memberProfessionals.isActive, true),
-    inArray(tenantMemberships.status, ["active", "alumni"]),
+    inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
     eq(tenantMemberships.tenantId, tenant.id),
     ...(q ? [or(
       ilike(members.name, `%${q}%`),
@@ -135,7 +136,7 @@ export default async function ProfesionalDirectoryPage({
       .innerJoin(tenantMemberships, and(
         eq(tenantMemberships.memberId, members.id),
         eq(tenantMemberships.tenantId, tenant.id),
-        inArray(tenantMemberships.status, ["active", "alumni"]),
+        inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
       ))
       .leftJoin(addresses,    eq(addresses.id,    memberProfessionals.addressId))
       .leftJoin(refProvinces, eq(refProvinces.id, addresses.provinceId))
@@ -152,7 +153,7 @@ export default async function ProfesionalDirectoryPage({
       .innerJoin(tenantMemberships, and(
         eq(tenantMemberships.memberId, members.id),
         eq(tenantMemberships.tenantId, tenant.id),
-        inArray(tenantMemberships.status, ["active", "alumni"]),
+        inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
       ))
       .leftJoin(addresses,    eq(addresses.id,    memberProfessionals.addressId))
       .leftJoin(refProvinces, eq(refProvinces.id, addresses.provinceId))

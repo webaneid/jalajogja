@@ -4,8 +4,8 @@
 // Aturan: baris tenant_memberships untuk tenant itu dengan status 'active' SAJA; khusus tenant tipe
 // FORUM wajib forum_status = 'active' (forum = opt-in, harus resmi — bukan pending/rejected/suspended).
 // KEPUTUSAN USER 2026-10-10: status "alumni" BUKAN anggota (tidak dapat Harga Anggota, tidak dihitung
-// pemilik Produsen anggota). Sebelumnya aktif+alumni. Catatan: syarat tiket event (event/actions.ts)
-// memakai query sendiri (masih aktif+alumni, tidak cek forum_status) — keputusan terpisah, belum disentuh.
+// pemilik Produsen anggota). Sebelumnya aktif+alumni. Dipakai juga syarat tiket event khusus anggota
+// (event/actions.ts + checkoutAction) dan syarat jadi mitra.
 import "server-only";
 import { and, eq, inArray, type SQL } from "drizzle-orm";
 import { db, tenantMemberships } from "@jalajogja/db";

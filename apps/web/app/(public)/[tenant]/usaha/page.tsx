@@ -1,3 +1,4 @@
+import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
 import { notFound }   from "next/navigation";
 import { eq, and, inArray, ilike, count, sql } from "drizzle-orm";
 import {
@@ -100,7 +101,7 @@ export default async function UsahaDirectoryPage({
 
   const whereConditions = [
     eq(memberBusinesses.isActive, true),
-    inArray(tenantMemberships.status, ["active", "alumni"]),
+    inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
     eq(tenantMemberships.tenantId, tenant.id),
     ...(q          ? [ilike(memberBusinesses.name, `%${q}%`)]                                                    : []),
     ...(sektor     ? [eq(memberBusinesses.sector, sektor as BusinessSector)]                                      : []),
@@ -133,7 +134,7 @@ export default async function UsahaDirectoryPage({
       .innerJoin(tenantMemberships, and(
         eq(tenantMemberships.memberId, members.id),
         eq(tenantMemberships.tenantId, tenant.id),
-        inArray(tenantMemberships.status, ["active", "alumni"]),
+        inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
       ))
       .leftJoin(addresses,    eq(addresses.id,    memberBusinesses.addressId))
       .leftJoin(refProvinces, eq(refProvinces.id, addresses.provinceId))
@@ -150,7 +151,7 @@ export default async function UsahaDirectoryPage({
       .innerJoin(tenantMemberships, and(
         eq(tenantMemberships.memberId, members.id),
         eq(tenantMemberships.tenantId, tenant.id),
-        inArray(tenantMemberships.status, ["active", "alumni"]),
+        inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
       ))
       .leftJoin(addresses,    eq(addresses.id,    memberBusinesses.addressId))
       .leftJoin(refProvinces, eq(refProvinces.id, addresses.provinceId))

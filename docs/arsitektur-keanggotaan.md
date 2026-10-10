@@ -423,3 +423,30 @@ lama (`parseGraduationYear()` di `lib/import-anggota-mapping.ts`, reject <1950 a
 berjalan → `null`, ditandai tidak match di preview). Detail lengkap: `docs/lessons-learned.md`
 — "Guard validasi field wajib diperiksa di SEMUA jalur input, bukan cuma yang disebut user".
 
+
+
+## Definisi "anggota" per konteks (keputusan user 2026-10-10)
+
+Status baris `tenant_memberships.status`: `active` | `inactive` | `alumni`. **Alumni BUKAN anggota.** Aturan per konteks:
+
+| Konteks | Yang dihitung | Sumber aturan |
+|---|---|---|
+| **Hak anggota** — Harga Anggota produk, tiket event "khusus anggota", syarat jadi mitra, pemilik Produsen anggota | `active` saja (+ tenant forum: `forum_status='active'`) | `lib/tenant-membership.server.ts` (`isTenantMember` / `tenantMembershipConditions`) — SATU fungsi |
+| **Tampilan publik** — direktori anggota/usaha/pesantren/profesional, statistik, sitemap, hero/modul landing, kutipan, popup anggota | `active` + `inactive` (non-aktif tetap tampil; alumni tidak) | `lib/membership-statuses.ts` → `PUBLIC_DIRECTORY_MEMBER_STATUSES` |
+| **Admin** — daftar/filter anggota, dashboard, surat massal | semua status (alumni tetap bisa dikelola/ditandai) | tidak diubah |
+
+**Tiket event khusus anggota:** server WAJIB menolak non-anggota di SEMUA jalur pembelian — `registerForEventAction`, aksi daftar
+gratis, DAN `checkoutAction` (jalur keranjang). Sebelum 2026-10-10 jalur keranjang hanya digerbang di UI (client) — celah:
+non-anggota bisa memanggil `addToCartAction`/`checkoutAction` langsung. Kini `checkoutAction` memeriksa `requiresMembership` +
+`requiresRegistration` untuk setiap item tiket memakai identitas yang sudah terverifikasi (sesi / OTP), bukan input klien.
+Tiket tidak punya harga anggota vs umum: satu harga; "khusus anggota" = hanya anggota boleh beli, selain itu bebas dengan harga yang sama.
+
+**Hasil review keamanan (subagent) & perbaikan:** (High) di `checkoutAction`, `identity` mencocokkan email/nomor mentah dari
+klien (untuk menautkan invoice) tanpa bukti kepemilikan — jika dipakai memutuskan hak tiket, penyerang tanpa login bisa mengisi
+email anggota lalu lolos "khusus anggota". Kini keputusan HAK memakai **identitas terbukti** (`proven`): hanya dari sesi login, atau
+dari nomor yang lolos OTP; identitas untuk menautkan data tetap `identity` lama. (Low) query tenant per item dipindah ke cache lokal;
+komentar/import dibersihkan; respons 500 `api/member-public/[id]` tak lagi membocorkan `err.message`.
+**Keputusan produk yang masih terbuka:** (1) direktori/statistik publik tenant FORUM belum memfilter `forum_status` — anggota forum
+yang pending/ditolak/ditangguhkan masih tampil (status `active` di baris tetap); (2) semantik `inactive` tampil publik — pastikan
+admin tidak memakai `inactive` untuk orang yang minta disembunyikan; (3) pembeli yang hanya memakai email anggota (tanpa login/OTP)
+sekarang ditolak untuk tiket khusus anggota — perilaku yang diinginkan.

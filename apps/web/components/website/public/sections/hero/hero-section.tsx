@@ -1,3 +1,4 @@
+import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
 import { desc, eq, and, gt, count, sql, inArray } from "drizzle-orm";
 import {
   db, tenants, members, tenantMemberships,
@@ -127,7 +128,7 @@ async function fetchFunfacts(
           .innerJoin(tenantMemberships, and(
             eq(tenantMemberships.memberId, members.id),
             eq(tenantMemberships.tenantId, tenantRow.id),
-            inArray(tenantMemberships.status, ["active", "alumni"]),
+            inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
           ));
         return { id, number: String(row?.total ?? 0), label };
       }
@@ -140,7 +141,7 @@ async function fetchFunfacts(
           .innerJoin(tenantMemberships, and(
             eq(tenantMemberships.memberId, members.id),
             eq(tenantMemberships.tenantId, tenantRow.id),
-            inArray(tenantMemberships.status, ["active", "alumni"]),
+            inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
           ))
           .where(eq(memberBusinesses.isActive, true));
         return { id, number: String(row?.total ?? 0), label };
@@ -154,7 +155,7 @@ async function fetchFunfacts(
           .innerJoin(tenantMemberships, and(
             eq(tenantMemberships.memberId, members.id),
             eq(tenantMemberships.tenantId, tenantRow.id),
-            inArray(tenantMemberships.status, ["active", "alumni"]),
+            inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
           ));
         return { id, number: String(row?.total ?? 0), label };
       }
@@ -167,7 +168,7 @@ async function fetchFunfacts(
           .innerJoin(tenantMemberships, and(
             eq(tenantMemberships.memberId, members.id),
             eq(tenantMemberships.tenantId, tenantRow.id),
-            inArray(tenantMemberships.status, ["active", "alumni"]),
+            inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
           ))
           .where(eq(memberProfessionals.isActive, true));
         return { id, number: String(row?.total ?? 0), label };

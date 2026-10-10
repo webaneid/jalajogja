@@ -1,3 +1,4 @@
+import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
 import { notFound }          from "next/navigation";
 import { eq, and, inArray, ilike, sql, count } from "drizzle-orm";
 import {
@@ -77,7 +78,7 @@ export default async function AnggotaDirectoryPage({
   // Sub-query: member IDs yang terdaftar di tenant ini
   const conditions = [
     eq(tenantMemberships.tenantId, tenant.id),
-    inArray(tenantMemberships.status, ["active", "alumni"]),
+    inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
     ...(q            ? [ilike(members.name, `%${q}%`)]                     : []),
     ...(angkatanNum  ? [eq(members.graduationYear, angkatanNum)]            : []),
     ...(profesi      ? [eq(refProfessions.category, profesi)]               : []),
@@ -103,7 +104,7 @@ export default async function AnggotaDirectoryPage({
       .innerJoin(tenantMemberships, and(
         eq(tenantMemberships.memberId, members.id),
         eq(tenantMemberships.tenantId, tenant.id),
-        inArray(tenantMemberships.status, ["active", "alumni"]),
+        inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
       ))
       .leftJoin(refProfessions, eq(refProfessions.id, members.professionId))
       .leftJoin(addresses,     eq(addresses.id,      members.homeAddressId))
@@ -126,7 +127,7 @@ export default async function AnggotaDirectoryPage({
       .innerJoin(tenantMemberships, and(
         eq(tenantMemberships.memberId, members.id),
         eq(tenantMemberships.tenantId, tenant.id),
-        inArray(tenantMemberships.status, ["active", "alumni"]),
+        inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
       ))
       .leftJoin(refProfessions, eq(refProfessions.id, members.professionId))
       .leftJoin(addresses,     eq(addresses.id,      members.homeAddressId))

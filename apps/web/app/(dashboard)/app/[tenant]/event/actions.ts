@@ -1,5 +1,6 @@
 "use server";
 
+import { isTenantMember } from "@/lib/tenant-membership.server";
 import { eq, count, inArray, and, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createTenantDb, generateFinancialNumber, recordIncome, createLinkedInvoice, syncInvoicePayment, db as publicDb, members, contacts, profiles, tenantMemberships, tenants } from "@jalajogja/db";
@@ -638,25 +639,17 @@ export async function registerForEventAction(
     if (!resolvedMemberId)
       return { success: false, error: "Tiket ini hanya untuk anggota terdaftar. Silakan login dan lengkapi keanggotaan terlebih dahulu." };
 
-    // Cek apakah member terdaftar di tenant ini (status active atau alumni)
+    // Cek apakah member adalah anggota sah tenant ini (status aktif)
     const [tenantRow] = await publicDb
-      .select({ id: tenants.id })
+      .select({ id: tenants.id, tenantType: tenants.tenantType })
       .from(tenants)
       .where(eq(tenants.slug, slug))
       .limit(1);
 
     if (tenantRow) {
-      const [membership] = await publicDb
-        .select({ id: tenantMemberships.id })
-        .from(tenantMemberships)
-        .where(and(
-          eq(tenantMemberships.tenantId, tenantRow.id),
-          eq(tenantMemberships.memberId, resolvedMemberId),
-          sql`${tenantMemberships.status} IN ('active', 'alumni')`,
-        ))
-        .limit(1);
-
-      if (!membership)
+      // Aturan anggota SATU fungsi (alumni BUKAN anggota; forum wajib forum_status aktif) — lib/tenant-membership.server.ts
+      const isMember = await isTenantMember(resolvedMemberId, { id: tenantRow.id, tenantType: tenantRow.tenantType });
+      if (!isMember)
         return { success: false, error: "Tiket ini hanya untuk anggota terdaftar cabang ini. Lengkapi data keanggotaan Anda terlebih dahulu." };
     }
   }
@@ -920,22 +913,15 @@ export async function addEventTicketToCartAction(
       return { success: false, error: "Tiket ini hanya untuk anggota terdaftar. Silakan login terlebih dahulu." };
 
     const [tenantRow] = await publicDb
-      .select({ id: tenants.id })
+      .select({ id: tenants.id, tenantType: tenants.tenantType })
       .from(tenants)
       .where(eq(tenants.slug, slug))
       .limit(1);
 
     if (tenantRow) {
-      const [membership] = await publicDb
-        .select({ id: tenantMemberships.id })
-        .from(tenantMemberships)
-        .where(and(
-          eq(tenantMemberships.tenantId, tenantRow.id),
-          eq(tenantMemberships.memberId, resolvedMemberId),
-          sql`${tenantMemberships.status} IN ('active', 'alumni')`,
-        ))
-        .limit(1);
-      if (!membership)
+      // Aturan anggota SATU fungsi (alumni BUKAN anggota; forum wajib forum_status aktif) — lib/tenant-membership.server.ts
+      const isMember = await isTenantMember(resolvedMemberId, { id: tenantRow.id, tenantType: tenantRow.tenantType });
+      if (!isMember)
         return { success: false, error: "Tiket ini hanya untuk anggota terdaftar cabang ini." };
     }
   }

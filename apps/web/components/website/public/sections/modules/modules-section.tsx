@@ -1,3 +1,4 @@
+import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
 import { eq, and, desc, gt, inArray, isNotNull } from "drizzle-orm";
 import {
   db, tenants, members, tenantMemberships,
@@ -135,7 +136,7 @@ async function resolveModuleImages(
           .innerJoin(tenantMemberships, and(
             eq(tenantMemberships.memberId, members.id),
             eq(tenantMemberships.tenantId, tenantRow.id),
-            inArray(tenantMemberships.status, ["active", "alumni"]),
+            inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
           ))
           .where(and(eq(memberBusinesses.isActive, true), isNotNull(memberBusinesses.coverUrl)))
           .orderBy(desc(memberBusinesses.createdAt))
@@ -151,7 +152,7 @@ async function resolveModuleImages(
           .innerJoin(tenantMemberships, and(
             eq(tenantMemberships.memberId, members.id),
             eq(tenantMemberships.tenantId, tenantRow.id),
-            inArray(tenantMemberships.status, ["active", "alumni"]),
+            inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
           ))
           .where(and(eq(memberProfessionals.isActive, true), isNotNull(memberProfessionals.coverUrl)))
           .orderBy(desc(memberProfessionals.createdAt))
@@ -167,7 +168,7 @@ async function resolveModuleImages(
           .innerJoin(tenantMemberships, and(
             eq(tenantMemberships.memberId, members.id),
             eq(tenantMemberships.tenantId, tenantRow.id),
-            inArray(tenantMemberships.status, ["active", "alumni"]),
+            inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
           ))
           .where(isNotNull(memberOwnedPesantren.coverUrl))
           .orderBy(desc(memberOwnedPesantren.createdAt))

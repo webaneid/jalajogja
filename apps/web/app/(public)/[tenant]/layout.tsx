@@ -1,3 +1,4 @@
+import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
 import { notFound } from "next/navigation";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { createTenantDb, db, tenants, tenantMemberships, members, socialMedias, getSettings, refProvinces, refRegencies, refDistricts, refVillages } from "@jalajogja/db";
@@ -101,7 +102,7 @@ export default async function PublicLayout({
         .where(
           and(
             eq(tenantMemberships.tenantId, tenant.id),
-            inArray(tenantMemberships.status, ["active", "alumni"]),
+            inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
             sql`${socialMedias.instagram} IS NOT NULL AND ${socialMedias.instagram} != ''`
           )
         )

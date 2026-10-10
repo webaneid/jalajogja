@@ -1,3 +1,4 @@
+import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
 import "server-only";
 import { eq, and, inArray, count } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
@@ -51,7 +52,7 @@ export async function resolveQuoteData(
       .from(tenantMemberships)
       .where(and(
         eq(tenantMemberships.tenantId, tenantRow.id),
-        inArray(tenantMemberships.status, ["active", "alumni"]),
+        inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
       ));
 
     memberCount = Number(countResult?.total ?? 0);

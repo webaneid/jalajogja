@@ -80,7 +80,7 @@ export function StatistikSections({
   moduleLabels?: EkosistemModuleLabels;
 }) {
   const {
-    totalAnggota, activeTotal, alumniTotal,
+    totalAnggota, activeTotal, inactiveTotal,
     punyaUsahaTotal, punyaPesantrenTotal, punyaProfesionalTotal,
     genderRows, kabupatenAnggotaRows, domisiliRows, angkatanRows, profesiRows, waliSantriRows,
     totalPesantren, sumSantri, kurikulumRows, kategoriSantriRows, modelPendidikanRows, jenisPondokRows,
@@ -97,7 +97,7 @@ export function StatistikSections({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Total Anggota"   value={totalAnggota} />
           <StatCard label="Anggota Aktif"   value={activeTotal} />
-          <StatCard label="Alumni"          value={alumniTotal} />
+          <StatCard label="Non-aktif"       value={inactiveTotal} />
           <StatCard label="Memiliki Usaha"  value={punyaUsahaTotal}
             sub={totalAnggota > 0 ? `${Math.round(punyaUsahaTotal / totalAnggota * 100)}% dari total` : undefined} />
         </div>

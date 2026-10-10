@@ -1,3 +1,4 @@
+import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
 import { notFound }   from "next/navigation";
 import { eq, and, inArray, ilike, count, sql } from "drizzle-orm";
 import {
@@ -93,7 +94,7 @@ export default async function PesantrenDirectoryPage({
 
   // Gabungkan semua kondisi WHERE
   const whereConditions = [
-    inArray(tenantMemberships.status, ["active", "alumni"]),
+    inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
     eq(tenantMemberships.tenantId, tenant.id),
     ...(q         ? [ilike(memberOwnedPesantren.name, `%${q}%`)] : []),
     ...(kurikulum ? [eq(memberOwnedPesantren.kurikulum, kurikulum as typeof KURIKULUM_OPTIONS[number])] : []),
@@ -125,7 +126,7 @@ export default async function PesantrenDirectoryPage({
       .innerJoin(tenantMemberships, and(
         eq(tenantMemberships.memberId, members.id),
         eq(tenantMemberships.tenantId, tenant.id),
-        inArray(tenantMemberships.status, ["active", "alumni"]),
+        inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
       ))
       .leftJoin(addresses,    eq(addresses.id,    memberOwnedPesantren.addressId))
       .leftJoin(refProvinces, eq(refProvinces.id, addresses.provinceId))
@@ -142,7 +143,7 @@ export default async function PesantrenDirectoryPage({
       .innerJoin(tenantMemberships, and(
         eq(tenantMemberships.memberId, members.id),
         eq(tenantMemberships.tenantId, tenant.id),
-        inArray(tenantMemberships.status, ["active", "alumni"]),
+        inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
       ))
       .leftJoin(addresses,    eq(addresses.id,    memberOwnedPesantren.addressId))
       .leftJoin(refProvinces, eq(refProvinces.id, addresses.provinceId))

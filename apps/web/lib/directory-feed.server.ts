@@ -1,3 +1,4 @@
+import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
 import "server-only";
 import { eq, and, inArray, desc } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
@@ -92,7 +93,7 @@ export async function resolveDirectoryItems(
       .innerJoin(tenantMemberships, and(
         eq(tenantMemberships.memberId, members.id),
         eq(tenantMemberships.tenantId, tenantRow.id),
-        inArray(tenantMemberships.status, ["active", "alumni"]),
+        inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
       ))
       .leftJoin(addresses, eq(addresses.id, memberBusinesses.addressId))
       .where(eq(memberBusinesses.isActive, true))
@@ -129,7 +130,7 @@ export async function resolveDirectoryItems(
       .innerJoin(tenantMemberships, and(
         eq(tenantMemberships.memberId, members.id),
         eq(tenantMemberships.tenantId, tenantRow.id),
-        inArray(tenantMemberships.status, ["active", "alumni"]),
+        inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
       ))
       .leftJoin(addresses, eq(addresses.id, memberProfessionals.addressId))
       .where(eq(memberProfessionals.isActive, true))
@@ -169,7 +170,7 @@ export async function resolveDirectoryItems(
       .innerJoin(tenantMemberships, and(
         eq(tenantMemberships.memberId, members.id),
         eq(tenantMemberships.tenantId, tenantRow.id),
-        inArray(tenantMemberships.status, ["active", "alumni"]),
+        inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
       ))
       .leftJoin(addresses, eq(addresses.id, memberOwnedPesantren.addressId))
       .orderBy(desc(memberOwnedPesantren.createdAt))

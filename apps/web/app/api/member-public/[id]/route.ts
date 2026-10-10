@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and, inArray } from "drizzle-orm";
 import { rateLimitGuard }   from "@/lib/rate-limit";
@@ -43,7 +44,7 @@ export async function GET(
       and(
         eq(tenantMemberships.tenantId, tenant.id),
         eq(tenantMemberships.memberId, id),
-        inArray(tenantMemberships.status, ["active", "alumni"]),
+        inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
       ),
     )
     .limit(1);
@@ -218,7 +219,6 @@ export async function GET(
   });
   } catch (err) {
     console.error("[member-public] Error:", err);
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Terjadi kesalahan. Coba lagi nanti." }, { status: 500 });
   }
 }

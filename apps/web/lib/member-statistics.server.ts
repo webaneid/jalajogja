@@ -1,3 +1,4 @@
+import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
 import "server-only";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import {
@@ -17,7 +18,7 @@ import {
 export async function computeMemberStatistics(tenantId: string) {
   const scopeClause = and(
     eq(tenantMemberships.tenantId, tenantId),
-    inArray(tenantMemberships.status, ["active", "alumni"]),
+    inArray(tenantMemberships.status, [...PUBLIC_DIRECTORY_MEMBER_STATUSES]),
   );
 
   // ── Stats Anggota ──────────────────────────────────────────────────────────
@@ -27,14 +28,14 @@ export async function computeMemberStatistics(tenantId: string) {
     .from(tenantMemberships)
     .where(and(eq(tenantMemberships.tenantId, tenantId), eq(tenantMemberships.status, "active")));
 
-  const alumniRows = await db
+  const inactiveRows = await db
     .select({ total: sql<number>`count(*)` })
     .from(tenantMemberships)
-    .where(and(eq(tenantMemberships.tenantId, tenantId), eq(tenantMemberships.status, "alumni")));
+    .where(and(eq(tenantMemberships.tenantId, tenantId), eq(tenantMemberships.status, "inactive")));
 
   const activeTotal  = Number(activeRows[0]?.total ?? 0);
-  const alumniTotal  = Number(alumniRows[0]?.total ?? 0);
-  const totalAnggota = activeTotal + alumniTotal;
+  const inactiveTotal = Number(inactiveRows[0]?.total ?? 0);
+  const totalAnggota  = activeTotal + inactiveTotal; // alumni bukan anggota (docs/arsitektur-keanggotaan.md)
 
   // Gender
   const genderRows = await db
@@ -274,7 +275,7 @@ export async function computeMemberStatistics(tenantId: string) {
 
   return {
     // Anggota
-    totalAnggota, activeTotal, alumniTotal,
+    totalAnggota, activeTotal, inactiveTotal,
     punyaUsahaTotal, punyaPesantrenTotal, punyaProfesionalTotal,
     genderRows, kabupatenAnggotaRows, domisiliRows, angkatanRows, profesiRows, waliSantriRows,
     // Pesantren

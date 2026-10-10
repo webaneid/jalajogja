@@ -2,9 +2,10 @@ export const dynamic = "force-dynamic";
 // POST /api/mitra/apply — daftar sebagai mitra
 // DELETE /api/mitra/apply — batalkan pengajuan pending
 
+import { isTenantMember as checkTenantMember } from "@/lib/tenant-membership.server";
 import { NextRequest, NextResponse } from "next/server";
-import { eq, and, sql } from "drizzle-orm";
-import { db, members, memberBusinesses, tenantMemberships, tenants, createTenantDb } from "@jalajogja/db";
+import { eq, and } from "drizzle-orm";
+import { db, members, memberBusinesses, tenants, createTenantDb } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
 import { getTokoSettings } from "@/lib/toko-settings";
 
@@ -32,21 +33,15 @@ export async function POST(req: NextRequest) {
   const settings = await getTokoSettings(slug);
   if (!settings.mitraEnabled) return NextResponse.json({ error: "Sistem mitra belum diaktifkan di toko ini" }, { status: 403 });
 
-  // Mitra terikat cabang — wajib anggota terdaftar (active/alumni) di tenant ini
+  // Mitra terikat cabang — wajib anggota terdaftar (aktif) di tenant ini
   const [tenantRow] = await db
-    .select({ id: tenants.id })
+    .select({ id: tenants.id, tenantType: tenants.tenantType })
     .from(tenants)
     .where(eq(tenants.slug, slug))
     .limit(1);
   if (!tenantRow) return NextResponse.json({ error: "Cabang tidak ditemukan" }, { status: 404 });
 
-  const membership = await db.query.tenantMemberships.findFirst({
-    where: and(
-      eq(tenantMemberships.tenantId, tenantRow.id),
-      eq(tenantMemberships.memberId, member.id),
-      sql`${tenantMemberships.status} IN ('active', 'alumni')`,
-    ),
-  });
+  const membership = await checkTenantMember(member.id, { id: tenantRow.id, tenantType: tenantRow.tenantType });
   if (!membership) {
     return NextResponse.json(
       { error: "Anda hanya bisa mendaftar mitra di cabang tempat Anda terdaftar sebagai anggota." },

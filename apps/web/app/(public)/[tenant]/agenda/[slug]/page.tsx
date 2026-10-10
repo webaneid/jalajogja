@@ -1,4 +1,5 @@
 // Halaman publik event — tanpa auth, siapapun bisa akses dan mendaftar
+import { isTenantMember } from "@/lib/tenant-membership.server";
 import { createTenantDb, db, tenants, members, contacts, profiles, tenantMemberships, getSettings, addresses, refRegencies, refProvinces, refProfessions } from "@jalajogja/db";
 import { publicUrl, resolveMediaUrl } from "@/lib/minio";
 import { eq, and, or, count, sql, inArray } from "drizzle-orm";
@@ -161,7 +162,7 @@ export default async function PublicEventPage({
 
   // Cek tenant valid
   const [tenant] = await db
-    .select({ id: tenants.id, name: tenants.name, isActive: tenants.isActive })
+    .select({ id: tenants.id, name: tenants.name, isActive: tenants.isActive, tenantType: tenants.tenantType })
     .from(tenants)
     .where(eq(tenants.slug, tenantSlug))
     .limit(1);
@@ -579,16 +580,8 @@ export default async function PublicEventPage({
   // urusan Toggle B "Wajib Terdaftar (Umum)", lihat currentUserIsRegistered di bawah).
   let currentUserIsEnrolled = false;
   if (resolvedMemberId && tenant) {
-    const [membership] = await db
-      .select({ id: tenantMemberships.id })
-      .from(tenantMemberships)
-      .where(and(
-        eq(tenantMemberships.tenantId, tenant.id),
-        eq(tenantMemberships.memberId, resolvedMemberId),
-        sql`${tenantMemberships.status} IN ('active', 'alumni')`,
-      ))
-      .limit(1);
-    currentUserIsEnrolled = !!membership;
+    // Aturan anggota satu fungsi (alumni bukan anggota) — sama dengan penjagaan server.
+    currentUserIsEnrolled = await isTenantMember(resolvedMemberId, { id: tenant.id, tenantType: tenant.tenantType });
   }
 
   // Status kelayakan Toggle B "Wajib Terdaftar (Umum)" — independen tenant membership,
