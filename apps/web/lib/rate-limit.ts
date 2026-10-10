@@ -47,6 +47,11 @@ export function getClientIp(req: NextRequest): string {
   );
 }
 
+// Versi untuk Server Action (tidak punya NextRequest) — pakai `await headers()`.
+export function getClientIpFromHeaders(h: Headers): string {
+  return h.get("x-real-ip") ?? h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+}
+
 // ── Ready-made guard — pakai di awal route handler ───────────────────────────
 // Contoh: const blocked = rateLimitGuard(req, "lookup-member", 10, 60_000);
 //         if (blocked) return blocked;

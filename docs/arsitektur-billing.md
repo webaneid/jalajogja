@@ -2524,3 +2524,14 @@ mengirim kode baru. Cakupan: SEMUA tipe item (produk, donasi, tiket) — hanya a
 `checkout-form.tsx` + satu `checkoutAction`, tidak ada komponen checkout terpisah per modul.
 donasi, tiket) — hanya ada satu `checkout-form.tsx` + satu `checkoutAction`, tidak ada komponen
 checkout terpisah per modul.
+
+
+## Rate limit `checkoutAction` — oracle nomor terdaftar (2026-10-10)
+
+`checkoutAction` menjawab `otp_required` hanya bila nomor terdaftar, jadi bisa dipakai menebak nomor anggota lewat
+pemanggilan langsung. Pembatas per IP (`lib/rate-limit.ts`, in-memory, PM2 satu instance): umum 120 / 10 menit; khusus
+jawaban "terdaftar" (tanpa `verifyToken` ATAU `verifyToken` salah/kedaluwarsa) 20 / 10 menit. Angka longgar karena
+`jalakarta.com` di balik Cloudflare tanpa `real_ip` di Nginx (IP terbaca = IP edge, dipakai bersama). **Tindak lanjut ops:**
+aktifkan `real_ip_header CF-Connecting-IP` + `set_real_ip_from` rentang Cloudflare, lalu batas boleh diperkecil.
+Risiko sisa yang diterima: perbedaan jawaban/waktu respons masih membedakan nomor terdaftar (hanya dibatasi laju).
+Review keamanan (subagent) dijalankan; endpoint lain (`/api/wa/available`, `lookup-member`) belum diperiksa untuk oracle serupa.

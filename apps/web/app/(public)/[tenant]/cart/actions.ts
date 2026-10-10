@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies, headers } from "next/headers";
+import { checkRateLimit, getClientIpFromHeaders } from "@/lib/rate-limit";
 import { eq, and, or, inArray, sql, gt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, resolveIdentity, resolveCheckoutContact, verification, generateUniqueCode, generateInstallmentScheduleCode, settleInstallmentSchedules } from "@jalajogja/db";
@@ -523,6 +524,16 @@ export async function checkoutAction(
     return { success: false, error: "Alamat detail wajib diisi." };
   }
 
+  // Pembatas per IP — checkoutAction bisa dipanggil langsung (bukan hanya dari form) dan menjawab
+  // `otp_required` hanya bila nomor terdaftar, jadi tanpa batas ia bisa dipakai menebak nomor anggota.
+  // Batas umum longgar; batas khusus jawaban "terdaftar" lebih ketat. Angka sengaja tidak terlalu kecil:
+  // jalakarta.com di balik Cloudflare tanpa real_ip di Nginx, sehingga IP yang terbaca bisa IP edge yang
+  // dipakai bersama banyak pengunjung (lihat docs/arsitektur-keamanan.md). Kecilkan setelah CF-Connecting-IP aktif.
+  const clientIp = getClientIpFromHeaders(await headers());
+  if (!checkRateLimit(`checkout:${clientIp}`, 120, 10 * 60_000).allowed) {
+    return { success: false, error: "Terlalu banyak percobaan. Coba lagi beberapa menit lagi." };
+  }
+
   try {
     const token = await getSessionToken();
     if (!token) return { success: false, error: "Keranjang tidak ditemukan." };
@@ -556,6 +567,9 @@ export async function checkoutAction(
     });
     if (contactMatch.found) {
       if (!customer.verifyToken) {
+        if (!checkRateLimit(`checkout-registered:${clientIp}`, 20, 10 * 60_000).allowed) {
+          return { success: false, error: "Terlalu banyak percobaan. Coba lagi beberapa menit lagi." };
+        }
         return { success: false, code: "otp_required", error: "Nomor HP ini terdaftar di sistem kami — verifikasi OTP diperlukan sebelum lanjut." };
       }
       const [proof] = await db
@@ -566,6 +580,10 @@ export async function checkoutAction(
         ))
         .returning({ value: verification.value });
       if (!proof || proof.value !== normalizedPhoneForCheck) {
+        // verifyToken palsu juga membocorkan "nomor terdaftar" — hitung ke batas yang sama.
+        if (!checkRateLimit(`checkout-registered:${clientIp}`, 20, 10 * 60_000).allowed) {
+          return { success: false, error: "Terlalu banyak percobaan. Coba lagi beberapa menit lagi." };
+        }
         return { success: false, code: "otp_required", error: "Verifikasi OTP tidak valid atau sudah kadaluarsa. Ulangi proses verifikasi." };
       }
     }
