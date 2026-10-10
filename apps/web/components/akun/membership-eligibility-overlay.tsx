@@ -113,6 +113,12 @@ export function MembershipEligibilityOverlay({
         pengurus bila ada pertanyaan.</>
     );
     action = null;
+  } else if (forumStage === "awaiting_approval") {
+    message = (
+      <>Pendaftaran Anda di <strong>{tenantName}</strong> sudah lengkap dan sedang menunggu
+        persetujuan pengurus. Anda akan mendapat kabar begitu disetujui.</>
+    );
+    action = null;
   } else if (forumStage === "awaiting_confirmation" && pendingInvoiceId) {
     message = (
       <>Bukti pembayaran Anda untuk <strong>{tenantName}</strong> sudah kami terima dan sedang

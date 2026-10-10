@@ -113,6 +113,20 @@ export default async function GabungPage({ params }: { params: Params }) {
     memberId: identity.memberId, enabledModules: enabledModulesConfig,
   });
   if (progress.stage === "active") redirect(`${baseUrl}/akun`);
+  if (progress.stage === "awaiting_approval") {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md space-y-4 text-center">
+          <h1 className="text-2xl font-bold">Menunggu Persetujuan</h1>
+          <p className="text-sm text-muted-foreground">
+            Pendaftaran Anda di <strong>{tenantRow.name}</strong> sudah lengkap dan sedang menunggu
+            persetujuan pengurus. Anda akan mendapat kabar begitu disetujui.
+          </p>
+          <a href={`${baseUrl}/akun`} className="btn btn-outline-dark btn-md">← Kembali ke Akun</a>
+        </div>
+      </div>
+    );
+  }
   if (progress.stage === "suspended" || progress.stage === "rejected") {
     return (
       <div className="min-h-[60vh] flex items-center justify-center px-4 py-12">

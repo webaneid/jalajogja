@@ -49,6 +49,7 @@ export function JoinForumButton({ slug, baseUrl, tenantName }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
   const [joined, setJoined] = useState(false);
+  const [awaiting, setAwaiting] = useState(false);
   const [modalTpl, setModalTpl] = useState<"terms" | "privacy" | null>(null);
 
   // Tinggi bar fixed mobile diukur langsung (bukan angka tetap) — teks persetujuan bisa wrap
@@ -77,6 +78,7 @@ export function JoinForumButton({ slug, baseUrl, tenantName }: Props) {
       }
       // TIDAK PERNAH redirect otomatis — tetap di /gabung, status sukses tampil inline.
       // Navigasi ke /akun hanya lewat tombol eksplisit di bawah (aksi user, bukan paksaan).
+      setAwaiting(!!result.data.awaitingApproval);
       setJoined(true);
     });
   }
@@ -86,7 +88,9 @@ export function JoinForumButton({ slug, baseUrl, tenantName }: Props) {
       <div className="space-y-4 text-center">
         <CheckCircle2 className="h-12 w-12 text-primary mx-auto" />
         <p className="text-sm text-muted-foreground">
-          Anda sekarang anggota resmi <strong>{tenantName}</strong>. Selamat bergabung!
+          {awaiting
+            ? <>Pendaftaran Anda di <strong>{tenantName}</strong> sudah kami terima dan menunggu persetujuan pengurus. Anda akan mendapat kabar begitu disetujui.</>
+            : <>Anda sekarang anggota resmi <strong>{tenantName}</strong>. Selamat bergabung!</>}
         </p>
         <a href={`${baseUrl}/akun`} className="btn btn-primary btn-lg btn-full">
           Ke Akun Saya →

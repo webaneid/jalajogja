@@ -20,6 +20,7 @@ export type ForumJoinStage =
   | "active"
   | "suspended"
   | "rejected"
+  | "awaiting_approval"      // syarat terpenuhi, menunggu persetujuan pengurus (requireApproval)
   | "awaiting_confirmation"  // bukti bayar sudah dikirim, menunggu admin/bendahara
   | "pay_invoice"            // ada invoice komitmen /gabung yang belum dibayar
   | "complete_data"          // data anggota belum eligible
@@ -75,7 +76,19 @@ export async function resolveForumJoinProgress(opts: {
     if (res.outcome === "activated" || res.outcome === "already_active") {
       return { ...base, forumStatus: "active", stage: "active" };
     }
+    if (res.outcome === "awaiting_approval") {
+      return { ...base, forumStatus: "pending", stage: "awaiting_approval" };
+    }
     forumStatus = await readStatus();
+
+    // Forum tanpa syarat iuran + requireApproval: baris pending hasil joinForumAction (helper
+    // di atas "not_applicable" karena tak ada syarat). Dibaca di sini agar stepper konsisten.
+    if (forumStatus === "pending") {
+      const cfg = await getSetting<MembershipConfigData>(tenantDb, "membership_config", "forum");
+      if (cfg?.requireApproval && !cfg.requiredProductId && !cfg.requiredCampaignId) {
+        return { ...base, forumStatus, stage: "awaiting_approval" };
+      }
+    }
   }
 
   if (forumStatus === "suspended") return { ...base, forumStatus, stage: "suspended" };

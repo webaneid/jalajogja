@@ -1231,6 +1231,9 @@ export type MembershipConfigData = {
   // membership_number yang digenerate saat member bergabung. Lihat
   // lib/forum-membership-number.ts.
   membershipNumberFormat: ForumMembershipNumberFormat | null;
+  // Opsional: pendaftar yang sudah memenuhi syarat tetap 'pending' sampai pengurus menyetujui.
+  // Kunci tidak ada / false = aktif otomatis (perilaku lama). Lihat docs/arsitektur-gabung-forum.md § 9g.
+  requireApproval?: boolean;
 };
 
 export async function saveMembershipConfigAction(
@@ -1255,6 +1258,7 @@ export async function saveMembershipConfigAction(
     campaignRequired:   !!values.requiredCampaignId && !!values.campaignRequired,
     registrationInfo:   values.registrationInfo?.trim() || null,
     membershipNumberFormat,
+    requireApproval:    !!values.requireApproval,
   });
 
   revalidatePath(`/app/${slug}/settings/keanggotaan`);

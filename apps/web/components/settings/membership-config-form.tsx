@@ -33,6 +33,7 @@ export function MembershipConfigForm({
   const [productRequired,  setProductRequired]  = React.useState(defaultValues.productRequired);
   const [campaignRequired, setCampaignRequired] = React.useState(defaultValues.campaignRequired);
   const [registrationInfo, setRegistrationInfo] = React.useState(defaultValues.registrationInfo ?? "");
+  const [requireApproval, setRequireApproval] = React.useState(!!defaultValues.requireApproval);
   const [numberEnabled, setNumberEnabled] = React.useState(!!defaultValues.membershipNumberFormat);
   const [numberFormat, setNumberFormat] = React.useState<ForumMembershipNumberFormat>(
     defaultValues.membershipNumberFormat ?? "year_seq",
@@ -54,6 +55,7 @@ export function MembershipConfigForm({
         campaignRequired:   !!campaignId && campaignRequired,
         registrationInfo:   registrationInfo.trim() || null,
         membershipNumberFormat: numberEnabled ? numberFormat : null,
+        requireApproval,
       });
       if (result.error) toast.error(result.error);
       else { toast.success("Pengaturan keanggotaan disimpan."); router.refresh(); }
@@ -147,6 +149,23 @@ export function MembershipConfigForm({
           bergabung.
         </p>
       )}
+
+      <div className="space-y-2 rounded-xl border border-border p-4">
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={requireApproval}
+            onChange={(e) => setRequireApproval(e.target.checked)}
+            disabled={pending}
+            className="mt-0.5"
+          />
+          <span>
+            Pendaftar baru perlu persetujuan pengurus — walau data lengkap dan iuran sudah lunas,
+            keanggotaan baru aktif setelah Anda menyetujuinya di menu Anggota. Kalau tidak
+            dicentang, anggota aktif otomatis.
+          </span>
+        </label>
+      </div>
 
       <div className="space-y-4 rounded-xl border border-border p-4">
         <label className="flex items-start gap-2 text-sm">

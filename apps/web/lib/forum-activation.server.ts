@@ -21,7 +21,8 @@ import type { MembershipConfigData } from "@/app/(dashboard)/app/[tenant]/settin
 //                    berflag yang cocok syarat (precondition lama, mencegah donasi organik
 //                    mengaktifkan). Evaluasi dikumulatifkan ke SEMUA invoice lunas berflag milik
 //                    member (donasi di invoice A + produk di invoice B). Perilaku lama
-//                    dipertahankan: baris suspended/rejected boleh diaktifkan ulang.
+//                    dipertahankan. (Dicabut 2026-10-10: suspended/rejected TIDAK lagi bisa
+//                    diaktifkan ulang oleh pembayaran — hanya admin, docs § 9g.)
 //   "retrigger"    — dipicu setelah data member lengkap / setelah klaim. Hanya mengaktifkan bila
 //                    belum ada baris atau masih "pending" (tidak melawan keputusan admin
 //                    suspend/reject).
@@ -40,7 +41,8 @@ export type ForumActivationOutcome =
   | "no_matching_payment"   // tidak ada pembayaran lunas berflag yang cocok syarat
   | "requirement_unmet"     // ada yang cocok tapi syarat wajib belum lengkap
   | "ineligible"            // data anggota belum lengkap
-  | "blocked_status";       // ditangguhkan/ditolak admin — tidak ditimpa oleh retrigger
+  | "blocked_status"        // ditangguhkan/ditolak admin — TIDAK PERNAH ditimpa (kedua mode)
+  | "awaiting_approval";    // syarat terpenuhi, forum memakai requireApproval → baris 'pending'
 
 type TenantDbHandle = ReturnType<typeof createTenantDb>;
 
@@ -183,8 +185,9 @@ export async function activateForumMembership(opts: {
     .limit(1);
   if (existing?.forumStatus === "active") return { outcome: "already_active" };
 
-  // retrigger tidak melawan keputusan admin (suspended/rejected).
-  if (mode === "retrigger" && existing && existing.forumStatus !== "pending" && existing.forumStatus !== null) {
+  // Keputusan admin (suspended/rejected) TIDAK boleh dibatalkan oleh anggota lewat jalur apa
+  // pun — termasuk pembayaran lunas. Hanya admin yang membukanya (docs § 9g).
+  if (existing && (existing.forumStatus === "suspended" || existing.forumStatus === "rejected")) {
     return { outcome: "blocked_status" };
   }
 
@@ -194,6 +197,23 @@ export async function activateForumMembership(opts: {
   const basisInvoiceId = basisRows.find((r) => r.invoiceId === invoiceId)?.invoiceId ?? basisRows[0].invoiceId;
 
   const now = new Date();
+
+  // Forum memakai persetujuan pengurus: jangan aktifkan. Pastikan ada baris 'pending'
+  // (idempoten) lalu berhenti — aktivasi + notifikasi anggota terjadi di approveForumMembershipAction.
+  if (config.requireApproval) {
+    if (existing) return { outcome: "awaiting_approval" };
+    await publicDb.insert(tenantMemberships).values({
+      tenantId:       tenantRow.id,
+      memberId,
+      status:         "active",
+      membershipType: "forum",
+      forumStatus:    "pending",
+      joinedAt:       now.toISOString().split("T")[0],
+      forumInvoiceId: basisInvoiceId,
+      registeredVia:  "self",
+    }).onConflictDoNothing();
+    return { outcome: "awaiting_approval" };
+  }
 
   // Nomor keanggotaan lokal forum — generate SEKALI, pertahankan yang lama.
   let membershipNumber = existing?.membershipNumber ?? null;

@@ -1097,7 +1097,10 @@ export async function approveForumMembershipAction(
     const result = await db.transaction(async (tx) => {
       const row = await loadForumMembershipForUpdate(tx, access.tenant.id, memberId);
       if (!row) return { success: false as const, error: "Anggota forum tidak ditemukan." };
-      if (row.forumStatus !== "pending") return { success: false as const, error: "Status saat ini bukan 'Menunggu Persetujuan'." };
+      // 'rejected' boleh disetujui kembali oleh admin (anggota sendiri tidak bisa — docs § 9g).
+      if (row.forumStatus !== "pending" && row.forumStatus !== "rejected") {
+        return { success: false as const, error: "Status saat ini bukan 'Menunggu Persetujuan' atau 'Ditolak'." };
+      }
 
       let membershipNumber = row.membershipNumber;
       if (!membershipNumber) {

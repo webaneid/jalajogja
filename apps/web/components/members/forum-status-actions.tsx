@@ -120,5 +120,18 @@ export function ForumStatusActions({
     );
   }
 
-  return null; // rejected: tidak ada aksi UI (§ 6 docs/arsitektur-gabung-forum.md)
+  if (forumStatus === "rejected") {
+    // Hanya admin yang bisa membuka kembali pendaftaran yang ditolak (docs § 9g).
+    return (
+      <button
+        onClick={() => setConfirming("approve")}
+        className="rounded-md border border-green-600/40 px-2 py-1 text-xs font-medium
+                   text-green-700 hover:bg-green-50 transition-colors"
+      >
+        Setujui Kembali
+      </button>
+    );
+  }
+
+  return null;
 }

@@ -2726,6 +2726,37 @@ pengurus); verifikasi manual: isi tautan → anggota aktif melihat kartu → kli
 "Saya sudah di grup" menandai → anggota non-aktif/ditangguhkan TIDAK melihat kartu dan aksi
 ditolak server.
 
+### 9g. STATUS EKSEKUSI: persetujuan opsional + penguncian suspend/reject (2026-10-10) — SELESAI KODE, type-check bersih, belum dites browser/deploy
+
+Keputusan user (2026-10-10):
+1. **`requireApproval` (opsional):** checkbox di `/settings/keanggotaan` forum, "Pendaftar baru perlu
+   persetujuan pengurus". Default mati → perilaku lama tidak berubah. Disimpan di
+   `membership_config.requireApproval` (boolean; kunci yang tidak ada = false).
+2. **Suspend/reject dikunci dari sisi anggota.** Anggota TIDAK BISA mengaktifkan ulang dirinya
+   sendiri dari `suspended`/`rejected` lewat jalur apa pun (join gratis, pembayaran syarat lunas,
+   klaim). Hanya admin: `suspended` → "Aktifkan Kembali" (sudah ada); `rejected` → tombol baru
+   "Setujui Kembali" (memakai aksi approve yang kini menerima `pending` ATAU `rejected`).
+   Konteks: ini status KEANGGOTAAN. Penolakan PEMBAYARAN adalah hal terpisah (status payment/invoice);
+   pelanggan tetap bisa mengunggah bukti baru dan keanggotaan tidak berubah karenanya.
+3. **`verifySubmittedPaymentAction`:** dicek, tidak perlu diubah — aktivasi dipanggil SETELAH
+   transaksi commit dan hanya bila invoice `paid`; hanya invoice berisi item `forGabungRegistration`
+   yang bisa memicu (anggota baru), pembayaran biasa tidak.
+
+Perilaku saat `requireApproval=true`: syarat terpenuhi (data lengkap + iuran lunas bila ada) →
+baris `tenant_memberships` dibuat/dibiarkan `forum_status='pending'` (BUKAN active); stage baru
+`awaiting_approval` di stepper ("Menunggu persetujuan pengurus"); notifikasi "keanggotaan aktif"
+baru terkirim saat admin menyetujui (`approveForumMembershipAction` sudah memanggilnya). Outcome
+helper baru `awaiting_approval`. Baris `pending` buatan admin (tambah manual dengan syarat iuran)
+juga mengikuti flag ini: bila flag mati, lunas → aktif otomatis (lama); bila hidup, lunas → tetap pending.
+Notifikasi ke pengurus ("ada pendaftar menunggu persetujuan") menunggu mesin notifikasi PJ.
+
+**Tanpa migration** (hanya kunci baru di JSON setting). Perubahan kode: `MembershipConfigData.requireApproval`, form pengaturan, `activateForumMembership`
+(cabang awaiting_approval + blokir suspended/rejected di KEDUA mode — perilaku lama "invoice-paid
+boleh mengaktifkan ulang suspended/rejected" dicabut), `joinForumAction` (blokir suspended/rejected;
+join gratis dengan flag → pending), `resolveForumJoinProgress` + overlay + `/gabung`
+(stage `awaiting_approval`), `approveForumMembershipAction` (+ `rejected`), `ForumStatusActions`
+(tombol "Setujui Kembali" untuk rejected).
+
 ### 10. Alur tambahan dari user
 
 > Alur tambahan diterima 2026-10-10: **notifikasi PJ/pengurus** (sekretariat dapat kabar pendaftar baru forum, bendahara memverifikasi uang masuk). Karena berlaku lintas modul, direncanakan terpisah di `docs/arsitektur-notifikasi-pengurus.md`; notifikasi "pendaftar baru" untuk sekretariat menjadi bagian dari rencana itu dan akan disambungkan ke langkah 3d/4 stepper di atas.

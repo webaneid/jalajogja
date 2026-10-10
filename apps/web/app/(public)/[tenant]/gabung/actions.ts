@@ -24,7 +24,7 @@ type ActionResult<T = void> =
  * docs/arsitektur-backbone-ikpm.md § "Alur Pendaftaran Forum v2", Fase D akan menambah
  * cabang pembayaran wajib di sini kalau admin mengonfigurasinya).
  */
-export async function joinForumAction(slug: string): Promise<ActionResult<{ tenantName: string }>> {
+export async function joinForumAction(slug: string): Promise<ActionResult<{ tenantName: string; awaitingApproval?: boolean }>> {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return { success: false, error: "Anda harus login terlebih dahulu." };
 
@@ -84,8 +84,37 @@ export async function joinForumAction(slug: string): Promise<ActionResult<{ tena
     return { success: true, data: { tenantName: tenantRow.name } }; // sudah anggota — no-op
   }
 
+  // Keputusan admin tidak bisa dibatalkan anggota sendiri — hanya admin yang membukanya
+  // (docs/arsitektur-gabung-forum.md § 9g). Sebelumnya jalur ini mengaktifkan ulang baris
+  // suspended/rejected.
+  if (existing?.forumStatus === "suspended") {
+    return { success: false, error: "Keanggotaan Anda sedang ditangguhkan pengurus. Hubungi pengurus forum untuk mengaktifkannya kembali." };
+  }
+  if (existing?.forumStatus === "rejected") {
+    return { success: false, error: "Pendaftaran Anda tidak disetujui pengurus. Hubungi pengurus forum jika ada pertanyaan." };
+  }
+
   const now       = new Date();
   const todayDate = now.toISOString().split("T")[0];
+
+  // Forum memakai persetujuan pengurus: catat sebagai 'pending', jangan aktifkan. Anggota
+  // diberi tahu (notifikasi aktif) saat pengurus menyetujui.
+  if (config?.requireApproval) {
+    if (!existing) {
+      await db.insert(tenantMemberships).values({
+        tenantId:       tenantRow.id,
+        memberId:       identity.memberId,
+        status:         "active",
+        membershipType: "forum",
+        forumStatus:    "pending",
+        joinedAt:       todayDate,
+        registeredVia:  "self",
+      }).onConflictDoNothing();
+    }
+    revalidatePath(`/${slug}/akun`);
+    revalidatePath(`/${slug}/gabung`);
+    return { success: true, data: { tenantName: tenantRow.name, awaitingApproval: true } };
+  }
 
   // Nomor keanggotaan lokal forum (opsional) — generate SEKALI saja. Kalau baris lama sudah
   // punya nomor (mis. sempat "suspended" lalu rejoin), pertahankan nomor lama, jangan
@@ -101,8 +130,9 @@ export async function joinForumAction(slug: string): Promise<ActionResult<{ tena
   }
 
   if (existing) {
-    // Baris lama (mis. sempat "rejected"/"suspended") — aktifkan ulang, jangan INSERT
-    // baru (constraint unique tenantId+memberId akan menolak duplikat).
+    // Baris lama berstatus 'pending' (mis. ditambah admin) — aktifkan, jangan INSERT
+    // baru (constraint unique tenantId+memberId akan menolak duplikat). suspended/rejected
+    // sudah ditolak di atas.
     await db.update(tenantMemberships)
       .set({
         status:           "active",

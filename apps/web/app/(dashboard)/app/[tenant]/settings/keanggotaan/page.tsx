@@ -69,6 +69,7 @@ export default async function KeanggotaanSettingsPage({
           campaignRequired:   config?.campaignRequired    ?? false,
           registrationInfo:   config?.registrationInfo    ?? null,
           membershipNumberFormat: config?.membershipNumberFormat ?? null,
+          requireApproval:    config?.requireApproval ?? false,
         }}
       />
 
