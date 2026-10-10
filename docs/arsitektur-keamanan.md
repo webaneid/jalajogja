@@ -133,6 +133,17 @@ project ini isolasi via **schema Postgres terpisah per tenant** (`tenant_{slug}`
   Tip cek konfigurasi: `sites-enabled/` berisi symlink — pakai `grep -rn ... /etc/nginx/sites-available/`
   (atau `grep -rnL`/`-R`), `grep -r` biasa tidak mengikuti symlink dan hasilnya kosong menyesatkan.
 
+### 4d. `GET /api/akun/lookup-member` — nama disamarkan untuk stambuk & email (2026-10-11)
+Endpoint publik tanpa login dan tidak tenant-scoped (cari di semua anggota). Dulu mengembalikan nama lengkap untuk input
+stambuk/email/HP → stambuk berurutan bisa dipakai menyusun daftar nama anggota. Keputusan user 2026-10-11:
+- **stambuk & email**: nama DISAMARKAN di server (`lib/mask-name.ts`, mis. "Ahmad Fauzi" → "A*** F***") + `nameMasked: true`.
+  Form register tidak memakai nama itu untuk isi otomatis; pada klaim akun server memakai nama dari DB (bukan dari klien).
+- **HP**: SENGAJA tetap nama penuh — dipakai form donasi (isi nama donatur otomatis). Risiko sisa diterima user: siapa pun yang
+  tahu nomor seseorang bisa melihat namanya (rate limit 10/menit/IP). Tinjau ulang bila perlu (mis. nama baru terisi setelah OTP).
+- `/api/wa/available` diperiksa: hanya 4 boolean per tenant, tidak ada data orang — aman, tidak diubah.
+- Review keamanan (checklist skill, diff kecil): cabang yang dimasking (`stambuk||email`) identik dengan prioritas cabang pencarian (stambuk → email → HP), jadi tak ada jalur nama penuh lewat stambuk/email; hanya huruf pertama tiap kata yang keluar; tidak ada endpoint/secret baru. Aman.
+- `memberId` tetap dikirim (dibutuhkan alur klaim; klaim dijaga OTP di `api/akun/register`).
+
 ## 5. Frontend (Next.js App Router)
 - Server Components untuk data yang butuh filter tenant/permission — jangan fetch data
   sensitif di Client Component lalu filter di client (authorization logic harus di server).

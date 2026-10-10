@@ -13,7 +13,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import type { OrgLabels } from "@/lib/tenant-org-label";
 
 type MemberLookup =
-  | { found: true;  name: string; hasAccount: boolean; memberId?: string; type?: "member" | "profile" }
+  | { found: true;  name: string; nameMasked?: boolean; hasAccount: boolean; memberId?: string; type?: "member" | "profile" }
   | { found: false };
 
 type AccountPath = "member" | "public" | null;
@@ -193,7 +193,7 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
         if (!res.ok) return; // finally di bawah tetap set lookupStatus="done"
         const data = await res.json() as MemberLookup;
         setLookup(data);
-        if (data.found && !name.trim()) setName(data.name);
+        if (data.found && !data.nameMasked && !name.trim()) setName(data.name);
       } catch {
         setLookup(null);
       } finally {

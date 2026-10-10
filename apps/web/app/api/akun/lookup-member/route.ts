@@ -4,10 +4,13 @@ import { eq, or }                    from "drizzle-orm";
 import { db, contacts, members, profiles } from "@jalajogja/db";
 import { rateLimitGuard }            from "@/lib/rate-limit";
 import { normalizePhone }            from "@/lib/phone";
+import { maskName }                  from "@/lib/mask-name";
 
 // GET /api/akun/lookup-member?stambuk=  |  ?email=  |  ?phone=
 // Response: { found: true, name, memberId?, hasAccount?, type } | { found: false }
 // type: "member" | "profile"
+// Nama DISAMARKAN (nameMasked: true) untuk pencarian stambuk/email — stambuk berurutan & tanpa login,
+// jadi nama penuh bisa dipanen. HP tetap nama penuh (form donasi). Lihat docs/arsitektur-keamanan.md § 4d.
 
 export async function GET(req: NextRequest) {
   const blocked = rateLimitGuard(req, "lookup-member", 10, 60_000);
@@ -77,9 +80,11 @@ export async function GET(req: NextRequest) {
     }
 
     if (member) {
+      const maskedLookup = !!(stambuk || email);
       return NextResponse.json({
         found:      true,
-        name:       member.name,
+        name:       maskedLookup ? maskName(member.name) : member.name,
+        ...(maskedLookup ? { nameMasked: true } : {}),
         memberId:   member.id,
         hasAccount: !!member.betterAuthUserId,
         type:       "member",
