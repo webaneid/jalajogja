@@ -22,6 +22,8 @@ export type WaNotifKey =
   | "donation_received"
   | "member_welcome"
   | "membership_activated"
+  | "pj_digest_keuangan"
+  | "pj_digest_keanggotaan"
   | "profile_incomplete_reminder"
   | "officer_invite"
   | "letter_sign_request"
@@ -59,6 +61,8 @@ export const WA_NOTIF_DEFAULTS: WaNotifConfig["notifications"] = {
   donation_received:       false,
   member_welcome:          false,
   membership_activated:    true,
+  pj_digest_keuangan:      false,   // dikirim dengan skipEventToggle — tidak memakai sakelar ini
+  pj_digest_keanggotaan:   false,
   profile_incomplete_reminder: false,
   officer_invite:          false,
   letter_sign_request:     false,
@@ -78,6 +82,10 @@ type SendOptions = {
   event:   WaNotifKey;
   to:      string;    // E.164 format: "+6281234567890"
   message: string;
+  // Lewati sakelar per-event di whatsapp_config.notifications — untuk pesan ke PENGURUS (PJ) yang
+  // sudah diatur eksplisit di Pengaturan PJ; kunci event-nya tidak ada di config tenant lama.
+  // Status koneksi (verified) tetap dicek.
+  skipEventToggle?: boolean;
 };
 
 export type WaSendResult =
@@ -124,7 +132,7 @@ export async function sendWaNotification(opts: SendOptions): Promise<WaSendResul
 
   if (!config?.device_id)   return { ok: false, reason: "not_configured" };
   if (!config.verified)     return { ok: false, reason: "not_verified" };
-  if (!config.notifications?.[event]) return { ok: false, reason: "event_disabled" };
+  if (!opts.skipEventToggle && !config.notifications?.[event]) return { ok: false, reason: "event_disabled" };
 
   // Normalisasi nomor → format GOWA (digits + @s.whatsapp.net)
   const digits = toWaDigits(to);

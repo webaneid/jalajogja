@@ -11,6 +11,7 @@ import type { Level, Module } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/phone";
 import { FORUM_MEMBERSHIP_NUMBER_FORMATS, type ForumMembershipNumberFormat } from "@/lib/forum-membership-number";
 import { isValidWhatsappGroupUrl, WHATSAPP_GROUP_SETTING_KEY } from "@/lib/whatsapp-group";
+import { sanitizePjConfig, PJ_CONFIG_KEY, PJ_MODULES } from "@/lib/pj-config";
 
 type ActionResult = { error?: string };
 type StrictActionResult = { success: true } | { success: false; error: string };
@@ -1288,5 +1289,43 @@ export async function saveWhatsappGroupUrlAction(slug: string, url: string): Pro
 
   revalidatePath(`/app/${slug}/settings/keanggotaan`);
   revalidatePath(`/${slug}/akun`);
+  return {};
+}
+
+
+// ── Penanggung Jawab (PJ) notifikasi per modul ───────────────────────────────────────────
+// Siapa menerima ringkasan keuangan/keanggotaan. Hanya yang berhak mengelola pengguna (owner/admin).
+// Input mentah dari klien divalidasi ulang di server (sanitizePjConfig) — id pengurus/divisi harus
+// benar-benar ada di tenant ini. Lihat docs/arsitektur-notifikasi-pengurus.md § 4.1 + § 8.
+export async function savePjConfigAction(slug: string, input: unknown): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
+
+  const clean = sanitizePjConfig(input, normalizePhone);
+
+  const tenantDb = createTenantDb(slug);
+  const { db: tdb, schema } = tenantDb;
+
+  // Id pengurus/divisi yang dikirim klien harus milik tenant ini (jangan percaya mentah).
+  const [officerRows, divisionRows] = await Promise.all([
+    tdb.select({ id: schema.officers.id }).from(schema.officers),
+    tdb.select({ id: schema.divisions.id }).from(schema.divisions),
+  ]);
+  const officerIds  = new Set(officerRows.map((r) => r.id));
+  const divisionIds = new Set(divisionRows.map((r) => r.id));
+  for (const mod of PJ_MODULES) {
+    const m = clean[mod];
+    if (!m) continue;
+    m.targets = m.targets.filter((t) =>
+      t.type === "officer" ? officerIds.has(t.officerId)
+      : t.type === "division" ? divisionIds.has(t.divisionId)
+      : true,
+    );
+    if (m.enabled && m.targets.length === 0) m.enabled = false; // aktif tanpa penerima tidak berarti
+  }
+
+  await upsertSetting(tenantDb, PJ_CONFIG_KEY, "notif", clean);
+  revalidatePath(`/app/${slug}/settings/notifications`);
   return {};
 }

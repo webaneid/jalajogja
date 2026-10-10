@@ -1,6 +1,6 @@
 # Arsitektur Notifikasi Pengurus (PJ Modul) — Digest Harian + Verifikasi Bendahara via Tautan
 
-> **Status: RENCANA (2026-10-10), BELUM DIEKSEKUSI.** Hasil diskusi dengan user; semua keputusan
+> **Status: EKSEKUSI DIMULAI (2026-10-10) — lihat § 8 (keputusan implementasi + status).** Rencana asli: Hasil diskusi dengan user; semua keputusan
 > di § 2 sudah dijawab user. Eksekusi menunggu sinyal "mulai" eksplisit dan sebaiknya setelah
 > rencana forum (`docs/arsitektur-gabung-forum.md` § "RENCANA — Pendaftaran Forum Bertahap")
 > selesai, karena notifikasi "pendaftar baru" untuk sekretariat jadi bagian alur itu.
@@ -180,3 +180,61 @@ bergantian; modul lain 16.00; tanpa OTP, tanpa PIN, kuota WA dikosongkan.
 4. Cron digest keuangan (WA→email), template digest di `wa-templates` + email.
 5. Review keamanan, `tsc`, build, uji manual end-to-end.
 6. Digest modul lain (keanggotaan dulu — tersambung rencana forum), lalu toko/donasi/event.
+
+## 8. Keputusan implementasi & status (2026-10-10, mulai eksekusi)
+
+Cakupan putaran ini: **keuangan (penuh)** + **keanggotaan (digest sekretariat)**. Toko/donasi/event
+menyusul memakai mesin yang sama (UI PJ hanya menampilkan modul yang sudah punya digest).
+
+**Temuan yang menjawab "terbuka" § 6.1 (kelebihan bayar):** `verifySubmittedPaymentAction` sudah
+menerima `verifiedAmount` bebas; kelebihan bayar tetap dijurnal (`journalAmount = newPaid − uniqueCode`)
+dan invoice jadi `paid`. Jadi aksi "Diterima, nominal berbeda" cukup memanggil inti yang sama.
+"Antrean belum diverifikasi" = `payments.status = 'submitted'` (customer sudah klik "Saya Sudah Bayar").
+
+**Keputusan teknis:**
+1. **Konfigurasi PJ** di `settings` (group `notif`, key `officer_notification_config`). Bentuk:
+   `{ keuangan: { enabled, targets[≤3] }, keanggotaan: { enabled, targets[≤1] } }`; target =
+   `officer` | `division` | `contact` (nama + HP/email). `digestHour` TIDAK dijadikan setelan (waktu tetap).
+2. **Inti verifikasi bersama** dipindah ke `lib/payment-verification.server.ts` (`"server-only"`,
+   BUKAN file `"use server"` — fungsi yang diekspor dari file `"use server"` otomatis menjadi
+   endpoint publik). `verifySubmittedPaymentAction` menjadi pembungkus tipis (auth dashboard → inti).
+   Logika lock/jurnal/stok/aktivasi forum TIDAK ditulis ulang.
+3. **Atribusi aktor:** `transactions.created_by`/`payments.confirmed_by` NOT NULL → tenant user. Jalur
+   tautan memakai tenant user milik PJ bila ada (officers.userId atau users.memberId = officer.memberId);
+   bila PJ bukan user dashboard, dipakai user `owner` sebagai pemegang jurnal, dan deskripsi jurnal
+   diberi catatan "diverifikasi via tautan oleh {nama PJ}". Identitas PJ yang sebenarnya selalu tercatat
+   di tabel audit.
+4. **Tabel baru (public, migration `0073`)**: `pj_verification_links` (token ter-hash, tenant, modul,
+   penerima + HP, snapshot id pembayaran, kedaluwarsa, hitungan salah, terkunci) dan
+   `pj_verification_events` (audit: aksi, nominal, nama PJ, IP, waktu). Public (bukan per-tenant) agar
+   cukup satu migration dan lookup token tanpa tahu skema tenant.
+5. **Halaman publik** `/{slug}/verifikasi/{token}`: kata sandi = 4 digit terakhir HP penerima; 5x salah →
+   tautan terkunci. Setelah benar, cookie httpOnly bertanda tangan HMAC (berlaku singkat, terikat id
+   tautan). Aksi lewat Server Action POST. Daftar = snapshot digest ∪ semua `submitted` saat ini; baris
+   yang sudah diproses menampilkan "Sudah diverifikasi oleh {nama}".
+6. **Kedaluwarsa tautan:** 36 jam (digest berikutnya membuat tautan baru).
+7. **Cron** `/api/cron/pj-digest` dijalankan tiap jam (header `x-cron-secret`); di dalamnya per tenant
+   dicek jam lokal (13/16/18 keuangan, 16 lainnya) dan penanda `pj_digest_state` (settings) mencegah
+   kirim ganda dalam jam yang sama. Rotasi bendahara: indeks = (hari-ke-tahun×3 + indeks slot) mod n.
+8. **Kanal:** WA lewat `sendWaNotification` (opsi baru `skipEventToggle` — kunci event PJ tidak ada di
+   `whatsapp_config.notifications` tenant lama), gagal apa pun → email (SMTP tenant → SMTP platform).
+
+### 8.1 STATUS EKSEKUSI (2026-10-10) — SELESAI KODE putaran 1 (keuangan + keanggotaan), type-check bersih
+
+Selesai: pengaturan PJ (`/settings/notifications` → "Penanggung Jawab", hanya yang boleh kelola pengguna,
+id pengurus/divisi divalidasi ulang di server), inti verifikasi bersama (`lib/payment-verification.server.ts`),
+tabel + halaman `/{slug}/verifikasi/{token}`, cron `/api/cron/pj-digest`, digest keuangan (13/16/18, semua yang
+masih `submitted`, rotasi bergantian) dan digest keanggotaan (16.00: anggota baru 24 jam, menunggu persetujuan,
+belum masuk grup WA). Diuji lokal (browser, DB dev): kata sandi salah → hitung percobaan; kata sandi benar →
+daftar; "Benar, sudah diterima" → payment `paid`, invoice `paid`, jurnal bernada "(diverifikasi via tautan oleh X)",
+audit tercatat. **Bug yang ditemukan saat uji dan sudah diperbaiki:** pembanding kata sandi memakai padding berbeda
+sehingga kata sandi benar pun ditolak.
+
+**Belum diuji:** pengiriman WA/email sungguhan (butuh gateway tenant), tombol "nominal berbeda"/"Tidak ada" di
+browser, dua PJ menekan bersamaan, jam cron pada VPS.
+**Deploy:** jalankan migration `0073_pj_verification.sql`; tambahkan cron TIAP JAM (pola sama cron lain, header
+`x-cron-secret`): `0 * * * * curl -s -H "x-cron-secret: $CRON_SECRET" https://jalakarta.com/api/cron/pj-digest`
+(sesuaikan dengan baris cron `invoice-reminder` yang sudah ada). Lalu super admin tenant mengisi PJ di pengaturan.
+**Catatan:** pesan digest berupa teks di kode (belum editable per tenant seperti template WA lain).
+**Menyusul:** digest toko/donasi/event; cadangan bila semua bendahara berhalangan; tampilan penanda "tidak ada"
+di dashboard admin.
