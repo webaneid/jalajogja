@@ -200,4 +200,6 @@ Hasil pembacaan kode 2026-10-31 (tanpa menjalankan aplikasi): tidak ada celah se
 **Verifikasi tiap langkah:** `bun run type-check`; langkah 3 — jalankan query diagnosa duplikat + uji dua klik cepat di tenant uji; langkah 5 — bandingkan label dropdown
 sebelum/sesudah. Catatan: uji browser tetap oleh user (admin perlu login). Catat hasilnya di bagian status di bawah dan, bila ada pelajaran baru, di `lessons-learned.md`.
 
-**Status eksekusi:** belum dimulai.
+**Status eksekusi:**
+- [x] Langkah 1 — SELESAI KODE 2026-10-31 (`tsc` bersih; review keamanan: hanya memperketat validasi pada action yang sudah dijaga `getTenantAccess` + `hasFullAccess(toko)`, tanpa permukaan baru; belum dites browser).
+- [ ] Langkah 2–5 — belum.

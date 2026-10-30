@@ -59,7 +59,9 @@ export async function createMemberProducerAction(
       const [r] = await publicDb.select({ memberId: memberOwnedPesantren.memberId }).from(memberOwnedPesantren).where(eq(memberOwnedPesantren.id, input.sourceId)).limit(1);
       ownerId = r?.memberId ?? null;
     } else {
-      const [r] = await publicDb.select({ memberId: memberProfessionals.memberId }).from(memberProfessionals).where(eq(memberProfessionals.id, input.sourceId)).limit(1);
+      const [r] = await publicDb.select({ memberId: memberProfessionals.memberId, isActive: memberProfessionals.isActive }).from(memberProfessionals).where(eq(memberProfessionals.id, input.sourceId)).limit(1);
+      // Picker sudah menyaring profesional nonaktif; aksi dipanggil langsung tidak boleh melewatinya.
+      if (r && !r.isActive) return { success: false, error: "Profesional nonaktif tidak bisa dijadikan produsen." };
       ownerId = r?.memberId ?? null;
     }
     if (!ownerId) return { success: false, error: "Data sumber tidak ditemukan." };
