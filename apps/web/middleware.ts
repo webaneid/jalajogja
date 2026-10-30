@@ -233,8 +233,11 @@ export async function middleware(request: NextRequest) {
 // production (docs/arsitektur-seo.md § 6c.2/6c.3). Path-path itu juga TIDAK pernah menyentuh
 // DB waste yang jadi masalah di sini — keduanya sudah selalu match ke route ASLI (root ATAU
 // hasil rewrite tenant), tidak pernah jatuh ke catch-all sama sekali dalam kondisi normal.
+// `pilih-tujuan` dan `no-tenant-access` (2026-10-31) DIKECUALIKAN seperti `dashboard-redirect`: ketiganya adalah tujuan
+// redirect pasca-login yang HARUS tampil apa adanya di host mana pun. Tanpa ini, di custom domain (mis. forbis.id) middleware
+// me-rewrite-nya jadi /{slug}/pilih-tujuan → 404 (bug nyata saat uji akun ganda-peran). Halaman-halaman itu memeriksa sesi sendiri.
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|icon\\.svg|apple-icon\\.png|api/auth|dashboard-redirect).*)",
+    "/((?!_next/static|_next/image|icon\\.svg|apple-icon\\.png|api/auth|dashboard-redirect|pilih-tujuan|no-tenant-access).*)",
   ],
 };

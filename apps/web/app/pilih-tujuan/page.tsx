@@ -1,4 +1,8 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { eq } from "drizzle-orm";
+import { db, tenants } from "@jalajogja/db";
+import { isOwnHost } from "@/lib/is-own-host";
 import Link from "next/link";
 import { LayoutDashboard, Factory } from "lucide-react";
 import { getCurrentSession } from "@/lib/tenant";
@@ -23,6 +27,19 @@ export default async function PilihTujuanPage({
   if (contexts.length === 0) redirect("/no-tenant-access");
   if (contexts.length === 1 && !ditolak) redirect(contexts[0].href);
 
+  // Di custom domain (mis. forbis.id) hanya /app/{slug-pemilik-domain}/* yang dilayani di host itu; tujuan di tenant LAIN
+  // dibuat absolut ke jalakarta.com (middleware akan melempar ke sana juga, tapi tautan absolut lebih jelas). Sesi login
+  // per-host terpisah, jadi di sana Anda mungkin diminta login lagi.
+  const hdrs = await headers();
+  const host = (hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "").split(":")[0];
+  let ownSlug: string | null = null;
+  if (!isOwnHost(host)) {
+    const [t] = await db.select({ slug: tenants.slug }).from(tenants).where(eq(tenants.customDomain, host.replace(/^www\./, ""))).limit(1);
+    ownSlug = t?.slug ?? null;
+  }
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com";
+  const hrefFor = (c: { slug: string; href: string }) => (isOwnHost(host) || c.slug === ownSlug ? c.href : new URL(c.href, appUrl).toString());
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/40 px-4">
       <div className="w-full max-w-md rounded-xl border bg-card p-8 shadow-sm space-y-5">
@@ -40,7 +57,7 @@ export default async function PilihTujuanPage({
         <ul className="space-y-2">
           {contexts.map((c) => (
             <li key={`${c.kind}:${c.slug}`}>
-              <Link href={c.href} className="flex items-center gap-3 rounded-lg border border-border p-3 hover:bg-muted transition-colors">
+              <Link href={hrefFor(c)} className="flex items-center gap-3 rounded-lg border border-border p-3 hover:bg-muted transition-colors">
                 {c.kind === "pengurus" ? <LayoutDashboard className="h-5 w-5 text-muted-foreground" /> : <Factory className="h-5 w-5 text-muted-foreground" />}
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{c.name}</span>
