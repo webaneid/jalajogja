@@ -3,7 +3,7 @@
 import { getTenantAccess } from "@/lib/tenant";
 import { canManageUsers } from "@/lib/permissions";
 import { createTenantDb, db, tenants, members, tenantMemberships, contacts, refProvinces, refRegencies, refDistricts, refVillages } from "@jalajogja/db";
-import { upsertSettings, upsertSetting, getSetting } from "@jalajogja/db";
+import { upsertSettings, upsertSetting, getSetting, deleteSetting } from "@jalajogja/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
@@ -11,6 +11,9 @@ import type { Level, Module } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/phone";
 import { FORUM_MEMBERSHIP_NUMBER_FORMATS, type ForumMembershipNumberFormat } from "@/lib/forum-membership-number";
 import { isValidWhatsappGroupUrl, WHATSAPP_GROUP_SETTING_KEY } from "@/lib/whatsapp-group";
+import {
+  TRACKING_SETTING_KEYS, TRACKING_FIELD_ERRORS, normalizeTrackingValue, type TrackingField,
+} from "@/lib/tracking-ids";
 import { sanitizePjConfig, PJ_CONFIG_KEY, PJ_MODULES } from "@/lib/pj-config";
 import {
   isPjDigestTemplateKey, pjTemplateRequiresUrl, PJ_DIGEST_TEMPLATE_MAX_LENGTH, PJ_DIGEST_TEMPLATE_SETTING_KEY,
@@ -1363,5 +1366,38 @@ export async function savePjDigestTemplateAction(slug: string, key: string, text
 
   await upsertSetting(tenantDb, PJ_DIGEST_TEMPLATE_SETTING_KEY, "notif", next);
   revalidatePath(`/app/${slug}/settings/notifications`);
+  return {};
+}
+
+// ─── INTEGRASI & PELACAKAN (docs/arsitektur-seo.md § 3) ──────────────────────
+
+export type TrackingFormData = Partial<Record<TrackingField, string>>;
+
+export async function saveTrackingSettingsAction(
+  slug:   string,
+  values: TrackingFormData,
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
+
+  // Validasi SEMUA field dulu — jangan simpan sebagian kalau ada yang salah.
+  const clean = {} as Record<TrackingField, string>;
+  for (const field of Object.keys(TRACKING_SETTING_KEYS) as TrackingField[]) {
+    const v = normalizeTrackingValue(field, values[field]);
+    if (v === null) return { error: TRACKING_FIELD_ERRORS[field] };
+    clean[field] = v;
+  }
+
+  const tenantClient = createTenantDb(access.tenant.slug);
+  for (const field of Object.keys(TRACKING_SETTING_KEYS) as TrackingField[]) {
+    const key = TRACKING_SETTING_KEYS[field];
+    // settings.value JSONB NOT NULL → kosong = hapus row, bukan simpan null.
+    if (clean[field] === "") await deleteSetting(tenantClient, key, "seo");
+    else await upsertSetting(tenantClient, key, "seo", clean[field]);
+  }
+
+  revalidatePath(`/app/${slug}/settings/seo`);
+  revalidatePath(`/${slug}`, "layout");
   return {};
 }

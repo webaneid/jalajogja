@@ -157,6 +157,8 @@ Halaman **Pengaturan SEO Admin** (`/app/{slug}/settings/seo`) akan diperluas den
 ├── Tab 1: Overrides Halaman Statis (16 pageKey)
 └── Tab 2: Integrasi & Verifikasi Webmaster
     ├── Google Tag Manager Container ID (GTM-XXXXXXX)
+    ├── Google Analytics 4 Measurement ID (G-XXXXXXXXXX)
+    ├── Meta (Facebook) Pixel ID
     ├── Google Search Console Verification Meta Tag
     ├── Bing Webmaster Verification Tag
     └── Card Petunjuk Submisi XML Sitemap ke Google Search Console
@@ -174,8 +176,21 @@ Halaman **Pengaturan SEO Admin** (`/app/{slug}/settings/seo`) akan diperluas den
 
 Metadata integrasi disimpan di tabel `tenant_{slug}.settings` (Group: `seo`):
 - `seo_gtm_id`: string (Contoh: `"GTM-K89XPL2"`)
-- `seo_google_verification`: string (Contoh: `"google-site-verification=abc123xyz"`)
-- `seo_bing_verification`: string (Contoh: `"msvalidate.01=123456"`)
+- `seo_ga4_id`: string (Contoh: `"G-ABC123XYZ9"`) — **ditambah 2026-10-30**
+- `seo_meta_pixel_id`: string, angka 8–20 digit — **ditambah 2026-10-30**
+- `seo_google_verification`: string — **KODE `content` saja** (bukan seluruh tag/`google-site-verification=` prefix);
+  form menerima tempelan seluruh `<meta ...>` dari Google lalu mengekstrak `content`-nya.
+- `seo_bing_verification`: string — kode `content` saja (idem)
+
+> **Keputusan produk (2026-10-30, user)**: semua integrasi ini **GRATIS untuk semua tenant/paket**,
+> TIDAK lewat sistem add-on (`google-analytics` / `meta-pixel` di katalog add-on tidak dipakai
+> untuk ini — mekanisme install add-on belum ada). Satu tab "Integrasi & Pelacakan" di
+> `/settings/seo` memuat kelima field. Admin menempel **ID saja**, BUKAN script mentah → tidak ada
+> kolom "custom HTML/script" (celah XSS). Setiap ID divalidasi regex ketat di server
+> (`lib/tracking-ids.ts`) DAN divalidasi ulang saat render. Dipasang HANYA di front-end publik
+> (`app/(public)/[tenant]/layout.tsx`), bukan dashboard admin. Kalau GTM dan GA4 sama-sama diisi,
+> UI menampilkan peringatan potensi hitung ganda (GA4 biasanya dipasang lewat GTM). Tanpa banner
+> consent cookie (audiens Indonesia; Halaman Privasi tenant sudah ada).
 
 ### 3.2. Script Downstream Injection di `PublicLayout` (`app/(public)/[tenant]/layout.tsx`)
 

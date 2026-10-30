@@ -24,6 +24,7 @@ export const SETTING_GROUPS = [
   "event",     // pengaturan event: desain kartu arsip
   "forum",     // pengaturan keanggotaan forum: produk/campaign syarat iuran (tenant forum saja)
   "ekosistem", // pengaturan modul Ekosistem: toggle Usaha/Pesantren/Profesional + config lain
+  "seo",       // integrasi pelacakan & verifikasi webmaster: GTM, GA4, Meta Pixel, Search Console, Bing
 ] as const;
 export type SettingGroup = typeof SETTING_GROUPS[number];
 

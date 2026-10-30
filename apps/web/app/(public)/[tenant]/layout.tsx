@@ -9,6 +9,8 @@ import { parseNavMenu } from "@/lib/nav-menu";
 import { buildTenantThemeCss, getGoogleFontsUrl } from "@/lib/theme-palette";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { stripTenantPrefix } from "@/lib/strip-tenant-prefix";
+import { TrackingScripts } from "@/components/website/public/tracking-scripts";
+import { readTrackingConfig } from "@/lib/tracking-ids";
 import type { Metadata } from "next";
 
 type Params = Promise<{ tenant: string }>;
@@ -28,9 +30,16 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const generalSettings  = await getSettings(tenantClient, "general");
   const faviconUrl       = (generalSettings.favicon_url as string | undefined) ?? null;
   const siteName         = (generalSettings.site_name   as string | undefined) ?? slug;
-  if (!faviconUrl) return { title: { default: siteName, template: `%s — ${siteName}` } };
+  // Verifikasi webmaster (Search Console / Bing) — kode sudah divalidasi regex, lihat lib/tracking-ids.ts
+  const tracking = readTrackingConfig(await getSettings(tenantClient, "seo"));
+  const verification: NonNullable<Metadata["verification"]> = {
+    ...(tracking.google ? { google: tracking.google } : {}),
+    ...(tracking.bing ? { other: { "msvalidate.01": tracking.bing } } : {}),
+  };
+  if (!faviconUrl) return { title: { default: siteName, template: `%s — ${siteName}` }, verification };
   return {
     title: { default: siteName, template: `%s — ${siteName}` },
+    verification,
     icons: {
       icon:     faviconUrl,
       shortcut: faviconUrl,
@@ -66,12 +75,14 @@ export default async function PublicLayout({
 
   const tenantClient = createTenantDb(slug);
 
-  const [generalSettings, websiteSettings, contactSettings, displaySettings] = await Promise.all([
+  const [generalSettings, websiteSettings, contactSettings, displaySettings, seoSettings] = await Promise.all([
     getSettings(tenantClient, "general"),
     getSettings(tenantClient, "website"),
     getSettings(tenantClient, "contact"),
     getSettings(tenantClient, "display"),
+    getSettings(tenantClient, "seo"),
   ]);
+  const tracking = readTrackingConfig(seoSettings);
 
   const siteName       = (generalSettings.site_name        as string | undefined) ?? tenant.name;
   const tagline        = (generalSettings.tagline           as string | undefined) ?? null;
@@ -174,6 +185,9 @@ export default async function PublicLayout({
       {/* CSS variables tema tenant — override Tailwind di scope .public-layout */}
       {/* eslint-disable-next-line react/no-danger */}
       <style dangerouslySetInnerHTML={{ __html: themeCss }} />
+
+      {/* GTM / GA4 / Meta Pixel — ID divalidasi, hanya front-end publik */}
+      <TrackingScripts config={tracking} />
 
     <div className="public-layout min-h-screen flex flex-col">
       <HeaderVisibility

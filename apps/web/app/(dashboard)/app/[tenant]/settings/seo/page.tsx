@@ -7,6 +7,10 @@ import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { SEO_PAGE_KEYS } from "@/lib/seo-page-keys";
 import { SeoOverridesManageClient } from "@/components/settings/seo-overrides-manage-client";
 import { SitemapUrlsCard } from "@/components/settings/sitemap-urls-card";
+import { TrackingSettingsForm } from "@/components/settings/tracking-settings-form";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { getSettings } from "@jalajogja/db";
+import { readTrackingConfig } from "@/lib/tracking-ids";
 
 export default async function SettingsSeoPage({
   params,
@@ -24,7 +28,9 @@ export default async function SettingsSeoPage({
   const nativeSitemapUrl = `${base.baseUrl}/sitemap.xml`;
   const yoastSitemapUrl  = `${base.baseUrl}/sitemap_index.xml`;
 
-  const { db: tenantDb, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db: tenantDb, schema } = tenantClient;
+  const tracking = readTrackingConfig(await getSettings(tenantClient, "seo"));
 
   const rows = await tenantDb
     .select({
@@ -76,18 +82,39 @@ export default async function SettingsSeoPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">SEO Halaman Statis</h2>
-        <p className="text-sm text-muted-foreground">
-          Kustomisasi judul, deskripsi, dan gambar bagikan untuk halaman yang tidak punya
-          &quot;rumah&quot; sendiri — login, registrasi, arsip, dan direktori. Halaman yang belum
-          dikustomisasi memakai judul bawaan.
-        </p>
-      </div>
+      <Tabs defaultValue="halaman">
+        <TabsList>
+          <TabsTrigger value="halaman">SEO Halaman Statis</TabsTrigger>
+          <TabsTrigger value="integrasi">Integrasi &amp; Pelacakan</TabsTrigger>
+        </TabsList>
 
-      <SitemapUrlsCard nativeUrl={nativeSitemapUrl} yoastUrl={yoastSitemapUrl} />
+        <TabsContent value="halaman" className="space-y-6 pt-4">
+          <div>
+            <h2 className="text-lg font-semibold">SEO Halaman Statis</h2>
+            <p className="text-sm text-muted-foreground">
+              Kustomisasi judul, deskripsi, dan gambar bagikan untuk halaman yang tidak punya
+              &quot;rumah&quot; sendiri — login, registrasi, arsip, dan direktori. Halaman yang belum
+              dikustomisasi memakai judul bawaan.
+            </p>
+          </div>
 
-      <SeoOverridesManageClient slug={slug} entries={entries} />
+          <SitemapUrlsCard nativeUrl={nativeSitemapUrl} yoastUrl={yoastSitemapUrl} />
+
+          <SeoOverridesManageClient slug={slug} entries={entries} />
+        </TabsContent>
+
+        <TabsContent value="integrasi" className="space-y-6 pt-4">
+          <div>
+            <h2 className="text-lg font-semibold">Integrasi &amp; Pelacakan</h2>
+            <p className="text-sm text-muted-foreground">
+              Hubungkan website dengan Google Search Console, Google Analytics, Tag Manager, dan
+              Meta Pixel. Cukup isi ID-nya — tidak perlu menempel script.
+            </p>
+          </div>
+          <SitemapUrlsCard nativeUrl={nativeSitemapUrl} yoastUrl={yoastSitemapUrl} />
+          <TrackingSettingsForm slug={slug} defaults={tracking} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
