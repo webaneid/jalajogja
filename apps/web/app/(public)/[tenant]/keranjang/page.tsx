@@ -13,6 +13,7 @@ import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { resolveMediaUrl } from "@/lib/minio";
 import type { Metadata } from "next";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 type CampaignBanner = { campaignId: string; campaignTitle: string; amounts: number[] };
 type ProductBanner  = {
@@ -136,6 +137,7 @@ type Props = { params: Promise<{ tenant: string }> };
 // SEO Fase 3 (docs/arsitektur-seo.md § 3.3) — sebelumnya tidak punya generateMetadata sama sekali.
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const base = await getTenantSeoBase(slug);
   const override = await getPageSeoOverride(createTenantDb(slug), slug, "keranjang");
   return buildMetadata({

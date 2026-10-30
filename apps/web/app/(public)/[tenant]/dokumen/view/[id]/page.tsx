@@ -8,6 +8,7 @@ import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { resolveMediaUrl } from "@/lib/minio";
 import { isValidUuid } from "@/lib/is-uuid";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 type Params = Promise<{ tenant: string; id: string }>;
 
@@ -15,6 +16,7 @@ type Params = Promise<{ tenant: string; id: string }>;
 // PUNYA generateMetadata sama sekali, meski publik by design (visibility="public").
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug, id: docId } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   if (!isValidUuid(docId)) return {};
   const base = await getTenantSeoBase(slug);
   const { db: tdb, schema } = createTenantDb(slug);

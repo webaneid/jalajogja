@@ -11,6 +11,7 @@ import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import type { Metadata }      from "next";
 import { CalendarDays }       from "lucide-react";
 import { getTenantTimezone }  from "@/lib/tenant-timezone.server";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const revalidate = 60;
 
@@ -23,6 +24,7 @@ type SearchParams  = Promise<{ category?: string; all?: string }>;
 // robots SELALU dari override page-wide — kategori (Fase 2) tidak punya field itu sendiri.
 export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const { category }     = await searchParams;
   const base = await getTenantSeoBase(slug);
   const tenantClient = createTenantDb(slug);

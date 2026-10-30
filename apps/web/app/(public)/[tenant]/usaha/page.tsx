@@ -28,6 +28,7 @@ import {
   resolveBusinessFieldLabel, resolveBusinessFieldSuggestions,
   resolveBusinessFieldSuggestionsStrict, resolveFieldLabel,
 } from "@/lib/taxonomy-overrides";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const revalidate = 60;
 
@@ -45,6 +46,7 @@ type SearchParams  = Promise<{
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const base = await getTenantSeoBase(slug);
   const override = await getPageSeoOverride(createTenantDb(slug), slug, "usaha-archive");
   return buildMetadata({

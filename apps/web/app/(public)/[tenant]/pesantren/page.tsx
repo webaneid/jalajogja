@@ -18,6 +18,7 @@ import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
 import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const revalidate = 60;
 
@@ -40,6 +41,7 @@ const KATEGORI_OPTIONS = ["Putra", "Putra dan Putri", "Putri"] as const;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const base = await getTenantSeoBase(slug);
   const override = await getPageSeoOverride(createTenantDb(slug), slug, "pesantren-archive");
   return buildMetadata({

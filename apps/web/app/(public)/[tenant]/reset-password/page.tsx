@@ -4,6 +4,8 @@ import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import type { Metadata } from "next";
 import { ResetPasswordForm } from "./reset-password-form";
+import { notFound } from "next/navigation";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 type Params = Promise<{ tenant: string }>;
 
@@ -12,6 +14,7 @@ type Params = Promise<{ tenant: string }>;
 // reset-password-form.tsx, page.tsx ini jadi Server Component wrapper.
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const base = await getTenantSeoBase(slug);
   const override = await getPageSeoOverride(createTenantDb(slug), slug, "reset-password");
   return buildMetadata({
@@ -28,5 +31,6 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function ResetPasswordPage({ params }: { params: Params }) {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) notFound();
   return <ResetPasswordForm slug={slug} />;
 }

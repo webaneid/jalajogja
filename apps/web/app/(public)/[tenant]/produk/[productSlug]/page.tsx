@@ -17,6 +17,7 @@ import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const revalidate = 60;
 
@@ -30,6 +31,7 @@ function extractCover(images: unknown): { coverUrl: string | null; coverVariants
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug, productSlug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const [base] = await Promise.all([getTenantSeoBase(slug)]);
 
   const tenantClient             = createTenantDb(slug);

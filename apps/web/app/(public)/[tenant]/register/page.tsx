@@ -1,4 +1,4 @@
-import { redirect }      from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 import { headers }       from "next/headers";
 import { auth }          from "@/lib/auth";
 import { db, tenants, createTenantDb } from "@jalajogja/db";
@@ -9,6 +9,7 @@ import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import type { Metadata } from "next";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 type Params = Promise<{ tenant: string }>;
 
@@ -16,6 +17,7 @@ type Params = Promise<{ tenant: string }>;
 // generateMetadata sama sekali.
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const base = await getTenantSeoBase(slug);
   const override = await getPageSeoOverride(createTenantDb(slug), slug, "register");
   return buildMetadata({
@@ -32,6 +34,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function RegisterPage({ params }: { params: Params }) {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) notFound();
 
   // Jika sudah login → langsung ke akun
   const session = await auth.api.getSession({ headers: await headers() });

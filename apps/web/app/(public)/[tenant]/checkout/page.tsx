@@ -13,6 +13,7 @@ import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import type { Metadata } from "next";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 type Props = { params: Promise<{ tenant: string }> };
 
@@ -25,6 +26,7 @@ type RajaOngkirConfig = {
 // SEO Fase 3 (docs/arsitektur-seo.md § 3.3) — sebelumnya tidak punya generateMetadata sama sekali.
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const base = await getTenantSeoBase(slug);
   const override = await getPageSeoOverride(createTenantDb(slug), slug, "checkout");
   return buildMetadata({

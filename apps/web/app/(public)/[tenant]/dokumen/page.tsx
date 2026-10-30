@@ -6,6 +6,7 @@ import type { Metadata } from "next";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { getPageSeoOverride } from "@/lib/get-page-seo-override";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const revalidate = 60;
 
@@ -21,6 +22,7 @@ type SearchParams = Promise<{ q?: string; category?: string }>;
 
 export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const { category }     = await searchParams;
   const base = await getTenantSeoBase(slug);
   const tenantClient = createTenantDb(slug);

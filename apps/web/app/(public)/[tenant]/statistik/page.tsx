@@ -9,6 +9,7 @@ import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekos
 import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 import { computeMemberStatistics } from "@/lib/member-statistics.server";
 import { StatistikSections } from "@/components/statistik/statistik-sections";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const revalidate = 300;
 
@@ -16,6 +17,7 @@ type Params = Promise<{ tenant: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const base = await getTenantSeoBase(slug);
   const override = await getPageSeoOverride(createTenantDb(slug), slug, "statistik");
   return buildMetadata({

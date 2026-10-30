@@ -23,6 +23,7 @@ import { SocialShareCard } from "@/components/website/public/single/social-share
 import { EventMobileTicketBar } from "@/components/event/event-mobile-ticket-bar";
 import { getTenantTimezone, tzLabel } from "@/lib/tenant-timezone.server";
 import { checkGeneralRegistrationEligibility } from "@/lib/member-eligibility";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 type BankAccount = {
   id: string;
@@ -106,6 +107,7 @@ export async function generateMetadata({
   params: Promise<{ tenant: string; slug: string }>;
 }): Promise<Metadata> {
   const { tenant: slug, slug: eventSlug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const tenantClient = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;
   const [event, base] = await Promise.all([

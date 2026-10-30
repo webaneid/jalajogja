@@ -15,6 +15,7 @@ import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import type { Metadata }                 from "next";
 import { ShoppingBag } from "lucide-react";
 import { PublicButton } from "@/components/website/public/ui/public-button";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const revalidate = 60;
 
@@ -38,6 +39,7 @@ function extractCover(images: unknown): { coverUrl: string | null; coverVariants
 // selain itu jatuh ke override page-wide (Fase 3), lalu fallback hardcode lama.
 export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const { category }     = await searchParams;
   const base = await getTenantSeoBase(slug);
   const tenantClient = createTenantDb(slug);

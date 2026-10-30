@@ -8,6 +8,14 @@
 
 ---
 
+## [2026-10-30] Guard tenant di `layout.tsx` TIDAK melindungi `generateMetadata`/page — Next.js merender paralel
+**Masalah:** Log produksi penuh `relation "tenant_sitemap.txt.settings" does not exist` (juga slug acak lain) dari bot yang membuka `/sitemap.txt`, `/wp-login.php`, dst. Request jatuh ke route dinamis `[tenant]`, lalu query ke schema yang tidak ada → 500 + log berisik. Tercatat sebagai Technical Debt sejak 2026-09-13.
+**Root cause:** `layout.tsx` sudah punya cek `tenants.isActive` + `notFound()`, tapi Next.js menjalankan layout, `page`, dan `generateMetadata` PARALEL — guard di layout tidak menghentikan query di dua lainnya. Asumsi sebelumnya "`getTenantSeoBase()` selalu aman" hanya benar kalau ia satu-satunya yang menyentuh DB: ia mengembalikan fallback (bukan melempar) untuk tenant palsu, jadi `createTenantDb(slug)`/`fetch*Entries` yang dipanggil sesudahnya (atau paralel, seperti `page.tsx` beranda) tetap crash. 22 `generateMetadata` + 12 route sitemap per-jenis + 5 page terdampak.
+**Fix:** `lib/tenant-active.ts` → `isActiveTenant(slug)` (`React.cache`, satu query per request). Dipanggil di awal setiap `generateMetadata` yang menyentuh tenant schema (return `{}`), route sitemap (404), dan page tanpa guard sendiri (`notFound()`). Halaman `akun/*` aman: redirect login terjadi sebelum query tenant.
+**Pencegahan:** Setiap `generateMetadata`/page/route handler BARU di bawah `(public)/[tenant]/` yang memanggil `createTenantDb`/`getSettings` WAJIB memanggil `isActiveTenant(slug)` lebih dulu — jangan mengandalkan layout atau `getTenantSeoBase()`.
+
+---
+
 ## [2026-10-09] Harga tier hanya tampilan — checkout menagih `price`; DAN arti field harga ternyata salah kaprah
 **Masalah:** (1) Anggota melihat `member_price` di halaman produk, tapi invoice ditagih `price`. (2) Saat dibahas, ternyata label/arti field memang beda dari maksud pemilik produk: "Harga Dasar" di kode = harga tamu, padahal maksudnya modal/harga produsen; harga jual sebenarnya = Harga Publik untuk semua orang.
 **Root cause:** Aturan harga ditulis DUA kali, terpisah (`resolvePrice()` sisi tampilan vs `resolveProductCartItem()` sisi server yang hanya baca `price`) dan tidak pernah disamakan. Arti field tidak pernah divalidasi ke pemilik bisnis — label "Tdk login / Akun login / Alumni Gontor" dibangun dari asumsi, lalu terbawa ke ~25 file.

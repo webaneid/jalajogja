@@ -13,6 +13,7 @@ import type { Metadata } from "next";
 import { PublicButton }  from "@/components/website/public/ui/public-button";
 import { AnggotaDirectoryClient } from "@/components/anggota/anggota-directory-client";
 import { AnggotaFiltersClient }   from "@/components/anggota/anggota-filters-client";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const revalidate = 60;
 
@@ -23,6 +24,7 @@ type SearchParams = Promise<{ q?: string; provinsi?: string; angkatan?: string; 
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const base = await getTenantSeoBase(slug);
   const override = await getPageSeoOverride(createTenantDb(slug), slug, "anggota-archive");
   return buildMetadata({

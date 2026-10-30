@@ -16,6 +16,7 @@ import { getPageSeoOverride }                 from "@/lib/get-page-seo-override"
 import { resolveBaseUrl }                     from "@/lib/resolve-base-url";
 import { resolvePostHrefs }                   from "@/lib/post-permalink.server";
 import { FileText }                           from "lucide-react";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const revalidate = 60;
 
@@ -75,6 +76,7 @@ async function resolveCovers(
 // selain itu fallback ke override page-wide, lalu fallback hardcode. Pola sama /produk.
 export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const { category }     = await searchParams;
   const base = await getTenantSeoBase(slug);
   const tenantClient = createTenantDb(slug);

@@ -13,6 +13,7 @@ import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import type { Metadata }      from "next";
 import { Heart }              from "lucide-react";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const revalidate = 60;
 
@@ -27,6 +28,7 @@ const VALID_TYPES = ["donasi", "zakat", "wakaf", "qurban"] as const;
 // qurban) di luar scope — tidak ada tabel kategori untuk itu.
 export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const { category }     = await searchParams;
   const base = await getTenantSeoBase(slug);
   const tenantClient = createTenantDb(slug);

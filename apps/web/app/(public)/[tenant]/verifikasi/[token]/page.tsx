@@ -7,6 +7,8 @@ import { db, pjVerificationEvents, createTenantDb } from "@jalajogja/db";
 import { loadPjLink, hasPjUnlockCookie } from "@/lib/pj-link.server";
 import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone.server";
 import { PjUnlockForm, PjPaymentList, type PjPaymentRow } from "./verification-client";
+import { notFound } from "next/navigation";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const metadata: Metadata = {
   title: "Verifikasi Pembayaran",
@@ -31,6 +33,7 @@ export default async function VerifikasiPage({
   params: Promise<{ tenant: string; token: string }>;
 }) {
   const { tenant: slug, token } = await params;
+  if (!(await isActiveTenant(slug))) notFound();
 
   const loaded = await loadPjLink(slug, token);
   if (!loaded.ok) {

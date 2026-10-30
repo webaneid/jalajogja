@@ -11,6 +11,7 @@ import { parseLandingBody, parseContactBody, parseLinktreeBody } from "@/lib/pag
 import type { Metadata } from "next";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const revalidate = 60;
 
@@ -18,6 +19,7 @@ type Params = Promise<{ tenant: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const [base, websiteSettings] = await Promise.all([
     getTenantSeoBase(slug),
     getSettings(createTenantDb(slug), "website"),

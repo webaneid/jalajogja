@@ -13,6 +13,7 @@ import type { Metadata }                 from "next";
 import { getTenantSeoBase }              from "@/lib/tenant-seo";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { ShoppingBag, ChevronLeft, ChevronRight, ChevronRight as ChevronRightIcon } from "lucide-react";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const revalidate = 60;
 
@@ -31,6 +32,7 @@ function extractCover(images: unknown): { coverUrl: string | null; coverVariants
 // pakai itu; kalau tidak, tetap format template lama ("{nama} — Produk {siteName}").
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug, categorySlug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const tenantClient = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;
   const [cat, base] = await Promise.all([

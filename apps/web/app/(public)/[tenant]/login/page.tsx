@@ -1,4 +1,4 @@
-import { redirect }    from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 import { headers }     from "next/headers";
 import { auth }        from "@/lib/auth";
 import { createTenantDb } from "@jalajogja/db";
@@ -8,6 +8,7 @@ import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import type { Metadata } from "next";
 import { LoginForm }   from "./login-form";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 type Params       = Promise<{ tenant: string }>;
 type SearchParams  = Promise<{ redirect?: string }>;
@@ -16,6 +17,7 @@ type SearchParams  = Promise<{ redirect?: string }>;
 // generateMetadata sama sekali (warisan title default "{siteName}" dari layout).
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const base = await getTenantSeoBase(slug);
   const override = await getPageSeoOverride(createTenantDb(slug), slug, "login");
   return buildMetadata({
@@ -38,6 +40,7 @@ export default async function LoginPage({
   searchParams: SearchParams;
 }) {
   const { tenant: slug }   = await params;
+  if (!(await isActiveTenant(slug))) notFound();
   const { redirect: dest } = await searchParams;
 
   // Tentukan baseUrl: custom domain → "" (no prefix), jalakarta.com → "/{slug}"

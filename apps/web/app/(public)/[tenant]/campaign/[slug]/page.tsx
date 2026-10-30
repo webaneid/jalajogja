@@ -24,6 +24,7 @@ import { SingleFeatureImage } from "@/components/website/public/single/single-fe
 import { CategoryPill } from "@/components/website/public/single/category-pill";
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
 import { CampaignMobileDonationBar } from "@/components/donasi/public/campaign-mobile-donation-bar";
+import { isActiveTenant } from "@/lib/tenant-active";
 
 export const revalidate = 60;
 
@@ -31,6 +32,7 @@ type Params = Promise<{ tenant: string; slug: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug, slug: campaignSlug } = await params;
+  if (!(await isActiveTenant(slug))) return {};
   const [base] = await Promise.all([getTenantSeoBase(slug)]);
   const tenantClient = createTenantDb(slug);
   const { db: tdb, schema } = tenantClient;
