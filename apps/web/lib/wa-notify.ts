@@ -10,6 +10,7 @@ import { eq } from "drizzle-orm";
 import { sendWaNotification, type WaNotifKey } from "@/lib/whatsapp";
 import { WA_TEMPLATE_DEFAULTS, renderTemplateString, type WaTemplateVars } from "@/lib/wa-templates";
 import { sendMailForTenant } from "@/lib/mail-dispatch.server";
+import { checkRateLimit } from "@/lib/rate-limit";
 import {
   CHANNEL_MODE_KEY, EMAIL_NOTIF_KEY, parseChannelMode,
   emailSubjectTemplate, isEmailEventDefaultOn, isEmailCapableEvent,
@@ -86,6 +87,27 @@ type NotifyWaOptions = {
   vars:     WaTemplateVars;
 };
 
+/** Mode kanal tenant (default email_first). Dipakai juga oleh jalur non-notifyWa (PJ, aktivasi anggota). */
+export async function resolveChannelMode(tenantDb: TenantDb): Promise<import("@/lib/email-notify").ChannelMode> {
+  try {
+    const prefs = await getSettings(tenantDb, "notif");
+    return parseChannelMode(prefs[CHANNEL_MODE_KEY]);
+  } catch {
+    return parseChannelMode(undefined);
+  }
+}
+
+// Nama orang dari input publik → aman ditaruh di email: tanpa URL/domain, tanpa karakter format, maks 60.
+function cleanPersonName(raw: string | undefined): string {
+  return (raw ?? "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\b[\w-]+(\.[\w-]+)+\/\S*/g, "")
+    .replace(/[*_~`<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 60) || "Pelanggan";
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -123,12 +145,19 @@ export async function notifyWa(opts: NotifyWaOptions): Promise<void> {
     const mode  = parseChannelMode(prefs[CHANNEL_MODE_KEY]);
 
     let emailSent = false;
-    if (email && mode !== "wa_only" && isEmailCapableEvent(event)) {
+    // Batas per alamat penerima: email tujuan diketik pelanggan anonim saat checkout/pendaftaran (bisa milik
+    // orang lain) — cegah tenant dijadikan relay spam ke satu alamat. In-memory per proses (cukup 1 VPS).
+    const emailAllowed = !email || checkRateLimit(`notif-email:${email.trim().toLowerCase()}`, 10, 60 * 60_000).allowed;
+    if (email && !emailAllowed) console.warn(`[notifyWa:${event}] email dilewati: batas per-penerima tercapai`);
+    if (email && emailAllowed && mode !== "wa_only" && isEmailCapableEvent(event)) {
+      // `name` diketik pelanggan anonim saat checkout (email tujuan bisa milik orang lain) — buang URL
+      // dan format dari nama supaya email resmi tenant tidak bisa dipakai membawa tautan penyerang.
+      const emailMessage = renderTemplateString(tpl, { ...vars, orgName, name: cleanPersonName(vars.name) });
       const toggles = prefs[EMAIL_NOTIF_KEY] as Record<string, boolean> | undefined;
       const enabled = typeof toggles?.[event] === "boolean" ? toggles[event]! : isEmailEventDefaultOn(event);
       if (enabled) {
         const subject = renderTemplateString(emailSubjectTemplate(event) ?? "Notifikasi — {{orgName}}", { orgName });
-        const sent = await sendMailForTenant(tenantDb, { to: email, subject, html: waTextToEmailHtml(message) });
+        const sent = await sendMailForTenant(tenantDb, { to: email, subject, html: waTextToEmailHtml(emailMessage) });
         emailSent = sent.ok;
         if (!sent.ok) console.error(`[notifyWa:${event}] email gagal:`, sent.error);
       }

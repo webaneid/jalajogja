@@ -5,7 +5,7 @@ import {
 } from "@jalajogja/db";
 import { sendWaNotification } from "@/lib/whatsapp";
 import { renderTemplateString } from "@/lib/wa-templates";
-import { resolveWaTemplateText, resolveOrgName, waAppUrl } from "@/lib/wa-notify";
+import { resolveWaTemplateText, resolveOrgName, waAppUrl, resolveChannelMode } from "@/lib/wa-notify";
 import { isValidWhatsappGroupUrl, WHATSAPP_GROUP_SETTING_KEY } from "@/lib/whatsapp-group";
 import { sendMailForTenant } from "@/lib/mail-dispatch.server";
 
@@ -90,32 +90,42 @@ export async function notifyMembershipActivated(opts: {
 
     const vars = { name: person.name, orgName, numberInfo, akunUrl, groupHint };
 
-    // ── 1. WhatsApp ───────────────────────────────────────────────────────────────
+    // Urutan kanal mengikuti channel_mode tenant (docs/arsitektur-notifikasi-email.md § 3.3).
+    const mode = await resolveChannelMode(tenantDb);
+
     const waTarget = person.whatsapp || person.phone;
-    if (waTarget) {
+    const trySendWa = async (): Promise<boolean> => {
+      if (!waTarget) return false;
       const tpl = await resolveWaTemplateText(tenantDb, "membership_activated");
-      if (tpl) {
-        const res = await sendWaNotification({
-          slug, event: "membership_activated", to: waTarget,
-          message: renderTemplateString(tpl, vars),
-        });
-        if (res.ok) return;
-      }
+      if (!tpl) return false;
+      const res = await sendWaNotification({
+        slug, event: "membership_activated", to: waTarget,
+        message: renderTemplateString(tpl, vars),
+      });
+      return res.ok;
+    };
+
+    const trySendEmail = async (): Promise<boolean> => {
+      if (!person.email) return false;
+      const subject = `Keanggotaan Aktif — ${orgName}`;
+      const html = `<p>Halo ${escapeHtml(person.name)},</p>
+        <p>Keanggotaan Anda di <strong>${escapeHtml(orgName)}</strong> sudah <strong>aktif</strong>.</p>
+        ${numberLines.length > 0
+          ? `<p>${numberLines.map((l) => escapeHtml(l.replace(/\*/g, ""))).join("<br/>")}</p>`
+          : ""}
+        <p><a href="${escapeHtml(akunUrl)}">Lihat kartu keanggotaan Anda</a></p>
+        ${hasGroup ? "<p>Setelah masuk, gabung ke grup WhatsApp organisasi lewat kartu <strong>Gabung Grup WhatsApp</strong> di halaman tersebut.</p>" : ""}
+        <p>Wassalamu'alaikum wr. wb.<br/>${escapeHtml(orgName)}</p>`;
+      return (await sendMailForTenant(tenantDb, { to: person.email, subject, html })).ok;
+    };
+
+    if (mode === "wa_only") {
+      if (!(await trySendWa())) await trySendEmail();
+    } else if (mode === "both") {
+      await Promise.all([trySendWa(), trySendEmail()]);
+    } else if (!(await trySendEmail()) && mode === "email_first") {
+      await trySendWa();
     }
-
-    // ── 2. Email (WA tidak ada / tidak terkirim) ──────────────────────────────────
-    if (!person.email) return;
-    const subject = `Keanggotaan Aktif — ${orgName}`;
-    const html = `<p>Halo ${escapeHtml(person.name)},</p>
-      <p>Keanggotaan Anda di <strong>${escapeHtml(orgName)}</strong> sudah <strong>aktif</strong>.</p>
-      ${numberLines.length > 0
-        ? `<p>${numberLines.map((l) => escapeHtml(l.replace(/\*/g, ""))).join("<br/>")}</p>`
-        : ""}
-      <p><a href="${escapeHtml(akunUrl)}">Lihat kartu keanggotaan Anda</a></p>
-      ${hasGroup ? "<p>Setelah masuk, gabung ke grup WhatsApp organisasi lewat kartu <strong>Gabung Grup WhatsApp</strong> di halaman tersebut.</p>" : ""}
-      <p>Wassalamu'alaikum wr. wb.<br/>${escapeHtml(orgName)}</p>`;
-
-    await sendMailForTenant(tenantDb, { to: person.email, subject, html });
   } catch (err) {
     console.error("[notifyMembershipActivated]", err);
   }

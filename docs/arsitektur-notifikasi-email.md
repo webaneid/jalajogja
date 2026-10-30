@@ -131,6 +131,17 @@ Opsi lanjutan (bukan sekarang): API HTTP Resend native — hanya berguna kalau p
       4 pemanggil dimigrasi, `notify-customer` kini fallback platform + escapeHtml, header injection ditutup di `lib/mail.ts`.
       **Syarat deploy: set `SMTP_ENCRYPTION_KEY` di `.env.local` VPS SEBELUM build** (`openssl rand -base64 32`; jangan diganti sesudahnya).
       Tanpa kunci, tombol Simpan di `/settings/email` menolak (sengaja, tidak pernah menyimpan plaintext).
-- [ ] Fase 2 — email paritas via `notifyWa()` + `channel_mode` + matriks event × kanal
+- [x] Fase 2 — SELESAI KODE 2026-10-30 (belum deploy): `notifyWa()` dua kanal (`lib/wa-notify.ts`) + definisi event/subjek/default
+      (`lib/email-notify.ts`) + `email:` di 27 titik panggil (cart, billing, event, toko, cron pengingat, sertifikat, verifikasi
+      pembayaran, sambutan anggota). Syarat "wajib punya HP" dilonggarkan jadi "HP atau email". UI: `/settings/notifications` →
+      pilihan kanal (`email_first` default / `both` / `email_only` / `wa_only`) + sakelar email per event; tiga toggle admin lama
+      DIHAPUS. `membership_activated` dan digest/verifikasi PJ ikut `channel_mode`.
+      **Perubahan perilaku untuk tenant yang sudah jalan**: default `email_first` → bila penerima punya email dan email terkirim,
+      WA TIDAK dikirim (sebelumnya WA saja). Event tanpa email di datanya tetap WA seperti dulu.
+      Pengaman: nama pelanggan dinetralkan dari URL di jalur email (`cleanPersonName`); batas 10 email/jam per alamat penerima;
+      transport SMTP di-pool (3 koneksi, 5 email/detik) agar cron tidak membanjiri penyedia.
+      Belum tercakup: OTP daftar/reset/login via email (alur OTP checkout via email sudah ada), `product_stock_out` &
+      `order_auto_cancelled` (punya jalur email sendiri di `notify-customer.ts`), `officer_invite`, `letter_sign_request`,
+      `profile_incomplete_reminder` (tetap WA).
 - [~] Fase 3 — SEBAGIAN: password tidak lagi dikirim ke client + "kosong = pertahankan" (SELESAI KODE). Preset penyedia di form BELUM.
 - [ ] Fase 4 — From per domain tenant (daftar domain terverifikasi)

@@ -1,5 +1,6 @@
 import "server-only";
 import nodemailer from "nodemailer";
+import { createHash } from "crypto";
 
 // lib/mail.ts
 // Dua jalur pengiriman email, dua tujuan berbeda:
@@ -27,18 +28,40 @@ function safeDisplayName(s: string): string {
   return stripHeaderChars(s).replace(/["<>\\]/g, "").slice(0, 80);
 }
 
+// Transport di-pool & di-cache per kredensial: cron pengingat bisa memicu ratusan email sekaligus —
+// tanpa pool tiap email membuka koneksi SMTP baru dan penyedia (Gmail dkk.) memblokir akun karena
+// lonjakan koneksi. Pool membatasi koneksi paralel + laju kirim; email lebih diantre, bukan dibuang.
+type PooledTransport = nodemailer.Transporter<unknown>;
+const transportCache = new Map<string, PooledTransport>();
+const MAX_CACHED_TRANSPORTS = 50;
+
 function buildTransport(opts: {
   host: string;
   port: number;
   user: string;
   pass: string;
 }) {
-  return nodemailer.createTransport({
+  const key = `${opts.host}|${opts.port}|${opts.user}|${createHash("sha256").update(opts.pass).digest("hex").slice(0, 16)}`;
+  const cached = transportCache.get(key);
+  if (cached) return cached;
+
+  if (transportCache.size >= MAX_CACHED_TRANSPORTS) {
+    const oldest = transportCache.keys().next().value;
+    if (oldest) { transportCache.get(oldest)?.close(); transportCache.delete(oldest); }
+  }
+  const transport: PooledTransport = nodemailer.createTransport({
     host:   opts.host,
     port:   opts.port,
     secure: opts.port === 465, // 465 = implicit TLS, 587 = STARTTLS (default nodemailer)
     auth:   { user: opts.user, pass: opts.pass },
+    pool:           true,
+    maxConnections: 3,
+    maxMessages:    100,
+    rateDelta:      1000,
+    rateLimit:      5, // maks 5 email/detik per transport
   });
+  transportCache.set(key, transport);
+  return transport;
 }
 
 // ── Platform-level (env var) — dipakai Better Auth sendResetPassword + fallback publik ──

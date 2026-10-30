@@ -10,6 +10,9 @@ import { PJ_CONFIG_KEY, type OfficerNotificationConfig } from "@/lib/pj-config";
 import { PJ_DIGEST_TEMPLATE_SETTING_KEY, type PjDigestTemplateKey } from "@/lib/pj-digest-templates";
 import { db, members } from "@jalajogja/db";
 import { eq, inArray } from "drizzle-orm";
+import {
+  CHANNEL_MODE_KEY, EMAIL_NOTIF_KEY, EMAIL_EVENT_GROUPS, parseChannelMode, type EmailEventKey,
+} from "@/lib/email-notify";
 
 export default async function NotificationsSettingsPage({
   params,
@@ -24,13 +27,11 @@ export default async function NotificationsSettingsPage({
   const tenantDb = createTenantDb(slug);
   const settings = await getSettings(tenantDb, "notif");
 
-  type NotifConfig = {
-    emailNewMember: boolean;
-    emailPaymentIn: boolean;
-    emailPaymentConfirmed: boolean;
-  };
-
-  const notif       = (settings.notifications as NotifConfig) ?? null;
+  const channelMode = parseChannelMode(settings[CHANNEL_MODE_KEY]);
+  const savedToggles = (settings[EMAIL_NOTIF_KEY] as Record<string, boolean> | undefined) ?? {};
+  const emailToggles = Object.fromEntries(
+    EMAIL_EVENT_GROUPS.flatMap((g) => g.items).map((it) => [it.key, typeof savedToggles[it.key] === "boolean" ? savedToggles[it.key] : it.defaultOn]),
+  ) as Record<EmailEventKey, boolean>;
   const waConfig    = (settings["whatsapp_config"] as WaNotifConfig | undefined) ?? null;
   const waTemplates = (settings["wa_message_templates"] as Record<string, string> | undefined) ?? {};
 
@@ -68,20 +69,15 @@ export default async function NotificationsSettingsPage({
         </p>
       </div>
 
-      {/* Email */}
+      {/* Kanal pelanggan: Email × WhatsApp */}
       <section className="space-y-3">
-        <h3 className="border-b pb-1.5 text-sm font-semibold">Notifikasi Email</h3>
-        <p className="text-xs text-muted-foreground">
-          Email dikirim ke alamat admin yang dikonfigurasi di pengaturan SMTP.
-        </p>
-        <NotificationsSettingsForm
-          slug={slug}
-          defaultValues={{
-            emailNewMember:        notif?.emailNewMember        ?? true,
-            emailPaymentIn:        notif?.emailPaymentIn        ?? true,
-            emailPaymentConfirmed: notif?.emailPaymentConfirmed ?? true,
-          }}
-        />
+        <div className="border-b pb-1.5">
+          <h3 className="text-sm font-semibold">Notifikasi ke Pelanggan &amp; Anggota</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Pilih lewat apa notifikasi (tagihan, pembayaran, pesanan, event, donasi) dikirim.
+          </p>
+        </div>
+        <NotificationsSettingsForm slug={slug} defaultMode={channelMode} defaultToggles={emailToggles} />
       </section>
 
       {/* Penanggung Jawab */}

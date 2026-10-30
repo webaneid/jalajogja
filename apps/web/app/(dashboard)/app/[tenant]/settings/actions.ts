@@ -448,20 +448,27 @@ export async function sendTestEmailAction(
 }
 
 // ── Notifikasi ────────────────────────────────────────────────────────────────
-export async function saveNotificationSettingsAction(
+// Kanal notifikasi pelanggan (Email × WhatsApp) — docs/arsitektur-notifikasi-email.md § 3.3–3.4.
+export async function saveEmailChannelSettingsAction(
   slug: string,
-  values: {
-    emailNewMember: boolean;
-    emailPaymentIn: boolean;
-    emailPaymentConfirmed: boolean;
-  }
+  values: { mode: string; toggles: Record<string, boolean> },
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { error: "Akses ditolak." };
   if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
 
+  const { CHANNEL_MODES, CHANNEL_MODE_KEY, EMAIL_NOTIF_KEY, EMAIL_EVENT_GROUPS } = await import("@/lib/email-notify");
+  if (!(CHANNEL_MODES as readonly string[]).includes(values.mode)) return { error: "Mode kanal tidak valid." };
+
+  // Whitelist: hanya key event yang dikenal, nilai dipaksa boolean — input lain dibuang.
+  const toggles: Record<string, boolean> = {};
+  for (const g of EMAIL_EVENT_GROUPS) {
+    for (const it of g.items) toggles[it.key] = values.toggles?.[it.key] === true;
+  }
+
   const tenantDb = createTenantDb(slug);
-  await upsertSettings(tenantDb, "notif", { notifications: values });
+  await upsertSettings(tenantDb, "notif", { [CHANNEL_MODE_KEY]: values.mode, [EMAIL_NOTIF_KEY]: toggles });
+  revalidatePath(`/app/${slug}/settings/notifications`);
   return {};
 }
 

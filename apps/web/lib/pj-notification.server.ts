@@ -6,7 +6,7 @@ import {
   createTenantDb, getSetting, upsertSetting,
 } from "@jalajogja/db";
 import { sendWaNotification, type WaNotifKey } from "@/lib/whatsapp";
-import { resolveOrgName, waAppUrl, waRupiah } from "@/lib/wa-notify";
+import { resolveOrgName, waAppUrl, waRupiah, resolveChannelMode } from "@/lib/wa-notify";
 import { sendMailForTenant } from "@/lib/mail-dispatch.server";
 import { getTenantTimezone, formatInTz, todayInTz } from "@/lib/tenant-timezone.server";
 import { normalizePhone, displayPhone } from "@/lib/phone";
@@ -140,16 +140,31 @@ async function deliverToRecipient(opts: {
 }): Promise<"wa" | "email" | "none"> {
   const { slug, tenantDb, event, recipient, subject, waText } = opts;
 
-  if (recipient.phone) {
+  // Urutan kanal mengikuti channel_mode tenant (docs/arsitektur-notifikasi-email.md § 3.3):
+  // email_first (default)/email_only → email dulu, WA hanya cadangan (tidak untuk email_only);
+  // both → keduanya; wa_only → perilaku lama (WA dulu, email cadangan).
+  const mode = await resolveChannelMode(tenantDb);
+  const trySendWa = async () => {
+    if (!recipient.phone) return false;
     const res = await sendWaNotification({ slug, event, to: recipient.phone, message: waText, skipEventToggle: true });
-    if (res.ok) return "wa";
-  }
-  if (!recipient.email) return "none";
-
+    return res.ok;
+  };
   const html = `<div style="font-family:sans-serif;white-space:pre-wrap">${escapeHtml(waText.replace(/\*/g, ""))
     .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')}</div>`;
-  const sent = await sendMailForTenant(tenantDb, { to: recipient.email, subject, html });
-  return sent.ok ? "email" : "none";
+  const trySendEmail = async () =>
+    !!recipient.email && (await sendMailForTenant(tenantDb, { to: recipient.email, subject, html })).ok;
+
+  if (mode === "wa_only") {
+    if (await trySendWa()) return "wa";
+    return (await trySendEmail()) ? "email" : "none";
+  }
+  if (mode === "both") {
+    const [w, e] = [await trySendWa(), await trySendEmail()];
+    return e ? "email" : w ? "wa" : "none";
+  }
+  if (await trySendEmail()) return "email";
+  if (mode === "email_only") return "none";
+  return (await trySendWa()) ? "wa" : "none";
 }
 
 // ── Jadwal ────────────────────────────────────────────────────────────────────────────

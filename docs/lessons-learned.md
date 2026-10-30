@@ -8,6 +8,13 @@
 
 ---
 
+## [2026-10-30] Email tujuan yang diketik pelanggan anonim = vektor relay spam/phishing; transport SMTP tanpa pool = cron memicu blokir penyedia
+**Masalah (ditemukan di security review Fase 2, sebelum deploy):** Notifikasi email dikirim ke alamat yang diketik pelanggan saat checkout/pendaftaran (tanpa verifikasi — bisa milik orang lain). Penyerang bisa memakai email korban dan mengisi kolom nama dengan tautan → email "resmi" dari tenant membawa tautan penyerang, ke satu alamat berkali-kali (batas checkout 120/10 menit/IP terlalu longgar). Terpisah: `buildTransport` membuat koneksi SMTP baru tiap email — cron pengingat yang memanggil `void notifyWa()` dalam loop memicu ratusan koneksi serentak.
+**Fix:** `cleanPersonName()` membuang URL/domain/format dari nama di jalur email; `checkRateLimit('notif-email:<alamat>', 10, 1 jam)` per penerima; transport di-cache + `pool` (3 koneksi, 5 email/detik).
+**Pencegahan:** Setiap kanal keluar (email/WA/SMS) yang tujuannya berasal dari input publik WAJIB: (1) menetralkan teks input pengguna yang ikut masuk isi pesan (URL, format), (2) punya batas per-penerima, bukan hanya per-IP. Setiap pengiriman massal dari cron WAJIB lewat transport ber-pool/antrean.
+
+---
+
 ## [2026-10-30] "Kosongkan password = pertahankan yang lama" + host yang bisa diubah = pencurian kredensial; tombol "Tes" = pemindai jaringan
 **Masalah (ditemukan di security review, sebelum deploy):** Form SMTP tenant memakai pola umum "kolom password kosong = pakai yang tersimpan". Admin mana pun yang berhak mengelola SMTP bisa mengganti `host` ke server miliknya, mengosongkan password, lalu Simpan/Tes — server mendekripsi password tersimpan dan mengirimkannya (SMTP AUTH) ke host penyerang. Terpisah: `host` bebas diisi membuat tombol "Tes" bisa diarahkan ke `postgres:5432`/`minio:9000`/IP privat, dan pesan error koneksi membocorkan port terbuka (SSRF).
 **Fix:** `keepsSameCredentialTarget()` — password lama hanya dipertahankan bila host+user tidak berubah, selain itu wajib diisi ulang (save DAN test). `isDisallowedSmtpHost()` menolak nama tanpa titik (service Docker), localhost, `*.local/.internal`, IP privat/loopback/link-local.
