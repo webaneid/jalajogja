@@ -238,7 +238,7 @@ pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
 | Koneksi Instagram otomatis (Graph API) | `docs/arsitektur-instagram-embed.md` |
 | Integrasi KBLI (klasifikasi usaha) — perencanaan, belum dieksekusi | `docs/arsitektur-integrasi-kbli.md` |
 | Mobile shell (header global, sticky bar, aturan spacer) | `docs/arsitektur-mobile-shell.md` |
-| Notifikasi Email (paritas WA, fallback SMTP platform, preset Gmail/Resend) — RENCANA 2026-10-30, belum dieksekusi | `docs/arsitektur-notifikasi-email.md` |
+| Notifikasi Email (paritas WA, fallback SMTP platform, preset Gmail/Resend, From per domain) — SELESAI + deployed 2026-10-30 | `docs/arsitektur-notifikasi-email.md` |
 | Notifikasi PJ modul (digest + verifikasi bendahara via tautan) — keuangan+keanggotaan+toko+donasi+event SELESAI KODE 2026-10-10, belum deploy | `docs/arsitektur-notifikasi-pengurus.md` |
 | Produsen produk (admin-only: internal/anggota/custom) — deployed 2026-10-09 | `docs/arsitektur-produsen.md` |
 | Penulis & Editor Post (byline system) | `docs/arsitektur-penulis-post.md` |
@@ -1186,9 +1186,13 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 - **2026-10-30 — Integrasi & Pelacakan SEO** (SELESAI, deployed, diuji di tenant `forbis`: GA4 + Search Console masuk): tab di `/settings/seo`
   untuk Search Console, Bing, GTM, GA4, Meta Pixel — gratis semua paket, admin isi ID saja (regex ketat `lib/tracking-ids.ts`), dipasang hanya di
   front-end publik. Migration `0074` sudah jalan di VPS. Detail: `docs/arsitektur-seo.md` § 3. Belum diuji sungguhan: GTM dan Meta Pixel.
-- **2026-10-30 — Notifikasi Email (Fase 1+2 SELESAI KODE, belum deploy)**: email jadi kanal utama notifikasi pelanggan, WA pelengkap
-  (`channel_mode` default `email_first`); fallback SMTP platform; password SMTP tenant terenkripsi. **Syarat deploy: set `SMTP_ENCRYPTION_KEY`
-  di `.env.local` VPS sebelum build.** Tanpa migration. Fase 4 = From per domain tenant (env `SMTP_VERIFIED_DOMAINS`, diatur platform admin). Email undangan pengurus kini otomatis.
+- **2026-10-30 — Notifikasi Email (Fase 1–4 SELESAI, DEPLOYED)**: email jadi kanal utama notifikasi pelanggan, WA pelengkap
+  (`channel_mode` default `email_first`); fallback SMTP platform (From = nama tenant @domain platform, Reply-To = kontak tenant); password SMTP
+  tenant terenkripsi (`SMTP_ENCRYPTION_KEY`); preset Gmail/Resend/Brevo; From per domain tenant lewat `SMTP_VERIFIED_DOMAINS` (diatur platform admin);
+  email undangan pengurus otomatis. Tanpa migration.
+  TERVERIFIKASI online: tes email SMTP tenant (Gmail App Password, tenant `forbis`) masuk. BELUM diverifikasi online: simpan SMTP + muat ulang
+  (password tak tampil), UI kanal di `/settings/notifications`, email nyata invoice/event lewat SMTP platform (butuh SPF/DKIM `jalakarta.com` benar —
+  cek `dig TXT`), email undangan pengurus, From per domain tenant. Catatan: Resend TIDAK bisa kirim dari alamat Gmail (butuh domain terverifikasi).
   Detail + status: `docs/arsitektur-notifikasi-email.md` § 8.
 - **Sesi 2026-10-10 — ringkasan** (detail + keputusan: memory `project_session_log_20261010` dan dokumen masing-masing).
   Status git: SEMUA sudah di-push (`99875ec`, 2026-10-11) dan di-deploy ke VPS (migration `0073` jalan; build+restart OK; user cek "lainnya aman").
