@@ -9,6 +9,11 @@ import { getSettings, db, tenants } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
 import { sendWaNotification, type WaNotifKey } from "@/lib/whatsapp";
 import { WA_TEMPLATE_DEFAULTS, renderTemplateString, type WaTemplateVars } from "@/lib/wa-templates";
+import { sendMailForTenant } from "@/lib/mail-dispatch.server";
+import {
+  CHANNEL_MODE_KEY, EMAIL_NOTIF_KEY, parseChannelMode,
+  emailSubjectTemplate, isEmailEventDefaultOn, isEmailCapableEvent,
+} from "@/lib/email-notify";
 
 // Key settings tempat override teks per-tenant disimpan (group="notif").
 export const WA_TEMPLATE_SETTINGS_KEY = "wa_message_templates";
@@ -76,24 +81,61 @@ type NotifyWaOptions = {
   tenantDb: TenantDb;
   event:    WaNotifKey;
   phone:    string | null | undefined;
+  /** Email penerima (data tercatat: invoice/pendaftaran/anggota — BUKAN input mentah). Opsional. */
+  email?:   string | null;
   vars:     WaTemplateVars;
 };
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Teks template WA (format *tebal*) → HTML email. Seluruh teks di-escape DULU (vars berisi input pengguna,
+// mis. nama), baru URL dijadikan tautan — pola sama pj-notification.
+function waTextToEmailHtml(text: string): string {
+  const safe = escapeHtml(text.replace(/\*/g, ""))
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>');
+  return `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap">${safe}</div>`;
+}
+
 /**
- * Kirim notifikasi WA — fire-and-forget, tidak pernah throw ke caller.
- * `orgName` otomatis di-resolve dan disuntik ke vars jika caller belum menyertakannya.
+ * Kirim notifikasi ke pelanggan lewat Email dan/atau WA sesuai `channel_mode` tenant — fire-and-forget,
+ * tidak pernah throw ke caller. `orgName` otomatis di-resolve dan disuntik ke vars jika belum ada.
  * Selalu panggil sebagai `void notifyWa(...)` — jangan await di jalur transaksi utama.
+ *
+ * Aturan kanal (docs/arsitektur-notifikasi-email.md § 3.3):
+ *  - Email dikirim bila: ada `email`, event punya jalur email, toggle email event aktif, mode bukan wa_only.
+ *  - WA dikirim bila: ada `phone`, mode bukan email_only, dan (mode both/wa_only ATAU email tidak terkirim).
+ *    (Toggle WA + status gateway tetap dicek di sendWaNotification.)
+ *  - Caller lama yang tidak memberi `email` berperilaku persis seperti sebelumnya (WA saja).
  */
 export async function notifyWa(opts: NotifyWaOptions): Promise<void> {
-  const { slug, tenantDb, event, phone, vars } = opts;
-  if (!phone) return;
+  const { slug, tenantDb, event, phone, email, vars } = opts;
+  if (!phone && !email) return;
 
   try {
     const orgName = vars.orgName ?? (await resolveOrgName(tenantDb, slug));
     const tpl     = await resolveWaTemplateText(tenantDb, event);
     if (!tpl) return;
     const message = renderTemplateString(tpl, { ...vars, orgName });
-    await sendWaNotification({ slug, event, to: phone, message });
+
+    const prefs = await getSettings(tenantDb, "notif").catch(() => ({} as Record<string, unknown>));
+    const mode  = parseChannelMode(prefs[CHANNEL_MODE_KEY]);
+
+    let emailSent = false;
+    if (email && mode !== "wa_only" && isEmailCapableEvent(event)) {
+      const toggles = prefs[EMAIL_NOTIF_KEY] as Record<string, boolean> | undefined;
+      const enabled = typeof toggles?.[event] === "boolean" ? toggles[event]! : isEmailEventDefaultOn(event);
+      if (enabled) {
+        const subject = renderTemplateString(emailSubjectTemplate(event) ?? "Notifikasi — {{orgName}}", { orgName });
+        const sent = await sendMailForTenant(tenantDb, { to: email, subject, html: waTextToEmailHtml(message) });
+        emailSent = sent.ok;
+        if (!sent.ok) console.error(`[notifyWa:${event}] email gagal:`, sent.error);
+      }
+    }
+
+    const wantWa = !!phone && mode !== "email_only" && (mode === "both" || mode === "wa_only" || !emailSent);
+    if (wantWa) await sendWaNotification({ slug, event, to: phone!, message });
   } catch (err) {
     console.error(`[notifyWa:${event}]`, err);
   }
