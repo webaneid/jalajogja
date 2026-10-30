@@ -23,7 +23,7 @@ export type EmailEventKey = Extract<WaNotifKey,
   | "invoice_created" | "payment_submitted" | "payment_confirmed" | "payment_rejected" | "invoice_reminder"
   | "order_processing" | "order_shipped" | "order_delivered"
   | "event_registered" | "event_reminder" | "event_certificate_ready"
-  | "donation_received" | "member_welcome"
+  | "donation_received" | "member_welcome" | "profile_incomplete_reminder" | "letter_sign_request"
   | "installment_converted" | "installment_payment_submitted" | "installment_payment_confirmed"
   | "installment_reminder" | "installment_due_today">;
 
@@ -55,6 +55,10 @@ export const EMAIL_EVENT_GROUPS: Array<{
   ]},
   { label: "Anggota", items: [
     { key: "member_welcome", label: "Sambutan anggota baru", subject: "Selamat datang — {{orgName}}", defaultOn: true },
+    { key: "profile_incomplete_reminder", label: "Pengingat lengkapi profil", subject: "Lengkapi profil Anda — {{orgName}}", defaultOn: true },
+  ]},
+  { label: "Surat", items: [
+    { key: "letter_sign_request", label: "Permintaan tanda tangan", subject: "Surat menunggu tanda tangan Anda — {{orgName}}", defaultOn: true },
   ]},
   { label: "Cicilan", items: [
     { key: "installment_converted",         label: "Invoice diubah jadi cicilan",    subject: "Rincian cicilan — {{orgName}}",           defaultOn: false },

@@ -483,13 +483,13 @@ function InviteDialog({
       onInviteCreated(res.token, {
         id:             res.inviteId,
         memberName,
-        email:          null,
+        email:          res.emailedTo ?? null,
         role,
         customRoleName: role === "custom" ? customRoleName : null,
         token:          res.token,
         expiresAt,
         acceptedAt:     null,
-        deliveryMethod: "manual",
+        deliveryMethod: res.emailedTo ? "email" : "manual",
       });
       reset();
     });

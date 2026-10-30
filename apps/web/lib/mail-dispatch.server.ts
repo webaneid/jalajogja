@@ -33,18 +33,23 @@ export async function isMailSendable(tenantDb: TenantDb): Promise<boolean> {
   return (await loadTenantSmtp(tenantDb)) !== null;
 }
 
-async function tenantIdentity(tenantDb: TenantDb): Promise<{ name: string; replyTo: string | null }> {
+export const PLATFORM_SENDER_KEY = "platform_sender"; // settings group "mail"; ditulis HANYA oleh platform admin
+
+async function tenantIdentity(tenantDb: TenantDb): Promise<{ name: string; replyTo: string | null; fromAddress: string | null }> {
   try {
-    const [general, contact] = await Promise.all([
+    const [general, contact, mail] = await Promise.all([
       getSettings(tenantDb, "general"),
       getSettings(tenantDb, "contact"),
+      getSettings(tenantDb, "mail"),
     ]);
+    const sender = mail[PLATFORM_SENDER_KEY];
     return {
+      fromAddress: typeof sender === "string" && sender ? sender : null,
       name:    (general.site_name as string | undefined)?.trim() || "Notifikasi",
       replyTo: (contact.contact_email as string | undefined)?.trim() || null,
     };
   } catch {
-    return { name: "Notifikasi", replyTo: null };
+    return { name: "Notifikasi", replyTo: null, fromAddress: null };
   }
 }
 
@@ -53,7 +58,7 @@ export async function sendMailForTenant(
   opts: { to: string; subject: string; html: string },
 ): Promise<DispatchResult> {
   try {
-    const { name, replyTo } = await tenantIdentity(tenantDb);
+    const { name, replyTo, fromAddress } = await tenantIdentity(tenantDb);
 
     const smtp = await loadTenantSmtp(tenantDb);
     if (smtp) {
@@ -63,7 +68,7 @@ export async function sendMailForTenant(
     }
 
     if (isPlatformMailConfigured()) {
-      const sent = await sendPlatformMail({ ...opts, fromName: name, replyTo });
+      const sent = await sendPlatformMail({ ...opts, fromName: name, fromAddress, replyTo });
       if (sent.ok) return { ok: true, via: "platform" };
       return { ok: false, error: sent.error };
     }

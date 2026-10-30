@@ -147,4 +147,17 @@ Opsi lanjutan (bukan sekarang): API HTTP Resend native — hanya berguna kalau p
       dan preset penyedia (Gmail/Workspace, Resend, Brevo, Lainnya) lewat Combobox di `/settings/email` — mengisi host/port
       (+ user "resend" untuk Resend) dan menampilkan catatan khusus per penyedia (App Password, verifikasi domain, batas harian).
       Tanpa kode kirim baru — semua tetap SMTP lewat nodemailer.
-- [ ] Fase 4 — From per domain tenant (daftar domain terverifikasi)
+- [x] Fase 4 — SELESAI KODE 2026-10-30 (belum deploy): alamat From khusus-tenant lewat SMTP platform.
+      Env `SMTP_VERIFIED_DOMAINS` (domain yang sudah diverifikasi SPF/DKIM di penyedia SMTP platform) = daftar putih.
+      HANYA platform admin yang menetapkan (`setTenantMailSenderAction`, halaman `/platform/tenants/[slug]`, role bukan staff);
+      tersimpan di `tenant.settings` group `mail` key `platform_sender`. Domain divalidasi dua kali: saat simpan DAN saat kirim
+      (`sendPlatformMail` di `lib/mail.ts`) — bila domain keluar dari daftar, otomatis kembali ke alamat bawaan platform.
+      Tenant yang mengisi SMTP sendiri tidak terpengaruh. Satu-satunya tulisan tenant ke group `mail` adalah key `smtp_config`.
+- [x] Tambahan 2026-10-30 (belum deploy): jalur email untuk `letter_sign_request` (TTD surat) dan `profile_incomplete_reminder`
+      (lewat `notifyWa`), serta email otomatis tautan undangan pengurus di `createInviteAction` (sebelumnya hanya disalin manual;
+      dikirim ke email kontak anggota yang sudah tercatat, berlaku 7 hari).
+- Tidak dikerjakan (sengaja): OTP daftar/login via email — reset password SUDAH lewat email (Better Auth), OTP daftar/login
+  memang dirancang untuk memverifikasi nomor HP. Dapat dibuka sebagai fitur terpisah bila diinginkan.
+
+**Setup server untuk Fase 4 (opsional, hanya bila ingin From per domain):** verifikasi domain di penyedia SMTP platform (tambah DNS
+SPF/DKIM), tambahkan domain ke `SMTP_VERIFIED_DOMAINS` di `.env.local`, restart PM2, lalu isi alamat per tenant di halaman platform.

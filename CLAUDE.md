@@ -1188,7 +1188,7 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
   front-end publik. Migration `0074` sudah jalan di VPS. Detail: `docs/arsitektur-seo.md` § 3. Belum diuji sungguhan: GTM dan Meta Pixel.
 - **2026-10-30 — Notifikasi Email (Fase 1+2 SELESAI KODE, belum deploy)**: email jadi kanal utama notifikasi pelanggan, WA pelengkap
   (`channel_mode` default `email_first`); fallback SMTP platform; password SMTP tenant terenkripsi. **Syarat deploy: set `SMTP_ENCRYPTION_KEY`
-  di `.env.local` VPS sebelum build.** Tanpa migration. Sisa: Fase 4 (From per domain tenant, daftar domain terverifikasi).
+  di `.env.local` VPS sebelum build.** Tanpa migration. Fase 4 = From per domain tenant (env `SMTP_VERIFIED_DOMAINS`, diatur platform admin). Email undangan pengurus kini otomatis.
   Detail + status: `docs/arsitektur-notifikasi-email.md` § 8.
 - **Sesi 2026-10-10 — ringkasan** (detail + keputusan: memory `project_session_log_20261010` dan dokumen masing-masing).
   Status git: SEMUA sudah di-push (`99875ec`, 2026-10-11) dan di-deploy ke VPS (migration `0073` jalan; build+restart OK; user cek "lainnya aman").
@@ -1214,7 +1214,7 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
   Donasi Rutin (siklus R1-R7, termasuk subscriptions `/{slug}/akun/subscriptions`), dan Fase 5
   migrasi URL (admin subdomain terpisah `admin.ikpmjogja.com`).
 - Backlog lain belum dikonfirmasi statusnya (cek ulang sebelum diasumsikan masih relevan):
-  Role System (email SMTP otomatis untuk invite — saat ini link di-copy manual; update role UI
+  Role System (email invite SUDAH otomatis sejak 2026-10-30; update role UI
   pengguna aktif; notifikasi login pertama), Modul Dokumen (uploader name di version history perlu
   cross-schema join `tenant.users` → `public.user`), Surat (inter-tenant letters, attachment
   MediaPicker), Keuangan (Budget UI, export PDF laporan — detail `docs/arsitektur-keuangan.md`),

@@ -389,3 +389,40 @@ export async function updatePlatformBrandingAction(
   revalidatePath("/platform/settings");
   return { ok: true };
 }
+
+
+// ── Alamat pengirim email khusus tenant (lewat SMTP platform) ─────────────────────────
+// docs/arsitektur-notifikasi-email.md § 7 poin 4. HANYA platform admin (bukan tenant) yang boleh menetapkan,
+// dan domainnya WAJIB sudah ada di env SMTP_VERIFIED_DOMAINS (diverifikasi SPF/DKIM di penyedia SMTP platform).
+export async function setTenantMailSenderAction(
+  slug: string,
+  email: string,
+): Promise<{ error: string } | { ok: true }> {
+  const session = await requirePlatformSession();
+  if (session.role === "staff") return { error: "Tidak ada akses." };
+
+  const [tenant] = await db.select({ slug: tenants.slug }).from(tenants).where(eq(tenants.slug, slug)).limit(1);
+  if (!tenant) return { error: "Tenant tidak ditemukan." };
+
+  const { isVerifiedSenderAddress, getVerifiedSenderDomains } = await import("@/lib/mail");
+  const { PLATFORM_SENDER_KEY } = await import("@/lib/mail-dispatch.server");
+  const { upsertSetting, deleteSetting } = await import("@jalajogja/db");
+
+  const tenantDb = createTenantDb(tenant.slug);
+  const value = email.trim().toLowerCase();
+
+  if (!value) {
+    await deleteSetting(tenantDb, PLATFORM_SENDER_KEY, "mail");
+  } else {
+    if (!isVerifiedSenderAddress(value)) {
+      const list = getVerifiedSenderDomains();
+      return { error: list.length === 0
+        ? "Belum ada domain terverifikasi (env SMTP_VERIFIED_DOMAINS kosong)."
+        : `Domain harus salah satu dari: ${list.join(", ")}.` };
+    }
+    await upsertSetting(tenantDb, PLATFORM_SENDER_KEY, "mail", value);
+  }
+
+  revalidatePath(`/platform/tenants/${slug}`);
+  return { ok: true };
+}

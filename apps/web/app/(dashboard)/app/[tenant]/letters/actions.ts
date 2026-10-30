@@ -955,15 +955,17 @@ async function notifyOfficerSignRequest(
   if (!member) return;
 
   let phone: string | null = null;
+  let email: string | null = null;
   if (member.contactId) {
     const [contact] = await db
-      .select({ phone: contacts.phone, whatsapp: contacts.whatsapp })
+      .select({ phone: contacts.phone, whatsapp: contacts.whatsapp, email: contacts.email })
       .from(contacts)
       .where(eq(contacts.id, member.contactId))
       .limit(1);
     phone = contact?.whatsapp || contact?.phone || null;
+    email = contact?.email || null;
   }
-  if (!phone) return;
+  if (!phone && !email) return;
 
   const [letterRow] = await tenantDb
     .select({ subject: schema.letters.subject, letterNumber: schema.letters.letterNumber })
@@ -975,6 +977,7 @@ async function notifyOfficerSignRequest(
   void notifyWa({
     slug, tenantDb: tenantClient, event: "letter_sign_request",
     phone,
+    email,
     vars: {
       name:          member.name,
       letterSubject: letterRow?.subject ?? "-",

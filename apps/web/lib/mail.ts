@@ -70,6 +70,21 @@ export function isPlatformMailConfigured(): boolean {
   return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
+// Domain pengirim yang SUDAH diverifikasi (SPF/DKIM) di penyedia SMTP platform — env SMTP_VERIFIED_DOMAINS,
+// dipisah koma. Alamat From khusus-tenant lewat SMTP platform HANYA boleh memakai domain di daftar ini
+// (mencegah pemalsuan pengirim). Ditegakkan di sini (lapisan terbawah), bukan hanya di UI/action.
+// docs/arsitektur-notifikasi-email.md § 7 poin 4.
+export function getVerifiedSenderDomains(): string[] {
+  return (process.env.SMTP_VERIFIED_DOMAINS ?? "")
+    .split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
+}
+
+export function isVerifiedSenderAddress(addr: string): boolean {
+  const a = addr.trim().toLowerCase();
+  if (!isValidEmailAddress(a)) return false;
+  return getVerifiedSenderDomains().includes(a.slice(a.lastIndexOf("@") + 1));
+}
+
 // Alamat murni dari SMTP_FROM ('"Jalakarta" <no-reply@x>' atau 'no-reply@x'); fallback SMTP_USER.
 function platformFromAddress(): string {
   const raw = process.env.SMTP_FROM ?? "";
@@ -84,6 +99,8 @@ export async function sendPlatformMail(opts: {
   html: string;
   /** Nama tampilan pengirim (mis. nama tenant). Alamat TETAP alamat platform (SPF/DKIM). */
   fromName?: string;
+  /** Alamat From khusus tenant (mis. noreply@domain-tenant.or.id) — dipakai HANYA bila domainnya ada di SMTP_VERIFIED_DOMAINS. */
+  fromAddress?: string | null;
   /** Alamat balasan (mis. email kontak tenant) — divalidasi, diabaikan bila tidak valid. */
   replyTo?: string | null;
 }): Promise<SendMailResult> {
@@ -99,7 +116,7 @@ export async function sendPlatformMail(opts: {
   if (!isValidEmailAddress(to)) return { ok: false, error: "Alamat email tujuan tidak valid." };
   const displayName = opts.fromName ? safeDisplayName(opts.fromName) : "";
   const from = displayName
-    ? `"${displayName}" <${platformFromAddress()}>`
+    ? `"${displayName}" <${opts.fromAddress && isVerifiedSenderAddress(opts.fromAddress) ? opts.fromAddress.trim() : platformFromAddress()}>`
     : (process.env.SMTP_FROM ?? `"Jalakarta" <${user}>`);
   const replyTo = opts.replyTo && isValidEmailAddress(opts.replyTo.trim()) ? opts.replyTo.trim() : undefined;
 

@@ -10,6 +10,9 @@ import { PlatformTenantToggle } from "@/components/platform/tenant-toggle";
 import { AddonToggle } from "./addon-toggle";
 import { LinkCabangClient } from "./link-cabang-client";
 import { CreateOwnerClient } from "./create-owner-client";
+import { MailSenderClient } from "./mail-sender-client";
+import { getVerifiedSenderDomains } from "@/lib/mail";
+import { PLATFORM_SENDER_KEY } from "@/lib/mail-dispatch.server";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -54,6 +57,11 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
     .from(schema.users)
     .orderBy(schema.users.createdAt);
   const hasOwner = tenantUsers.length > 0;
+
+  // Alamat From email notifikasi khusus tenant ini (opsional, lewat SMTP platform)
+  const { getSettings } = await import("@jalajogja/db");
+  const mailSettings = await getSettings(createTenantDb(slug), "mail");
+  const mailSender = typeof mailSettings[PLATFORM_SENDER_KEY] === "string" ? (mailSettings[PLATFORM_SENDER_KEY] as string) : "";
 
   const betterAuthIds = tenantUsers.map((u) => u.betterAuthUserId);
   const authUsers = betterAuthIds.length > 0
@@ -244,6 +252,17 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
           </div>
         </div>
       )}
+
+      {/* Email pengirim */}
+      <div className="rounded-xl border border-border bg-background overflow-hidden">
+        <div className="px-5 py-3 border-b border-border">
+          <p className="text-sm font-semibold">Alamat Pengirim Email</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Alamat From untuk email notifikasi tenant ini bila memakai SMTP platform (tenant yang mengisi SMTP sendiri tidak terpengaruh).
+          </p>
+        </div>
+        <MailSenderClient slug={tenant.slug} current={mailSender} verifiedDomains={getVerifiedSenderDomains()} />
+      </div>
 
       {/* Add-on */}
       <div className="rounded-xl border border-border bg-background overflow-hidden">

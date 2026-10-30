@@ -22,7 +22,7 @@ import {
 
 type ActionResult = { error?: string };
 type StrictActionResult = { success: true } | { success: false; error: string };
-type InviteResult = { success: true; inviteId: string; token: string } | { success: false; error: string };
+type InviteResult = { success: true; inviteId: string; token: string; emailedTo?: string } | { success: false; error: string };
 export type CustomRoleResult = { success: true; id: string } | { success: false; error: string };
 
 export type InviteFormData = {
@@ -791,7 +791,7 @@ export async function createInviteAction(
 
   // Ambil email member dari contacts jika ada
   const [memberData] = await db
-    .select({ contactId: members.contactId })
+    .select({ contactId: members.contactId, name: members.name })
     .from(members)
     .where(eq(members.id, data.memberId))
     .limit(1);
@@ -854,8 +854,32 @@ export async function createInviteAction(
     inviteId = invite.id;
   }
 
+  // Kirim tautan undangan ke email anggota bila ada (best-effort; tautan tetap bisa disalin manual dari UI).
+  // `email` = data tercatat di kontak anggota (bukan input request) — bukan vektor relay.
+  let emailedTo: string | undefined;
+  if (email) {
+    try {
+      const { sendMailForTenant } = await import("@/lib/mail-dispatch.server");
+      const { waAppUrl, resolveOrgName } = await import("@/lib/wa-notify");
+      const orgName   = await resolveOrgName(createTenantDb(slug), slug);
+      const inviteUrl = await waAppUrl(slug, `/invite?token=${encodeURIComponent(token)}`);
+      const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      const sent = await sendMailForTenant(createTenantDb(slug), {
+        to: email,
+        subject: `Undangan mengelola ${orgName}`,
+        html: `<p>Assalamu'alaikum ${esc(memberData?.name ?? "")},</p>
+          <p>Anda diundang untuk ikut mengelola <strong>${esc(orgName)}</strong>.</p>
+          <p><a href="${esc(inviteUrl)}">Terima undangan</a></p>
+          <p>Tautan berlaku 7 hari. Abaikan email ini bila Anda tidak merasa diundang.</p>`,
+      });
+      if (sent.ok) emailedTo = email;
+    } catch (err) {
+      console.error("[createInviteAction] gagal kirim email undangan:", err);
+    }
+  }
+
   revalidatePath(`/app/${slug}/settings/users`);
-  return { success: true, inviteId, token };
+  return { success: true, inviteId, token, emailedTo };
 }
 
 export async function revokeInviteAction(

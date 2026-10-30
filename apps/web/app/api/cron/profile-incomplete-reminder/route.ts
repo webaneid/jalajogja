@@ -73,12 +73,13 @@ export async function GET(request: NextRequest) {
     if (!m.contactId || !m.welcomeSentTenantSlug) continue;
 
     const [contact] = await db
-      .select({ phone: contacts.phone, whatsapp: contacts.whatsapp })
+      .select({ phone: contacts.phone, whatsapp: contacts.whatsapp, email: contacts.email })
       .from(contacts)
       .where(eq(contacts.id, m.contactId))
       .limit(1);
     const phone = contact?.whatsapp || contact?.phone || null;
-    if (!phone) continue;
+    const email = contact?.email || null;
+    if (!phone && !email) continue;
 
     const missing: string[] = [];
     if (edu === 0)       missing.push("- Riwayat Pendidikan");
@@ -93,6 +94,7 @@ export async function GET(request: NextRequest) {
     void notifyWa({
       slug, tenantDb, event: "profile_incomplete_reminder",
       phone,
+      email,
       vars: {
         name:        m.name,
         missingList: missing.join("\n"),
