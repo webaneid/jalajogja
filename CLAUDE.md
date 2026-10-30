@@ -1181,6 +1181,9 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 > Ini status singkat yang di-OVERWRITE tiap kali berubah, BUKAN log yang ditambah terus.
 > Riwayat detail tiap perbaikan ada di `docs/lessons-learned.md` dan `docs/arsitektur-*.md` masing-masing modul.
 
+- **2026-10-30 — Integrasi & Pelacakan SEO** (SELESAI, deployed, diuji di tenant `forbis`: GA4 + Search Console masuk): tab di `/settings/seo`
+  untuk Search Console, Bing, GTM, GA4, Meta Pixel — gratis semua paket, admin isi ID saja (regex ketat `lib/tracking-ids.ts`), dipasang hanya di
+  front-end publik. Migration `0074` sudah jalan di VPS. Detail: `docs/arsitektur-seo.md` § 3. Belum diuji sungguhan: GTM dan Meta Pixel.
 - **Sesi 2026-10-10 — ringkasan** (detail + keputusan: memory `project_session_log_20261010` dan dokumen masing-masing).
   Status git: SEMUA sudah di-push (`99875ec`, 2026-10-11) dan di-deploy ke VPS (migration `0073` jalan; build+restart OK; user cek "lainnya aman").
   Cron `pj-digest` TIAP JAM sudah dipasang di crontab user `webane` (log `/var/log/jalajogja-cron.log`); panggilan manual → `{"ok":true,"sent":{...0}}`.
