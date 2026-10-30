@@ -31,6 +31,9 @@ export * from "./profiles";
 // ── OTP tokens (verifikasi phone via WhatsApp) ─────────────────────────────────
 export * from "./otp-tokens";
 
+// ── Status produsen pada akun (Portal Produsen, satu akun = satu tenant) ───────
+export * from "./producer-logins";
+
 // ── Pesantren (direktori pesantren alumni Gontor, community-driven) ────────────
 export * from "./pesantren-facility-types";
 export * from "./pesantren";

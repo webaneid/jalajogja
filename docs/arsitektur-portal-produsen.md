@@ -38,10 +38,12 @@ khusus ke dashboard. Status disimpan di tabel **public** (bukan di `tenant.users
 
 ```
 public.producer_logins
-  user_id      text PK/UNIQUE   -- public."user".id (Better Auth). UNIQUE = satu akun hanya bisa jadi produsen di SATU tenant
+  id           uuid PK
+  user_id      text NOT NULL    -- public."user".id (Better Auth), ON DELETE CASCADE. UNIQUE = satu akun hanya bisa jadi produsen di SATU tenant
   tenant_id    uuid NOT NULL    -- tenant tempat dia produsen
   producer_id  uuid NOT NULL    -- tenant_{slug}.producers.id (FK lewat aplikasi; dibersihkan saat produsen dihapus)
   granted_at   timestamptz, granted_by uuid  -- jejak audit (tenant.users.id admin)
+  UNIQUE(tenant_id, producer_id)            -- satu produsen = satu akun (produsen anggota = satu pemilik); dilonggarkan kelak bila perlu banyak staf
 ```
 
 - **Satu tenant saja**: dijamin `UNIQUE(user_id)` di tingkat database (tabel tenant terpisah per schema, jadi aturan ini hanya bisa ditegakkan di tabel public).
@@ -161,3 +163,10 @@ Prasyarat: perbaikan audit `arsitektur-produsen.md` § 15 (Langkah 1–5) selesa
 (3) `/app/{slug}/dashboard`, `/toko`, `/settings`, `/api/media/*`, `/api/wa/*` menolak akun produsen; (4) produsen tenant X tidak bisa membuka portal tenant Y (satu akun = satu tenant);
 (5) produsen nonaktif / akses dicabut / pemilik keluar keanggotaan langsung ditolak; (6) tidak ada tombol/aksi tulis di halaman; (7) payload halaman hanya memuat produk miliknya
 (periksa view-source / respons RSC); (8) `UNIQUE(user_id)` benar-benar menolak pemberian akses kedua di tenant lain.
+
+## 13. Status eksekusi
+
+- [x] **P1 — SELESAI KODE 2026-10-31** (belum deploy): `packages/db/src/schema/public/producer-logins.ts` (+ export di `index.ts`) dan migration `0076_producer_logins.sql` (CREATE TABLE IF NOT EXISTS + 3 index).
+      Diuji di Postgres sementara (bukan DB asli): idempotent (jalan 2×), akun yang sama jadi produsen di tenant ke-2 ditolak, dua akun untuk satu produsen ditolak, hapus user ikut menghapus status (CASCADE). `tsc` bersih.
+      Tidak mengubah tabel/data yang ada. Migration dijalankan di VPS SEBELUM deploy kode P2+.
+- [ ] P2 `getProducerAccess` · [ ] P3 aksi admin beri/cabut akses · [ ] P4 portal (daftar+detail) · [ ] P5 pengerasan + audit · [ ] P6 produsen nonaktif → produk tak bisa dipesan.
