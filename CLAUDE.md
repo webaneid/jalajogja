@@ -1057,7 +1057,7 @@ Rekening bank dan QRIS punya field `categories` di settings JSONB:
 Logika: cari yang spesifik dulu → fallback ke `general`.
 
 ## Technical Debt
-- **[SELESAI 2026-10-30 — kode, belum deploy] Postgres error "relation tenant_X.settings does not exist" dari trafik bot** — root cause: guard di layout tidak melindungi `generateMetadata`/page (render paralel). Fix: `lib/tenant-active.ts` `isActiveTenant()`; lihat `docs/lessons-learned.md` [2026-10-30]. Teks investigasi lama di bawah dipertahankan sebagai riwayat.
+- **[SELESAI 2026-10-30 — DEPLOYED + TERVERIFIKASI di VPS (curl 404 ×3, log error kosong)] Postgres error "relation tenant_X.settings does not exist" dari trafik bot** — root cause: guard di layout tidak melindungi `generateMetadata`/page (render paralel). Fix: `lib/tenant-active.ts` `isActiveTenant()`; lihat `docs/lessons-learned.md` [2026-10-30]. Teks investigasi lama di bawah dipertahankan sebagai riwayat.
   **[BARU 2026-09-13] Postgres error "relation tenant_X.settings does not exist" di log produksi dari trafik bot/scanner** —
   ditemukan saat verifikasi deploy pasca audit keamanan: PM2 error log menunjukkan slug aneh
   (mis. `ppatk-luncurkan-skenario-penilaian-risiko-hingga-2021`) yang **dikonfirmasi TIDAK PERNAH
