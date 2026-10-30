@@ -7,7 +7,7 @@
 //  - Produsen yang dipakai produk tidak boleh dihapus (hanya dinonaktifkan).
 import { revalidatePath } from "next/cache";
 import { eq, and, count, sql } from "drizzle-orm";
-import { db as publicDb, createTenantDb, memberBusinesses, memberOwnedPesantren, memberProfessionals } from "@jalajogja/db";
+import { db as publicDb, createTenantDb, memberBusinesses, memberOwnedPesantren, memberProfessionals, members, producerLogins } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/phone";
@@ -221,6 +221,9 @@ export async function deleteProducerAction(slug: string, producerId: string): Pr
       const [{ n }] = await db.select({ n: count() }).from(schema.products).where(eq(schema.products.producerId, producerId));
       return { success: false, error: `Produsen dipakai ${n} produk — nonaktifkan saja, atau ganti produsen produknya dulu.` };
     }
+    // Status login portal produsen ini (tabel public, tanpa FK lintas-schema) ikut dibersihkan. Dibatasi tenant_id
+    // dari session — tidak pernah menyentuh baris tenant lain. Baris yatim pun tetap ditolak getProducerAccess.
+    await publicDb.delete(producerLogins).where(and(eq(producerLogins.tenantId, g.access.tenant.id), eq(producerLogins.producerId, producerId)));
     refresh(slug);
     return { success: true, data: undefined };
   } catch (err) {
@@ -228,5 +231,66 @@ export async function deleteProducerAction(slug: string, producerId: string): Pr
     if (pgErrorCode(err) === "23503") return { success: false, error: "Produsen baru saja dipakai produk — nonaktifkan saja, atau ganti produsen produknya dulu." };
     console.error("[deleteProducerAction]", err);
     return { success: false, error: "Gagal menghapus produsen." };
+  }
+}
+
+// ─── Portal Produsen: beri / cabut akses login (docs/arsitektur-portal-produsen.md § 3–4, P3) ──────────
+// Produsen = STATUS pada akun anggota (public.producer_logins), bukan role pengurus. Syarat memberi akses:
+// produsen ANGGOTA & aktif, pemilik punya akun Better Auth, pemilik anggota sah tenant ini, dan akun itu belum
+// menjadi produsen di tempat lain (UNIQUE(user_id) — satu akun = satu tenant).
+export async function grantProducerLoginAction(slug: string, producerId: string): Promise<ActionResult> {
+  const g = await guard(slug);
+  if (!g.access) return { success: false, error: g.error ?? "Akses ditolak." };
+  const access = g.access;
+  if (!isValidUuid(producerId)) return { success: false, error: "Produsen tidak ditemukan." };
+
+  try {
+    const { db, schema } = createTenantDb(slug);
+    const [p] = await db.select({ type: schema.producers.type, memberId: schema.producers.memberId, isActive: schema.producers.isActive })
+      .from(schema.producers).where(eq(schema.producers.id, producerId)).limit(1);
+    if (!p) return { success: false, error: "Produsen tidak ditemukan." };
+    if (p.type !== "member" || !p.memberId) return { success: false, error: "Hanya produsen anggota yang bisa diberi akses login." };
+    if (!p.isActive) return { success: false, error: "Produsen nonaktif — aktifkan dulu." };
+
+    // Akun diambil dari DATABASE (pemilik produsen), bukan dari klien
+    const [owner] = await publicDb.select({ betterAuthUserId: members.betterAuthUserId }).from(members).where(eq(members.id, p.memberId)).limit(1);
+    if (!owner?.betterAuthUserId) return { success: false, error: "Anggota ini belum punya akun login. Minta anggota mendaftar akun dulu." };
+
+    const tenant = { id: access.tenant.id, tenantType: access.tenant.tenantType };
+    if (!(await isTenantMember(p.memberId, tenant))) return { success: false, error: "Pemilik bukan anggota aktif tenant ini." };
+
+    const [existing] = await publicDb.select({ id: producerLogins.id }).from(producerLogins)
+      .where(and(eq(producerLogins.tenantId, access.tenant.id), eq(producerLogins.producerId, producerId))).limit(1);
+    if (existing) return { success: false, error: "Produsen ini sudah punya akses login." };
+
+    await publicDb.insert(producerLogins).values({
+      userId: owner.betterAuthUserId, tenantId: access.tenant.id, producerId, grantedBy: access.tenantUser.id,
+    });
+    refresh(slug);
+    return { success: true, data: undefined };
+  } catch (err) {
+    // UNIQUE(user_id): akun ini sudah berstatus produsen (di tenant ini untuk produsen lain, atau di tenant lain).
+    // Sengaja TIDAK menyebut tenant mana — admin satu tenant tidak boleh tahu data tenant lain.
+    if (pgErrorCode(err) === "23505") return { success: false, error: "Akun anggota ini sudah terdaftar sebagai produsen di tempat lain, jadi tidak bisa ditambahkan di sini." };
+    console.error("[grantProducerLoginAction]", err);
+    return { success: false, error: "Gagal memberi akses login." };
+  }
+}
+
+export async function revokeProducerLoginAction(slug: string, producerId: string): Promise<ActionResult> {
+  const g = await guard(slug);
+  if (!g.access) return { success: false, error: g.error ?? "Akses ditolak." };
+  if (!isValidUuid(producerId)) return { success: false, error: "Produsen tidak ditemukan." };
+  try {
+    // WAJIB dibatasi tenant_id dari session: tabel ini lintas-tenant, tanpa filter admin tenant A bisa mencabut tenant B
+    const deleted = await publicDb.delete(producerLogins)
+      .where(and(eq(producerLogins.tenantId, g.access.tenant.id), eq(producerLogins.producerId, producerId)))
+      .returning({ id: producerLogins.id });
+    if (deleted.length === 0) return { success: false, error: "Produsen ini tidak punya akses login." };
+    refresh(slug);
+    return { success: true, data: undefined };
+  } catch (err) {
+    console.error("[revokeProducerLoginAction]", err);
+    return { success: false, error: "Gagal mencabut akses login." };
   }
 }

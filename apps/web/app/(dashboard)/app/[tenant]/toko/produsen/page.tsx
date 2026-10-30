@@ -1,8 +1,8 @@
 // Halaman Produsen — ADMIN-ONLY (hasFullAccess toko). Data berisi WhatsApp pribadi anggota → tidak ada
 // versi publik. Doc: docs/arsitektur-produsen.md.
 import { redirect } from "next/navigation";
-import { desc, isNotNull, sql } from "drizzle-orm";
-import { createTenantDb } from "@jalajogja/db";
+import { desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { db as publicDb, createTenantDb, members, producerLogins } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { resolveProducers, resolveInternalProducer } from "@/lib/producer.server";
@@ -39,12 +39,23 @@ export default async function ProdusenPage({ params }: { params: Promise<{ tenan
     resolveInternalProducer(tenantClient, tenant),
   ]);
 
+  // Status akses portal: siapa yang sudah diberi akses login + apakah pemilik punya akun (tombol "Beri akses")
+  const grantedRows = await publicDb.select({ producerId: producerLogins.producerId }).from(producerLogins)
+    .where(eq(producerLogins.tenantId, access.tenant.id));
+  const grantedSet = new Set(grantedRows.map((g) => g.producerId));
+  const ownerIds = [...new Set(rows.map((r) => r.memberId).filter((x): x is string => !!x))];
+  const accountRows = ownerIds.length
+    ? await publicDb.select({ id: members.id, acc: members.betterAuthUserId }).from(members).where(inArray(members.id, ownerIds))
+    : [];
+  const hasAccount = new Set(accountRows.filter((m) => !!m.acc).map((m) => m.id));
+
   const items: ProducerItem[] = rows.flatMap((r) => {
     const view = views.get(r.id);
     if (!view) return [];
     return [{
       view,
       productCount: countMap.get(r.id) ?? 0,
+      portal: r.type === "member" ? { granted: grantedSet.has(r.id), ownerHasAccount: !!r.memberId && hasAccount.has(r.memberId) } : null,
       edit: {
         name: r.customName ?? "", whatsapp: r.customWhatsapp ?? "", addressDetail: r.customAddressDetail ?? "",
         provinceId: r.customProvinceId ?? undefined, regencyId: r.customRegencyId ?? undefined,

@@ -17,12 +17,14 @@ import { ProducerCard } from "@/components/toko/producer-card";
 import type { ProducerView } from "@/lib/producer.server";
 import {
   createMemberProducerAction, createCustomProducerAction, updateProducerAction,
-  toggleProducerActiveAction, deleteProducerAction, type CustomProducerInput,
+  toggleProducerActiveAction, deleteProducerAction, grantProducerLoginAction, revokeProducerLoginAction, type CustomProducerInput,
 } from "@/app/(dashboard)/app/[tenant]/toko/produsen/actions";
 
 export type ProducerItem = {
   view: ProducerView;
   productCount: number;
+  // Akses Portal Produsen (hanya produsen anggota; custom = null). Doc: docs/arsitektur-portal-produsen.md
+  portal: { granted: boolean; ownerHasAccount: boolean } | null;
   edit: { name: string; whatsapp: string; addressDetail: string; provinceId?: number; regencyId?: number; districtId?: number; villageId?: number; postalCode: string; notes: string };
 };
 
@@ -127,11 +129,25 @@ export function ProducerManageClient({ slug, internal, internalProductCount, ite
             <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => toggleProducerActiveAction(slug, it.view.id as string))}>
               {it.view.isActive ? "Nonaktifkan" : "Aktifkan"}
             </Button>
+            {it.portal && (it.portal.granted ? (
+              <Button size="sm" variant="outline" disabled={pending}
+                onClick={() => { if (window.confirm(`Cabut akses login "${it.view.name}"? Produknya tetap dijual.`)) run(() => revokeProducerLoginAction(slug, it.view.id as string)); }}>
+                Cabut akses login
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" disabled={pending || !it.portal.ownerHasAccount || !it.view.isActive}
+                title={!it.portal.ownerHasAccount ? "Anggota ini belum punya akun login" : !it.view.isActive ? "Aktifkan produsen dulu" : "Izinkan pemilik masuk ke portal untuk melihat produknya"}
+                onClick={() => run(() => grantProducerLoginAction(slug, it.view.id as string))}>
+                Beri akses login
+              </Button>
+            ))}
             <Button size="sm" variant="outline" disabled={pending || it.productCount > 0}
               title={it.productCount > 0 ? "Dipakai produk — nonaktifkan saja" : undefined}
               onClick={() => { if (window.confirm(`Hapus produsen "${it.view.name}"?`)) run(() => deleteProducerAction(slug, it.view.id as string)); }}>
               Hapus
             </Button>
+            {it.portal?.granted && <span className="self-center text-xs text-green-700">Akses portal aktif</span>}
+            {it.portal && !it.portal.granted && !it.portal.ownerHasAccount && <span className="self-center text-xs text-muted-foreground">Anggota belum punya akun login</span>}
           </div>
         } />
       ))}
