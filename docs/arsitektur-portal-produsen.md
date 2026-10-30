@@ -169,4 +169,9 @@ Prasyarat: perbaikan audit `arsitektur-produsen.md` § 15 (Langkah 1–5) selesa
 - [x] **P1 — SELESAI KODE 2026-10-31** (belum deploy): `packages/db/src/schema/public/producer-logins.ts` (+ export di `index.ts`) dan migration `0076_producer_logins.sql` (CREATE TABLE IF NOT EXISTS + 3 index).
       Diuji di Postgres sementara (bukan DB asli): idempotent (jalan 2×), akun yang sama jadi produsen di tenant ke-2 ditolak, dua akun untuk satu produsen ditolak, hapus user ikut menghapus status (CASCADE). `tsc` bersih.
       Tidak mengubah tabel/data yang ada. Migration dijalankan di VPS SEBELUM deploy kode P2+.
-- [ ] P2 `getProducerAccess` · [ ] P3 aksi admin beri/cabut akses · [ ] P4 portal (daftar+detail) · [ ] P5 pengerasan + audit · [ ] P6 produsen nonaktif → produk tak bisa dipesan.
+- [x] **P2 — SELESAI KODE 2026-10-31** (belum dipakai halaman mana pun, jadi tanpa efek bagi pengguna): `lib/producer-access.ts` (keputusan MURNI `decideProducerAccess`, 9 fakta, fail-closed) dan
+      `lib/producer-access.server.ts` (`getProducerAccess(slug)`, `React.cache`, `server-only`). Urutan pemeriksaan: sesi → tenant ada+aktif (SEBELUM `createTenantDb`) → baris `producer_logins` akun ini di tenant ini →
+      baris produsen di schema tenant (aktif + `type='member'`) → akun login = akun pemilik (`members.better_auth_user_id`, cegah tautan basi) → pemilik masih anggota sah tenant (`isTenantMember`). Nama tampilan via
+      `listProducerOptions({ onlyId })` (tanpa kontak/alamat). Diuji: 10 kasus kebijakan + uji fail-closed (mematikan tiap fakta satu per satu selalu menolak) lulus; `tsc` bersih. Security review: slug tidak menyentuh schema sebelum
+      tervalidasi; id produsen berasal dari DB bukan klien; tidak ada data sensitif di hasil; tidak ada mutasi. Catatan: repo belum punya test suite, jadi uji kebijakan dijalankan sebagai skrip sementara (tidak disimpan).
+- [ ] P3 aksi admin beri/cabut akses · [ ] P4 portal (daftar+detail) · [ ] P5 pengerasan + audit · [ ] P6 produsen nonaktif → produk tak bisa dipesan.

@@ -215,19 +215,19 @@ export async function resolveProducers(
 // ─── Opsi dropdown produsen (form produk) — RINGAN: hanya nama, tanpa kontak/alamat/wilayah/keanggotaan ──
 // Aturan nama sama persis dengan resolveProducers lewat memberProducerName(). Produsen internal tidak ikut
 // (form menambahkan pilihan "Internal" sendiri). `alsoIncludeId` = produsen nonaktif yang sedang dipakai
-// produk itu agar pilihan sekarang tidak "hilang" dari form.
+// produk itu agar pilihan sekarang tidak "hilang" dari form. `onlyId` = satu produsen saja (Portal Produsen, nama tampilan).
 export type ProducerOption = { id: string; name: string; kind: "member" | "custom"; sourceType: ProducerSourceKind | null; isActive: boolean };
 
 export async function listProducerOptions(
   tenantClient: TenantDb,
-  opts: { alsoIncludeId?: string | null } = {},
+  opts: { alsoIncludeId?: string | null; onlyId?: string } = {},
 ): Promise<ProducerOption[]> {
   const { db: tdb, schema } = tenantClient;
   const all = await tdb.select({
     id: schema.producers.id, type: schema.producers.type, sourceType: schema.producers.sourceType, sourceId: schema.producers.sourceId,
     memberId: schema.producers.memberId, nameCache: schema.producers.nameCache, customName: schema.producers.customName, isActive: schema.producers.isActive,
   }).from(schema.producers);
-  const rows = all.filter((r) => r.isActive || r.id === opts.alsoIncludeId);
+  const rows = all.filter((r) => (r.isActive || r.id === opts.alsoIncludeId) && (!opts.onlyId || r.id === opts.onlyId));
   if (rows.length === 0) return [];
 
   const memberRows = rows.filter((r) => r.type === "member");
