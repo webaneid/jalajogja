@@ -1207,6 +1207,9 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
   `tenant.users` (175 file memakai `getTenantAccess`, banyak tanpa cek level modul → role akan fail-open); satu menu "Produk", baca-saja, tanpa Server Action; keluar keanggotaan → akses hilang;
   produsen nonaktif → portal tutup + produk tak bisa dipesan (fase P6, menyentuh checkout). Detail + keputusan terkunci + fase P1–P6 + matriks uji: `docs/arsitektur-portal-produsen.md`.
   Integrasi ke "status Mitra" kelak: `docs/arsitektur-mitra.md` (bagian terakhir). Urutan: Langkah 1–5 dulu, lalu P1–P6. Commit dokumen: `ef8e200` (belum di-push).
+- **2026-10-31 — Portal Produsen P1–P5 SELESAI KODE (belum push/deploy)** + perbaikan audit produsen Langkah 1–5: audit keamanan `security-auditor` → 0 celah baru yang berarti; 4 temuan LAMA menunggu keputusan user
+  (High: Server Action `saveRajaOngkirConfigAction` tanpa auth; Medium: open redirect login publik tenant, `api/mitra/*` tanpa `isActiveTenant`) — rincian di `docs/arsitektur-portal-produsen.md` § 13. Deploy: migration **0075** (diagnosa duplikat dulu) lalu **0076**
+  di VPS SEBELUM kode. Sisa: P6 (produsen nonaktif → produk tak bisa dipesan, menyentuh checkout, butuh rencana tertulis dulu), uji browser, custom domain.
 - **2026-10-31 — SMTP platform = Resend** (domain `jalakarta.com` verified; SPF+DKIM PASS; DMARC record ditambahkan, dua uji awal masih FAIL — dugaan cache ~30 mnt, cek ulang). Lihat bullet email di atas.
 - **Terbuka (dicatat 2026-10-30, belum diputuskan)**: (a) log produksi sekali memuat `DYNAMIC_SERVER_USAGE` di menit pertama pasca-restart — tidak bisa direproduksi
   (7 URL, 0 error), semua halaman `200`; pantau saja. (b) Peringatan Better Auth "Rate limiting could not determine a client IP … single shared per-path bucket":

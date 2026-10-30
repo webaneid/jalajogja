@@ -5,14 +5,15 @@
 --  (b) FK products.producer_id: ON DELETE SET NULL → ON DELETE RESTRICT. Produsen yang dipakai produk TIDAK BOLEH terhapus
 --      (sebelumnya hapus yang balapan dengan pemasangan produk diam-diam menjadikan produk "internal").
 --
--- DIAGNOSA DULU (read-only) — jalankan di VPS sebelum migration; harus 0 baris untuk semua tenant:
+-- DIAGNOSA DULU (read-only) — jalankan di VPS sebelum migration; angka duplikat harus 0 untuk semua tenant.
+-- Nama schema = 'tenant_' || slug APA ADANYA (tanda hubung TIDAK diganti underscore), di-quote dengan %I:
 --   docker compose exec -T postgres psql -U jalakarta -d jalakarta -c "
 --     DO \$\$ DECLARE r RECORD; n INT; BEGIN
 --       FOR r IN SELECT slug FROM public.tenants WHERE is_active = true LOOP
---         EXECUTE format('SELECT count(*) FROM (SELECT 1 FROM tenant_%s.producers WHERE source_type IS NOT NULL AND source_id IS NOT NULL GROUP BY source_type, source_id HAVING count(*) > 1) d', replace(r.slug,'-','_')) INTO n;
+--         IF to_regclass(format('%I.producers', 'tenant_' || r.slug)) IS NULL THEN RAISE NOTICE 'tenant % : tabel producers belum ada', r.slug; CONTINUE; END IF;
+--         EXECUTE format('SELECT count(*) FROM (SELECT 1 FROM %I.producers WHERE source_type IS NOT NULL AND source_id IS NOT NULL GROUP BY source_type, source_id HAVING count(*) > 1) d', 'tenant_' || r.slug) INTO n;
 --         RAISE NOTICE 'tenant % : % grup duplikat', r.slug, n;
 --       END LOOP; END \$\$;"
---   (nama schema tenant memakai pola yang sama dengan 0070: 'tenant_' || slug — sesuaikan bila slug berisi tanda hubung.)
 --
 -- Jalankan: docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/0075_producers_integrity.sql
 

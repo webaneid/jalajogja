@@ -39,7 +39,8 @@ export default async function ProducerProductsPage({
   if (!access) redirect("/no-tenant-access");
 
   const { db, schema } = createTenantDb(access.tenant.slug);
-  const currentPage = Math.max(1, parseInt(page ?? "1") || 1);
+  // Dibatasi: angka sangat besar membuat OFFSET melebihi bigint → 500
+  const currentPage = Math.min(10_000, Math.max(1, parseInt(page ?? "1") || 1));
   const statusFilter = STATUSES.find((s) => s === status) ?? null;
   const query = (q ?? "").trim().slice(0, 80);
 

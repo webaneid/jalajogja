@@ -8,6 +8,13 @@
 
 ---
 
+## [2026-10-31] Nama schema tenant = `tenant_` + slug APA ADANYA (tanda hubung TIDAK diganti underscore)
+**Masalah:** Komentar diagnosa di header migration `0075` menyarankan `replace(slug,'-','_')` — untuk tenant ber-tanda-hubung (mis. `pc-ikpm-jogjakarta`) query akan menuju schema yang tidak ada (`tenant_pc_ikpm_jogjakarta`), padahal schema aslinya `"tenant_pc-ikpm-jogjakarta"`. Ketahuan oleh audit subagent; sebelumnya user juga sempat salah mengetik nama schema begitu saat mengecek constraint 0074.
+**Fix:** semua migration/diagnosa memakai `format('%I', 'tenant_' || slug)` (di-quote, persis seperti 0070/0074/0075); `createTenantDb` juga `tenant_${slug}` (validateSlug mengizinkan `-`).
+**Pencegahan:** tulis SQL manual untuk schema tenant dengan identifier ber-quote (`"tenant_pc-ikpm-jogjakarta"`), jangan menebak aturan penamaan; uji query diagnosa dengan slug ber-tanda-hubung di Postgres sementara sebelum diserahkan ke user.
+
+---
+
 ## [2026-10-31] Cek-lalu-hapus/cek-lalu-simpan terpisah = balapan; error Postgres dari Drizzle ≥0.44 ada di `.cause`, bukan `.code`
 **Masalah:** Audit produsen menemukan dua pola yang sama: (1) hapus produsen "cek dipakai produk → baru DELETE" — produk yang baru dipasangi produsen di sela dua langkah itu diam-diam jadi "internal" lewat FK `ON DELETE SET NULL`; (2) "cek duplikat → INSERT" — dua klik bersamaan lolos keduanya, tanpa unique index sebagai jaring pengaman.
 **Fix:** (1) satu pernyataan `DELETE ... WHERE id=$1 AND NOT EXISTS (...) RETURNING id` + FK diubah ke `ON DELETE RESTRICT` (database yang menolak, bukan aplikasi); (2) unique index parsial `(source_type, source_id)` + aksi menangkap SQLSTATE `23505`/`23503` dan membalas pesan ramah. Migration 0075 melewati tenant yang sudah punya duplikat (NOTICE) alih-alih gagal total, dan diuji di Postgres sementara (index, idempotensi, penolakan duplikat, penolakan hapus).
