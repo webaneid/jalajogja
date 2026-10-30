@@ -254,7 +254,7 @@ export async function grantProducerLoginAction(slug: string, producerId: string)
 
     // Akun diambil dari DATABASE (pemilik produsen), bukan dari klien
     const [owner] = await publicDb.select({ betterAuthUserId: members.betterAuthUserId }).from(members).where(eq(members.id, p.memberId)).limit(1);
-    if (!owner?.betterAuthUserId) return { success: false, error: "Anggota ini belum punya akun login. Minta anggota mendaftar akun dulu." };
+    if (!owner?.betterAuthUserId) return { success: false, error: "Anggota ini belum mengklaim akunnya (status Pending Claim). Minta anggota mengklaim akun dulu, baru bisa jadi produsen." };
 
     const tenant = { id: access.tenant.id, tenantType: access.tenant.tenantType };
     if (!(await isTenantMember(p.memberId, tenant))) return { success: false, error: "Pemilik bukan anggota aktif tenant ini." };

@@ -64,6 +64,8 @@ Hanya **anggota** yang berstatus produsen (`producers.type = 'member'`). Produse
 | Anggota sudah punya akun Better Auth (`members.better_auth_user_id`) | Admin menekan "Beri akses login" di kartu produsen → baris `producer_logins` dibuat (tanpa kata sandi baru) |
 | Anggota belum punya akun | Tombol dinonaktifkan dengan keterangan "anggota belum punya akun"; tautan undangan email menyusul sebagai langkah terpisah (P3b) bila perlu |
 
+Penegasan user 2026-10-31: **harus anggota aktif DAN sudah mengklaim akunnya.** Anggota forum berstatus "Pending Claim" (`forum_status='active'` tetapi `members.better_auth_user_id` kosong, lihat `lib/forum-status-badge.ts`) TIDAK bisa diberi akses — harus klaim akun dulu; anggota `pending`/`suspended`/`rejected` ditolak oleh `isTenantMember`. Aturan ini diperiksa di server pada pemberian akses (P3) dan pada setiap request portal (`getProducerAccess`).
+
 Syarat saat diberi akses: pemilik anggota sah tenant itu (`isTenantMember`), produsen aktif, dan akunnya belum menjadi produsen di tenant lain (ditolak dengan pesan jelas).
 
 ## 5. Lapisan akses

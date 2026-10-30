@@ -136,7 +136,7 @@ export function ProducerManageClient({ slug, internal, internalProductCount, ite
               </Button>
             ) : (
               <Button size="sm" variant="outline" disabled={pending || !it.portal.ownerHasAccount || !it.view.isActive}
-                title={!it.portal.ownerHasAccount ? "Anggota ini belum punya akun login" : !it.view.isActive ? "Aktifkan produsen dulu" : "Izinkan pemilik masuk ke portal untuk melihat produknya"}
+                title={!it.portal.ownerHasAccount ? "Anggota ini belum mengklaim akunnya (Pending Claim) — klaim akun dulu" : !it.view.isActive ? "Aktifkan produsen dulu" : "Izinkan pemilik masuk ke portal untuk melihat produknya"}
                 onClick={() => run(() => grantProducerLoginAction(slug, it.view.id as string))}>
                 Beri akses login
               </Button>
@@ -147,7 +147,7 @@ export function ProducerManageClient({ slug, internal, internalProductCount, ite
               Hapus
             </Button>
             {it.portal?.granted && <span className="self-center text-xs text-green-700">Akses portal aktif</span>}
-            {it.portal && !it.portal.granted && !it.portal.ownerHasAccount && <span className="self-center text-xs text-muted-foreground">Anggota belum punya akun login</span>}
+            {it.portal && !it.portal.granted && !it.portal.ownerHasAccount && <span className="self-center text-xs text-muted-foreground">Belum klaim akun (Pending Claim)</span>}
           </div>
         } />
       ))}
