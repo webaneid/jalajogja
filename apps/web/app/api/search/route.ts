@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse }             from "next/server";
+import { producerActiveSql } from "@jalajogja/db";
 import { eq, ilike, or, and }       from "drizzle-orm";
 import { db, tenants, members, tenantMemberships, createTenantDb, publicSellingPrice } from "@jalajogja/db";
 import { resolvePostHrefs } from "@/lib/post-permalink.server";
@@ -78,6 +79,7 @@ export async function GET(req: Request) {
       .from(schema.products)
       .where(and(
         eq(schema.products.status, "active"),
+        producerActiveSql(schema),
         ilike(schema.products.name, pattern),
       ))
       .limit(LIMIT),

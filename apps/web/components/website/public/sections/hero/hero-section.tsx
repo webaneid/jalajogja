@@ -1,4 +1,5 @@
 import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
+import { producerActiveSql } from "@jalajogja/db";
 import { desc, eq, and, gt, count, sql, inArray } from "drizzle-orm";
 import {
   db, tenants, members, tenantMemberships,
@@ -197,7 +198,7 @@ async function fetchFunfacts(
         const [row] = await tenantDb
           .select({ total: count() })
           .from(schema.products)
-          .where(eq(schema.products.status, "active"));
+          .where(and(eq(schema.products.status, "active"), producerActiveSql(schema)));
         return { id, number: String(row?.total ?? 0), label };
       }
       case "dokumen": {

@@ -1,4 +1,5 @@
 import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
+import { producerActiveSql } from "@jalajogja/db";
 import { eq, and, desc, gt, inArray, isNotNull } from "drizzle-orm";
 import {
   db, tenants, members, tenantMemberships,
@@ -105,7 +106,7 @@ async function resolveModuleImages(
         const [row] = await tenantDb
           .select({ images: schema.products.images })
           .from(schema.products)
-          .where(eq(schema.products.status, "active"))
+          .where(and(eq(schema.products.status, "active"), producerActiveSql(schema)))
           .orderBy(desc(schema.products.createdAt))
           .limit(1);
         const first = Array.isArray(row?.images)

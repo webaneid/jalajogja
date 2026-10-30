@@ -1,4 +1,5 @@
 import { notFound }                from "next/navigation";
+import { producerActiveSql } from "@jalajogja/db";
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
 import { resolveViewerTier } from "@/lib/session-type.server";
@@ -39,7 +40,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const [product] = await tenantDb
     .select({ name: schema.products.name, metaTitle: schema.products.metaTitle, metaDesc: schema.products.metaDesc, images: schema.products.images })
     .from(schema.products)
-    .where(and(eq(schema.products.slug, productSlug), eq(schema.products.status, "active")))
+    .where(and(eq(schema.products.slug, productSlug), eq(schema.products.status, "active"), producerActiveSql(schema)))
     .limit(1);
 
   if (!product) return {};
@@ -114,6 +115,7 @@ export default async function ProdukDetailPage({
     .where(and(
       eq(schema.products.slug, productSlug),
       eq(schema.products.status, "active"),
+      producerActiveSql(schema), // produsen dinonaktifkan → halaman produk 404
     ))
     .limit(1);
 
@@ -278,6 +280,7 @@ export default async function ProdukDetailPage({
       .leftJoin(schema.mitras, eq(schema.mitras.id, schema.products.mitraId))
       .where(and(
         eq(schema.products.status, "active"),
+        producerActiveSql(schema),
         eq(schema.products.categoryId, row.categoryId),
       ))
       .orderBy(desc(schema.products.createdAt))

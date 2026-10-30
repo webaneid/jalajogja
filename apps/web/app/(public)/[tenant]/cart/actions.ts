@@ -373,6 +373,14 @@ export async function addToCartAction(
 
   try {
     const { db: tenantDb, schema } = createTenantDb(slug);
+
+    // Produk yang produsennya dinonaktifkan tidak boleh masuk keranjang. Hanya MENOLAK bila terbukti nonaktif —
+    // item yang tak ter-resolve diperlakukan seperti sebelumnya (checkout yang menolak). Authoritative = checkoutAction.
+    if (item.itemType === "product" && item.itemId) {
+      const resolved = await resolveProductCartItem(tenantDb, schema, item.itemId);
+      if (resolved && !resolved.producerActive) return { success: false, error: "Produk ini sedang tidak tersedia." };
+    }
+
     const cartId = await getOrCreateCart(tenantDb, schema);
 
     // Jika item_id sama sudah ada → update qty saja
@@ -750,6 +758,10 @@ export async function checkoutAction(
             // jatuh ke harga snapshot client — tolak, jangan tagih harga pilihan pembeli.
             if (!resolved) {
               return { error: `"${item.name}" sudah tidak tersedia. Hapus dari keranjang lalu coba lagi.` };
+            }
+            // Produsen produk dinonaktifkan admin → produk tidak bisa dipesan (keputusan user 2026-10-31).
+            if (!resolved.producerActive) {
+              return { error: `"${item.name}" sedang tidak tersedia. Hapus dari keranjang lalu coba lagi.` };
             }
             unitPrice        = resolved.price;
             mitraId          = resolved.mitraId;

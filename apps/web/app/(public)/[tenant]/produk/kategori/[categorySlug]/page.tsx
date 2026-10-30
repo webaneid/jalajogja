@@ -1,4 +1,5 @@
 import { notFound }                      from "next/navigation";
+import { producerActiveSql } from "@jalajogja/db";
 import { eq, desc, and, inArray, ilike, sql } from "drizzle-orm";
 import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
 import { resolveViewerTier } from "@/lib/session-type.server";
@@ -93,6 +94,7 @@ export default async function ProdukKategoriPage({
 
   const whereClauses = [
     eq(schema.products.status, "active"),
+    producerActiveSql(schema), // produsen dinonaktifkan → produknya tidak ditampilkan/dipesan
     eq(schema.products.categoryId, category.id),
     ...(search ? [ilike(schema.products.name, `%${search}%`)] : []),
   ];

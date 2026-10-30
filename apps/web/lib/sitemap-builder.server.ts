@@ -9,6 +9,7 @@
 // generateSitemaps() yang memaksa nama `/sitemap/{id}.xml` — tidak cocok untuk kebutuhan nama
 // file arbitrer (demi kompatibilitas Yoast: `post-sitemap.xml`, `sitemap_index.xml`, dst).
 import { PUBLIC_DIRECTORY_MEMBER_STATUSES } from "@/lib/membership-statuses";
+import { producerActiveSql } from "@jalajogja/db";
 import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import {
@@ -107,7 +108,7 @@ export async function fetchProductEntries(tenantClient: TenantDb, baseUrl: strin
   const rows = await tenantDb
     .select({ slug: schema.products.slug, updatedAt: schema.products.updatedAt })
     .from(schema.products)
-    .where(eq(schema.products.status, "active"))
+    .where(and(eq(schema.products.status, "active"), producerActiveSql(schema)))
     .limit(ENTRY_CAP);
   return rows.map((r) => ({ loc: `${baseUrl}/produk/${r.slug}`, lastmod: toIsoDate(r.updatedAt) }));
 }

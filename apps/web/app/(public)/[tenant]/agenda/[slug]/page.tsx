@@ -1,5 +1,6 @@
 // Halaman publik event — tanpa auth, siapapun bisa akses dan mendaftar
 import { isTenantMember } from "@/lib/tenant-membership.server";
+import { producerActiveSql } from "@jalajogja/db";
 import { createTenantDb, db, tenants, members, contacts, profiles, tenantMemberships, getSettings, addresses, refRegencies, refProvinces, refProfessions } from "@jalajogja/db";
 import { publicUrl, resolveMediaUrl } from "@/lib/minio";
 import { eq, and, or, count, sql, inArray } from "drizzle-orm";
@@ -660,7 +661,7 @@ export default async function PublicEventPage({
     const [product] = await tenantDb
       .select({ name: schema.products.name })
       .from(schema.products)
-      .where(and(eq(schema.products.id, event.linkedProductId), eq(schema.products.status, "active")))
+      .where(and(eq(schema.products.id, event.linkedProductId), eq(schema.products.status, "active"), producerActiveSql(schema)))
       .limit(1);
     linkedProductTitle = product?.name ?? null;
   }

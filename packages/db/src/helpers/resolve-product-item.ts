@@ -26,6 +26,7 @@ import type { PgTransaction } from "drizzle-orm/pg-core";
 import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 import type { TenantDb } from "../tenant-client";
 import { mergeVariationPrices, resolveSellingPrice, type ViewerTier } from "./product-price";
+import { producerActiveSql } from "./product-orderable";
 
 type TenantTx = PgTransaction<
   PostgresJsQueryResultHKT,
@@ -44,7 +45,19 @@ export type ResolvedProductCartItem = {
   // pembeli berhak; per field variasi ikut produk induk kalau kosong. Lihat product-price.ts.
   price:     number;
   mitraId:   string | null;
+  // false = produsen produk ini DINONAKTIFKAN admin → produk tidak boleh dipesan (keranjang/checkout publik
+  // menolak). Pemanggil admin (invoice manual) boleh mengabaikan. Lihat product-orderable.ts.
+  producerActive: boolean;
 };
+
+async function isProducerActive(db: TenantDbOrTx, schema: TenantDb["schema"], productId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: schema.products.id })
+    .from(schema.products)
+    .where(and(eq(schema.products.id, productId), producerActiveSql(schema)))
+    .limit(1);
+  return !!row;
+}
 
 export async function resolveProductCartItem(
   db: TenantDbOrTx,
@@ -69,6 +82,7 @@ export async function resolveProductCartItem(
       productId: prod.id,
       price:     resolveSellingPrice(prod, tier, prod.tenantOnly),
       mitraId:   prod.mitraId ?? null,
+      producerActive: await isProducerActive(db, schema, prod.id),
     };
   }
 
@@ -102,5 +116,5 @@ export async function resolveProductCartItem(
   );
   const price = resolveSellingPrice(merged, tier, variation.tenantOnly);
 
-  return { productId: variation.productId, price, mitraId: variation.mitraId ?? null };
+  return { productId: variation.productId, price, mitraId: variation.mitraId ?? null, producerActive: await isProducerActive(db, schema, variation.productId) };
 }

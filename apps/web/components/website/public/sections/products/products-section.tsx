@@ -1,4 +1,5 @@
 import { eq, desc, and, inArray } from "drizzle-orm";
+import { producerActiveSql } from "@jalajogja/db";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { resolveViewerTier } from "@/lib/session-type.server";
@@ -41,6 +42,7 @@ async function fetchProducts(
 
   const clauses = [
     eq(schema.products.status, "active"),
+    producerActiveSql(schema), // produsen dinonaktifkan → produknya tidak ditampilkan
     // Hanya produk tenant + mitra aktif
     ...(data.categoryId ? [eq(schema.products.categoryId, data.categoryId)] : []),
   ];

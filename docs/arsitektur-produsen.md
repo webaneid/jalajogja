@@ -220,3 +220,6 @@ sebelum/sesudah. Catatan: uji browser tetap oleh user (admin perlu login). Catat
       tetap hanya di `resolveProducers`. `tsc` bersih. Security review: pemuat baru admin-only (pemanggil dijaga `hasFullAccess(toko)`), memuat LEBIH SEDIKIT data dari sebelumnya, tanpa permukaan baru.
       **Belum diverifikasi dengan data nyata**: bandingkan label dropdown di form produk dengan nama di `/toko/produsen` (harus sama, termasuk produsen nonaktif yang dipakai produk, dan produsen yang sumbernya dihapus → "(sumber dihapus)" / nama cadangan).
 - Seluruh Langkah 1–5 selesai kode; tinggal deploy: migration **0075** di VPS dulu (diagnosa duplikat → migrate) lalu kode. Berikutnya: Portal Produsen (`docs/arsitektur-portal-produsen.md`, fase P1–P6).
+
+## 16. Produsen nonaktif → produk tidak bisa dipesan (P6, 2026-10-31)
+Menonaktifkan produsen (tombol Nonaktifkan di `/toko/produsen`) kini juga menutup penjualan seluruh produknya: hilang dari etalase publik dan ditolak di keranjang/checkout; mengaktifkan lagi memulihkan. Aturan + daftar titik + uji: `docs/arsitektur-portal-produsen.md` § 14. Helper: `producerActiveSql()` (`packages/db/src/helpers/product-orderable.ts`).

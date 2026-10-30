@@ -197,4 +197,22 @@ Prasyarat: perbaikan audit `arsitektur-produsen.md` § 15 (Langkah 1–5) selesa
       **Temuan LAMA (bukan dari fitur ini; TIDAK diperbaiki di sini, menunggu keputusan user):** [HIGH] `settings/addons/rajaongkir/actions.ts` `saveRajaOngkirConfigAction` — Server Action TANPA autentikasi/otorisasi, mengubah `tenant_addon_installations.config` berdasarkan `installationId` dari klien (diverifikasi manual: memang tanpa guard);
       [MEDIUM] open redirect `?redirect=` di login publik tenant (`(public)/[tenant]/login/login-form.tsx`, `page.tsx`); [MEDIUM] `api/mitra/products` + `api/mitra/status` memakai `slug` mentah ke `createTenantDb` tanpa `isActiveTenant` (500 + noise log); [LOW] redirect login admin menerima `/\evil.com` (perlu dicek manual di browser).
       **Perlu keputusan/cek manual:** apakah portal harus ikut gating modul per paket tenant (Starter/Standar/Pro) — saat ini hanya cek tenant aktif; `/no-tenant-access` di custom domain ikut di-rewrite middleware (UX, bukan keamanan); migration 0075 mengunci `products`/`producers` sebentar → jalankan di luar jam ramai; keputusan D5 (produk produsen nonaktif tak bisa dipesan) = P6, belum diaudit.
-- [ ] P6 produsen nonaktif → produk tak bisa dipesan.
+- [x] **P6 — SELESAI KODE 2026-10-31** (belum deploy, TANPA migration; `tsc` bersih; belum dites browser): produsen dinonaktifkan admin (`producers.is_active=false`) → **produknya tidak bisa dipesan**. Detail rancangan di § 14.
+
+## 14. P6 — Produsen nonaktif → produk tidak bisa dipesan (rancangan + realisasi)
+
+**Aturan (keputusan user 2026-10-31, D5):** hanya penonaktifan produsen oleh admin yang menutup penjualan. Produsen internal (`producer_id` NULL) dan produsen aktif tidak terpengaruh. Anggota yang keluar dari keanggotaan hanya kehilangan akses portal (produknya tetap dijual).
+Dihitung SAAT DIBACA (tanpa menulis ulang status tiap produk) → mengaktifkan kembali langsung memulihkan semuanya.
+
+**Satu sumber aturan:** `packages/db/src/helpers/product-orderable.ts` → `producerActiveSql(schema)` = `NOT EXISTS (SELECT 1 FROM producers WHERE producers.id = products.producer_id AND producers.is_active = false)` (semua identifier terkualifikasi schema tenant — diperiksa lewat `toSQL()`).
+Semantik diuji di Postgres sementara: produk internal lolos, produsen aktif lolos, produsen nonaktif tersaring, diaktifkan lagi → lolos kembali.
+
+**Dua lapis penegakan:**
+1. **Otoritatif (server, jalur uang):** `resolveProductCartItem` (dipakai checkout/preview voucher/billing admin) kini mengembalikan `producerActive`. `checkoutAction` MENOLAK item dengan pesan `"<nama>" sedang tidak tersedia. Hapus dari keranjang lalu coba lagi.` — berlaku juga untuk item yang sudah ada di keranjang sebelum produsen dinonaktifkan.
+   `addToCartAction` menolak produk nonaktif sejak awal ("Produk ini sedang tidak tersedia.") — hanya menolak bila TERBUKTI nonaktif; item yang tak ter-resolve diperlakukan seperti sebelumnya.
+2. **Etalase (disembunyikan):** `producerActiveSql` ditambahkan ke query publik: arsip `/produk`, kategori, halaman detail `/produk/{slug}` (+ `generateMetadata`, produk terkait → 404 bila nonaktif), section landing "Produk", hitungan produk di hero, strip modul "Toko", pencarian `api/search`, `sitemap`, produk tertaut donasi pada event (`agenda/[slug]`).
+
+**Sengaja tidak diubah:** (a) pemanggil admin (invoice manual, `toko/actions`, `finance/billing`) memakai resolver yang sama tetapi mengabaikan `producerActive` — admin yang bertanggung jawab atas pesanan manual; (b) invoice yang sudah terbit tidak dibatalkan; (c) halaman keranjang/checkout hanya menampilkan item — penolakan terjadi saat checkout; (d) `gabung/page.tsx` (produk syarat daftar forum) tidak difilter, ditolak oleh checkout; (e) `api/ref/public-links` (picker admin).
+**Cache:** halaman publik memakai `revalidate = 60` — etalase menyusut/pulih paling lama ±60 detik setelah admin menekan Nonaktifkan/Aktifkan; keranjang/checkout langsung (dicek ke DB).
+**Risiko / catatan:** resolver kini menambah satu query kecil per item (juga untuk panggilan admin); `NOT EXISTS` ke tabel produsen yang kecil. Pelanggan yang sudah punya produk itu di keranjang akan melihat penolakan saat checkout (pesan jelas), bukan produk hilang diam-diam.
+**Uji manual setelah deploy:** (1) nonaktifkan produsen yang punya produk → ±1 menit kemudian produk hilang dari `/produk`, landing, pencarian; `/produk/{slug}` 404; (2) produk yang sudah ada di keranjang → checkout ditolak dengan pesan; (3) tambah ke keranjang lewat tombol → ditolak; (4) aktifkan lagi → produk kembali; (5) produk internal tidak terpengaruh.
