@@ -1194,9 +1194,15 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
   (password tak tampil), UI kanal di `/settings/notifications`, email nyata invoice/event lewat SMTP platform (butuh SPF/DKIM `jalakarta.com` benar —
   cek `dig TXT`), email undangan pengurus, From per domain tenant. Catatan: Resend TIDAK bisa kirim dari alamat Gmail (butuh domain terverifikasi).
   Detail + status: `docs/arsitektur-notifikasi-email.md` § 8.
-- **2026-10-30 — Ikon tenant (favicon/apple-touch/manifest) SELESAI KODE, belum deploy**: ikon tenant kini PNG per ukuran lewat `/{slug}/tenant-icon/{size}`
+- **2026-10-30 — Ikon tenant (favicon/apple-touch/manifest) SELESAI + DEPLOYED**: ikon tenant kini PNG per ukuran lewat `/{slug}/tenant-icon/{size}`
   (sumber favicon → cadangan logo), manifest per tenant, `app/favicon.ico` dihapus (penyebab ikon generik), middleware tak lagi mengecualikan favicon/manifest.
-  Tanpa migration. Detail + uji online yang tersisa: `docs/arsitektur-favicon.md` § 7.
+  Tanpa migration. TERVERIFIKASI via curl di VPS (tenant `forbis`): tautan `<link>` semua ke `/forbis/tenant-icon/*` (tanpa `/favicon.ico` generik),
+  endpoint `200 image/png`, manifest bernama tenant. BELUM diuji di perangkat: tab browser, iPhone (apple-touch-icon PNG 180), Android, custom domain.
+  Detail: `docs/arsitektur-favicon.md` § 7.
+- **Terbuka (dicatat 2026-10-30, belum diputuskan)**: (a) log produksi sekali memuat `DYNAMIC_SERVER_USAGE` di menit pertama pasca-restart — tidak bisa direproduksi
+  (7 URL, 0 error), semua halaman `200`; pantau saja. (b) Peringatan Better Auth "Rate limiting could not determine a client IP … single shared per-path bucket":
+  `lib/auth.ts` belum punya `advanced.ipAddress`; perbaikan butuh keputusan header IP tepercaya (Nginx `real_ip` + `CF-Connecting-IP`) — risiko bila salah:
+  header bisa dipalsukan sehingga pembatas laju bisa dilewati.
 - **Sesi 2026-10-10 — ringkasan** (detail + keputusan: memory `project_session_log_20261010` dan dokumen masing-masing).
   Status git: SEMUA sudah di-push (`99875ec`, 2026-10-11) dan di-deploy ke VPS (migration `0073` jalan; build+restart OK; user cek "lainnya aman").
   Cron `pj-digest` TIAP JAM sudah dipasang di crontab user `webane` (log `/var/log/jalajogja-cron.log`); panggilan manual → `{"ok":true,"sent":{...0}}`.
