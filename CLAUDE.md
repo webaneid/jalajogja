@@ -238,6 +238,7 @@ pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
 | Koneksi Instagram otomatis (Graph API) | `docs/arsitektur-instagram-embed.md` |
 | Integrasi KBLI (klasifikasi usaha) — perencanaan, belum dieksekusi | `docs/arsitektur-integrasi-kbli.md` |
 | Mobile shell (header global, sticky bar, aturan spacer) | `docs/arsitektur-mobile-shell.md` |
+| Notifikasi Email (paritas WA, fallback SMTP platform, preset Gmail/Resend) — RENCANA 2026-10-30, belum dieksekusi | `docs/arsitektur-notifikasi-email.md` |
 | Notifikasi PJ modul (digest + verifikasi bendahara via tautan) — keuangan+keanggotaan+toko+donasi+event SELESAI KODE 2026-10-10, belum deploy | `docs/arsitektur-notifikasi-pengurus.md` |
 | Produsen produk (admin-only: internal/anggota/custom) — deployed 2026-10-09 | `docs/arsitektur-produsen.md` |
 | Penulis & Editor Post (byline system) | `docs/arsitektur-penulis-post.md` |
