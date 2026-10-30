@@ -244,3 +244,43 @@ Semantik diuji di Postgres sementara: produk internal lolos, produsen aktif lolo
 **Hotfix custom domain (2026-10-31, ditemukan user saat uji di `forbis.id`):** `/pilih-tujuan?ditolak=forbis` di `forbis.id` memberi 404 karena middleware me-rewrite path non-`/app` di custom domain menjadi `/{slug}/pilih-tujuan`. Perbaikan: `pilih-tujuan` dan `no-tenant-access` dikecualikan dari matcher middleware (seperti `dashboard-redirect` — ketiganya tujuan redirect pasca-login yang harus tampil apa adanya di host mana pun; halamannya memeriksa sesi sendiri);
 di custom domain, tautan ke tenant LAIN di halaman pemilih dibuat absolut ke jalakarta.com (sesi login per-host terpisah — mungkin perlu login lagi). Sebelum hotfix, `/no-tenant-access` di custom domain juga 404 (utang lama, kini ikut teratasi).
 **Sisa/diketahui:** `app/(auth)/layout.tsx` (pengguna login yang membuka halaman auth) masih memakai `getFirstTenantForUser`; bagian 3 (`/app/login?tenant=`) belum dibuat.
+
+## 17. Produk tunggal bersama (admin + produsen) dan pesanan masuk untuk produsen — RENCANA (2026-10-31, belum ada kode)
+
+**Permintaan user:** produsen yang akan MENGIRIM produknya harus melihat data pembeli di halaman produk tunggal. Tampilan admin dan produsen dibuat SAMA (hemat CSS) — boleh bertab (mis. Ringkasan / Pesanan / Detail) dan mudah dipahami produsen — supaya halaman produk tunggal yang akan dikembangkan total cukup diubah SEKALI. Untuk sementara tetap BACA-SAJA (kirim paket / resi / label = upgrade berikutnya, § 10).
+
+### 17.1 Temuan kode (dibaca 2026-10-31)
+- `lib/product-buyers.server.ts` `resolveProductBuyers()` sudah SATU fungsi bersama untuk halaman admin dan export Excel. Barisnya memuat data uang (subtotal, voucher, kode unik, total dibayar, ongkir, **modal `unitCost`**) dan dua alamat: "Alamat Checkout" (snapshot transaksi) dan "Alamat User" (alamat rumah di profil anggota, hanya terisi bila HP invoice terverifikasi).
+- Halaman admin `toko/produk/[id]/page.tsx` (215 baris) sudah mengosongkan `unitCost` sebelum mengirim baris ke komponen client `ProductBuyerList` (tabel lebar 1280px, ada kolom uang) — pelajaran "payload client = publik".
+- Portal Produsen (P4) punya halaman detail sendiri yang berbeda dari admin → dua tampilan yang akan drift.
+- Skema siap untuk tahap kirim paket nanti: `invoice_shipping_lines.tracking_number`, `courier/service`, `delivery_method` (courier/pickup), `payment_method` (cod), dan fulfillment 5-tahap (`docs/arsitektur-fulfillment.md`).
+
+### 17.2 Rancangan
+1. **Komponen bersama** `components/toko/product-detail/` (server component, TANPA state client): `ProductDetailTabs` (tab lewat tautan `?tab=ringkasan|pesanan|detail` — tidak ada JS/props client yang bisa bocor), `TabRingkasan`, `TabPesanan`, `TabDetail`. Dipakai SAMA oleh `/app/{slug}/toko/produk/[id]` (admin) dan `/app/{slug}/portal-produsen/produk/[id]` (produsen); parameter `view: "admin" | "producer"` hanya memutuskan bagian mana yang tampil. Tab/kolom baru ditambah SEKALI di komponen bersama.
+   Bagian KHUSUS admin (tidak ada di produsen): tombol Edit, tab/seksi "Laporan & Produsen" (kartu keuntungan, kartu produsen, tombol export Excel), kolom uang.
+2. **Data tetap satu sumber:** `resolveProductBuyers()` tidak digandakan. Untuk produsen ditambah **proyeksi allow-list** `toProducerBuyerRows(rows)` DI SERVER (memilih eksplisit field yang diizinkan — bukan "buang yang sensitif") sebelum menyentuh komponen/props apa pun.
+3. **Field pesanan yang terlihat produsen (usulan):** nomor invoice, tanggal, nama pembeli, nomor HP (+ tautan WhatsApp), nama item + varian + jumlah, metode pengiriman (kurir/layanan atau ambil sendiri; COD), **alamat checkout** (alamat tujuan transaksi ini). **TIDAK:** uang apa pun (harga jual, subtotal, voucher, kode unik, total dibayar, ongkir, modal/laba), "Alamat User" (alamat rumah profil anggota — data pribadi di luar kebutuhan kirim), item produk lain di invoice yang sama, export Excel (menyusul bersama fitur label).
+4. **Pesanan yang tampil (usulan):** hanya invoice **Lunas** (`includeAll: false`) — produsen tidak boleh mengirim barang yang belum dibayar. Pesanan belum lunas/sebagian tidak tampil sama sekali.
+5. **Tab (nama yang mudah dipahami):** `Ringkasan` (jumlah pesanan lunas, total unit terjual, stok; admin: + statistik status bayar), `Pesanan Masuk` (daftar + cari + tampilan kartu di HP untuk produsen), `Detail Produk` (foto, harga, stok, variasi, deskripsi — isi halaman P4 sekarang dipindah ke komponen bersama). Admin menambah `Laporan & Produsen`.
+
+### 17.3 Keamanan & privasi (data pembeli = data pribadi)
+- Akses tetap lewat `getProducerAccess` + `WHERE id AND producer_id = <sesi> AND mitra_id IS NULL`; `resolveProductBuyers` hanya dipanggil SETELAH kepemilikan produk terverifikasi (fungsinya sendiri menerima productId mentah!).
+- Allow-list di server; payload RSC/props tidak memuat field terlarang (diverifikasi dengan memeriksa tipe + grep payload di uji).
+- Pesan privasi di tab: "Data pembeli hanya untuk keperluan pengiriman pesanan ini."
+- Pencatatan akses (audit log lihat-data-pembeli) dipertimbangkan — belum diusulkan masuk fase ini; dicatat sebagai opsi bila diinginkan.
+- Produk mitra tidak pernah tampil (sudah di query).
+
+### 17.4 Risiko
+- Merombak halaman admin 215 baris menjadi komponen bersama + tab = risiko regresi tampilan admin; mitigasi: logika data tidak diubah, hanya JSX dipindah; admin tetap punya semua yang sekarang ada (daftar pembeli penuh dengan kolom uang, laporan, export).
+- Tabel lebar (1280px) tidak cocok di HP produsen → produsen memakai daftar kartu ringkas; admin tetap tabel.
+- Kolom/ketentuan data pembeli yang diizinkan perlu disepakati (privasi) — lihat keputusan.
+
+### 17.5 Fase (urut; tiap fase: tsc → security review → commit)
+| Fase | Isi |
+|---|---|
+| T1 | Ekstrak komponen bersama + tab; halaman admin memakainya (tampilan fungsi sama + tab) |
+| T2 | `toProducerBuyerRows` + tab `Pesanan Masuk` untuk produsen; portal memakai komponen bersama |
+| T3 | Pengerasan: matriks uji + audit `security-auditor` (khusus kebocoran data pembeli/uang) |
+
+### 17.6 Keputusan yang menunggu user
+(a) Pesanan yang tampil untuk produsen: hanya **Lunas** (usulan) atau semua status. (b) Data pembeli yang diizinkan: sesuai § 17.2 butir 3 (usulan) — khususnya TANPA uang dan TANPA alamat rumah profil. (c) Halaman produk tunggal ADMIN ikut dirombak menjadi bertab (usulan, sesuai permintaan "tampilan admin dan produsen sama"). (d) Export Excel/label untuk produsen ditunda ke fase kirim paket.
