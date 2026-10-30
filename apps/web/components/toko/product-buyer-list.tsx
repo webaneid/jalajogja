@@ -21,7 +21,8 @@ function fmtDate(d: Date) {
   return new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export function ProductBuyerList({ slug, rows }: { slug: string; rows: ProductBuyerRow[] }) {
+// linkInvoices=false (Portal Produsen): nomor invoice jadi teks biasa — halaman invoice admin bukan untuk produsen.
+export function ProductBuyerList({ slug, rows, linkInvoices = true }: { slug: string; rows: ProductBuyerRow[]; linkInvoices?: boolean }) {
   const [search, setSearch] = useState("");
 
   const filtered = rows.filter((r) =>
@@ -70,12 +71,16 @@ export function ProductBuyerList({ slug, rows }: { slug: string; rows: ProductBu
               {filtered.map((r, idx) => (
                 <tr key={`${r.invoiceId}-${idx}`} className="hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3">
-                    <Link
-                      href={`/app/${slug}/toko/pesanan/invoice/${r.invoiceId}`}
-                      className="font-mono text-xs text-primary hover:underline"
-                    >
-                      {r.invoiceNumber}
-                    </Link>
+                    {linkInvoices ? (
+                      <Link
+                        href={`/app/${slug}/toko/pesanan/invoice/${r.invoiceId}`}
+                        className="font-mono text-xs text-primary hover:underline"
+                      >
+                        {r.invoiceNumber}
+                      </Link>
+                    ) : (
+                      <span className="font-mono text-xs">{r.invoiceNumber}</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">{r.customerName}</td>
                   <td className="px-4 py-3 text-muted-foreground">{r.variantLabel || "—"}</td>

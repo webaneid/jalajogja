@@ -99,8 +99,8 @@ export default async function ProdukDetailPage({
         />
         <ProductDetailTabNav basePath={`/app/${slug}/toko/produk/${productId}`} tabs={tabs} active={active} />
 
-        {active === "ringkasan" && <TabRingkasan view="admin" counts={counts} />}
-        {active === "pesanan"   && <TabPesanan view="admin" slug={slug} productId={productId} rows={listRows} />}
+        {active === "ringkasan" && <TabRingkasan counts={counts} />}
+        {active === "pesanan"   && <TabPesanan slug={slug} productId={productId} rows={listRows} canExport linkInvoices />}
         {active === "detail"    && <TabDetail product={detail} tenantSlug={slug} showCost={canSeeReport} />}
         {active === "laporan"   && laporan}
       </main>
