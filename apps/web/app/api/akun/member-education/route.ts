@@ -97,19 +97,21 @@ export async function POST(req: NextRequest) {
 
       if (memberRow && !memberRow.welcomeSentAt && memberRow.contactId) {
         const [contact] = await db
-          .select({ phone: contacts.phone, whatsapp: contacts.whatsapp })
+          .select({ phone: contacts.phone, whatsapp: contacts.whatsapp, email: contacts.email })
           .from(contacts)
           .where(eq(contacts.id, memberRow.contactId))
           .limit(1);
         const phone = contact?.whatsapp || contact?.phone || null;
+        const email = contact?.email || null;
 
-        if (phone) {
+        if (phone || email) {
           const tenantDb = createTenantDb(body.slug);
           void (async () => {
             const profileUrl = await waAppUrl(body.slug!, "/akun");
             void notifyWa({
               slug: body.slug!, tenantDb, event: "member_welcome",
               phone,
+              email,
               vars: {
                 name:         memberRow.name,
                 memberNumber: memberRow.memberNumber ?? "-",

@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
         invoiceNumber:     schema.invoices.invoiceNumber,
         customerName:      schema.invoices.customerName,
         customerPhone:     schema.invoices.customerPhone,
+        customerEmail: schema.invoices.customerEmail,
         total:             schema.invoices.total,
         paidAmount:        schema.invoices.paidAmount,
         installmentCount:  schema.installmentPlans.installmentCount,
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
       ));
 
     for (const term of dueTerms) {
-      if (!term.customerPhone) continue;
+      if (!term.customerPhone && !term.customerEmail) continue;
 
       const isToday   = term.dueDate === todayStr;
       const remaining = parseFloat(String(term.total)) - parseFloat(String(term.paidAmount));
@@ -72,6 +73,7 @@ export async function GET(request: NextRequest) {
         slug: tenant.slug, tenantDb,
         event: isToday ? "installment_due_today" : "installment_reminder",
         phone: term.customerPhone,
+        email: term.customerEmail,
         vars: {
           name:             term.customerName,
           invoiceNumber:    term.invoiceNumber,

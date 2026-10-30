@@ -655,7 +655,7 @@ export async function checkoutAction(
       | {
           invoiceId: string; invoiceNumber: string; total: number; uniqueCode: number; dueDate: string;
           isFullyPaid: boolean; voucherDiscountTotal: number;
-          newEventRegs: Array<{ eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null }>;
+          newEventRegs: Array<{ eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null; attendeeEmail: string | null }>;
         };
 
     const txResult: TxResult = await tdb.transaction(async (tx) => {
@@ -1036,7 +1036,7 @@ export async function checkoutAction(
       // `if (newStatus === "paid")` di confirmInvoicePaymentAction (finance/billing/actions.ts),
       // duplikasi disengaja (checkoutAction tidak boleh bergantung ke modul finance/billing).
       // TIDAK ada jurnal (recordIncome) — nominal 0, tidak ada uang masuk untuk dicatat.
-      const newEventRegs: Array<{ eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null }> = [];
+      const newEventRegs: Array<{ eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null; attendeeEmail: string | null }> = [];
 
       if (isFullyPaid) {
         // Sync collected_amount kampanye donasi — pakai resolvedItems (sudah di-hitung net-of-
@@ -1099,6 +1099,7 @@ export async function checkoutAction(
         void notifyWa({
           slug, tenantDb, event: "payment_confirmed",
           phone: normalizePhone(customer.phone),
+          email: customer.email,
           vars: {
             name:          customerName,
             invoiceNumber: txResult.invoiceNumber,
@@ -1118,6 +1119,7 @@ export async function checkoutAction(
           void notifyWa({
             slug, tenantDb, event: "event_registered",
             phone: reg.attendeePhone,
+            email: reg.attendeeEmail,
             vars: {
               name:      reg.attendeeName,
               eventName: eventDetail.title,
@@ -1132,6 +1134,7 @@ export async function checkoutAction(
         void notifyWa({
           slug, tenantDb, event: "invoice_created",
           phone: normalizePhone(customer.phone),
+          email: customer.email,
           vars: {
             name:          customerName,
             invoiceNumber: txResult.invoiceNumber,
@@ -1182,13 +1185,14 @@ export async function submitPaymentProofAction(
     // "guard sudah ada sebelumnya WAJIB diulang di dalam transaction setelah lock").
     type TxResult =
       | { error: string }
-      | { paymentId: string; customerName: string; customerPhone: string | null;
+      | { paymentId: string; customerName: string; customerPhone: string | null; customerEmail: string | null;
           invoiceNumber: string; amount: number; installmentPlanId: string | null };
 
     const txResult: TxResult = await tdb.transaction(async (tx) => {
       const [lockedInv] = await tx
         .select({ id: schema.invoices.id, customerName: schema.invoices.customerName,
                   customerPhone: schema.invoices.customerPhone,
+                  customerEmail: schema.invoices.customerEmail,
                   total: schema.invoices.total, paidAmount: schema.invoices.paidAmount,
                   uniqueCode: schema.invoices.uniqueCode,
                   invoiceNumber: schema.invoices.invoiceNumber, status: schema.invoices.status,
@@ -1248,6 +1252,7 @@ export async function submitPaymentProofAction(
         paymentId:         payment.id,
         customerName:      lockedInv.customerName,
         customerPhone:     lockedInv.customerPhone,
+        customerEmail:     lockedInv.customerEmail,
         invoiceNumber:     lockedInv.invoiceNumber,
         amount:            data.amount,
         installmentPlanId: lockedInv.installmentPlanId,
@@ -1256,7 +1261,7 @@ export async function submitPaymentProofAction(
 
     if ("error" in txResult) return { success: false, error: txResult.error };
 
-    const inv = { customerName: txResult.customerName, customerPhone: txResult.customerPhone,
+    const inv = { customerName: txResult.customerName, customerPhone: txResult.customerPhone, customerEmail: txResult.customerEmail,
                    invoiceNumber: txResult.invoiceNumber };
     const submittedAmount = txResult.amount;
     const payment          = { id: txResult.paymentId };
@@ -1264,6 +1269,7 @@ export async function submitPaymentProofAction(
     void notifyWa({
       slug, tenantDb, event: "payment_submitted",
       phone: inv.customerPhone,
+      email: inv.customerEmail,
       vars: {
         name:          inv.customerName,
         invoiceNumber: inv.invoiceNumber,
@@ -1277,6 +1283,7 @@ export async function submitPaymentProofAction(
       void notifyWa({
         slug, tenantDb, event: "installment_payment_submitted",
         phone: inv.customerPhone,
+        email: inv.customerEmail,
         vars: {
           name:          inv.customerName,
           invoiceNumber: inv.invoiceNumber,
@@ -1301,6 +1308,7 @@ export async function submitPaymentProofAction(
       void notifyWa({
         slug, tenantDb, event: "donation_received",
         phone: inv.customerPhone,
+        email: inv.customerEmail,
         vars: {
           name:         inv.customerName,
           campaignName: item.name,
@@ -1344,6 +1352,7 @@ export async function convertInvoiceToInstallmentAction(
           firstDueDate:      string;
           customerName:      string | null;
           customerPhone:     string | null;
+          customerEmail:     string | null;
           invoiceNumber:     string;
           perTermAmount:     number;
           remaining:         number;
@@ -1464,6 +1473,7 @@ export async function convertInvoiceToInstallmentAction(
         firstDueDate:     scheduleRows[0].dueDate,
         customerName:     lockedInv.customerName,
         customerPhone:    lockedInv.customerPhone,
+        customerEmail:    lockedInv.customerEmail,
         invoiceNumber:    lockedInv.invoiceNumber,
         perTermAmount:    perTerm,
         remaining:        total - paidSoFar,
@@ -1477,13 +1487,14 @@ export async function convertInvoiceToInstallmentAction(
     revalidatePath(`/${slug}/invoice/${invoiceId}`);
     revalidatePath(`/app/${slug}/finance/billing/invoice/${invoiceId}`);
 
-    if (txResult.customerPhone) {
+    if (txResult.customerPhone || txResult.customerEmail) {
       const invoiceUrl = await waAppUrl(slug, `/invoice/${invoiceId}`);
       void notifyWa({
         slug,
         tenantDb,
         event: "installment_converted",
         phone: txResult.customerPhone,
+        email: txResult.customerEmail,
         vars: {
           name:             txResult.customerName ?? "Pelanggan",
           invoiceNumber:    txResult.invoiceNumber,

@@ -944,7 +944,7 @@ export async function createOrderAction(
 
     if ("error" in txResult) return { success: false, error: txResult.error };
 
-    if (normalizedPhone) {
+    if (normalizedPhone || emailTrim) {
       void (async () => {
         const invoiceUrl = await waAppUrl(slug, `/invoice/${txResult.invoiceId}`);
 
@@ -955,6 +955,7 @@ export async function createOrderAction(
           void notifyWa({
             slug, tenantDb: tenantClient, event: "payment_confirmed",
             phone: normalizedPhone,
+            email: emailTrim,
             vars: { name: txResult.customerName, invoiceNumber: txResult.invoiceNumber, amount: waRupiah(0) },
           });
           return;
@@ -963,6 +964,7 @@ export async function createOrderAction(
         void notifyWa({
           slug, tenantDb: tenantClient, event: "invoice_created",
           phone: normalizedPhone,
+          email: emailTrim,
           vars: {
             name:          txResult.customerName,
             invoiceNumber: txResult.invoiceNumber,

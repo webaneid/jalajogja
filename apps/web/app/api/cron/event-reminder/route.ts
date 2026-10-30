@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
         .select({
           attendeeName:       schema.eventRegistrations.attendeeName,
           attendeePhone:      schema.eventRegistrations.attendeePhone,
+          attendeeEmail: schema.eventRegistrations.attendeeEmail,
           registrationNumber: schema.eventRegistrations.registrationNumber,
         })
         .from(schema.eventRegistrations)
@@ -66,12 +67,13 @@ export async function GET(request: NextRequest) {
       });
 
       for (const reg of registrations) {
-        if (!reg.attendeePhone) continue;
+        if (!reg.attendeePhone && !reg.attendeeEmail) continue;
 
         const eventUrl = await waAppUrl(tenant.slug, `/agenda/${event.slug}`);
         void notifyWa({
           slug: tenant.slug, tenantDb, event: "event_reminder",
           phone: reg.attendeePhone,
+          email: reg.attendeeEmail,
           vars: {
             name:      reg.attendeeName,
             eventName: event.title,

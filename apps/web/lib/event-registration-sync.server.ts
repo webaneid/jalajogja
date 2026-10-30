@@ -93,7 +93,7 @@ export function parseAttendeeFromInvoiceItem(item: { name: string; description: 
 
 type CreatedEventReg = {
   eventId: string; eventTitle: string; eventSlug: string;
-  regNumber: string; attendeeName: string; attendeePhone: string | null;
+  regNumber: string; attendeeName: string; attendeePhone: string | null; attendeeEmail: string | null;
 };
 
 type ExistingEventReg = {
@@ -201,7 +201,7 @@ export async function createEventRegistrationsFromInvoiceTickets(
 
     result.created.push({
       eventId: ticket.eventId, eventTitle: ticket.eventTitle, eventSlug: ticket.eventSlug,
-      regNumber, attendeeName, attendeePhone,
+      regNumber, attendeeName, attendeePhone, attendeeEmail,
     });
   }
 

@@ -774,6 +774,7 @@ export async function registerForEventAction(
         void notifyWa({
           slug, tenantDb, event: "invoice_created",
           phone: normalizePhone(data.attendeePhone),
+          email: data.attendeeEmail,
           vars: {
             name:          data.attendeeName.trim(),
             invoiceNumber,
@@ -811,6 +812,7 @@ export async function registerForEventAction(
       void notifyWa({
         slug, tenantDb, event: "event_registered",
         phone: normalizePhone(data.attendeePhone),
+        email: data.attendeeEmail,
         vars: {
           name:      data.attendeeName.trim(),
           eventName: event.title,
@@ -1243,6 +1245,7 @@ export async function confirmEventInvoicePaymentAction(
       void notifyWa({
         slug, tenantDb, event: "payment_confirmed",
         phone: normalizePhone(inv.customerPhone),
+        email: inv.customerEmail,
         vars: {
           name:          inv.customerName,
           invoiceNumber: inv.invoiceNumber,

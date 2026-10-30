@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
         invoiceNumber: schema.invoices.invoiceNumber,
         customerName:  schema.invoices.customerName,
         customerPhone: schema.invoices.customerPhone,
+        customerEmail: schema.invoices.customerEmail,
         total:         schema.invoices.total,
         paidAmount:    schema.invoices.paidAmount,
         uniqueCode:    schema.invoices.uniqueCode,
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
       ));
 
     for (const inv of dueInvoices) {
-      if (!inv.customerPhone) continue;
+      if (!inv.customerPhone && !inv.customerEmail) continue;
 
       const total     = parseFloat(String(inv.total));
       const uniqueCode = inv.uniqueCode ?? 0;
@@ -58,6 +59,7 @@ export async function GET(request: NextRequest) {
       void notifyWa({
         slug: tenant.slug, tenantDb, event: "invoice_reminder",
         phone: inv.customerPhone,
+        email: inv.customerEmail,
         vars: {
           name:          inv.customerName,
           invoiceNumber: inv.invoiceNumber,

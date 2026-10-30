@@ -98,13 +98,14 @@ export async function verifySubmittedPaymentCore(opts: {
   // Kumpulkan registrasi tiket baru (dari auto-create block di bawah) untuk
   // dikirimi notifikasi WA setelah transaction selesai (side-effect di luar tx).
   const newEventRegs: Array<{
-    eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null;
+    eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null; attendeeEmail: string | null;
   }> = [];
 
   // Diisi dari dalam transaction (data invoice yang sudah dikunci) — dipakai untuk notifikasi
   // WA setelah commit, tanpa perlu baca ulang invoice di luar tx.
   let notifyCustomerName  = "";
   let notifyCustomerPhone: string | null = null;
+  let notifyCustomerEmail: string | null = null;
   let notifyInvoiceNumber = "";
   let notifyMemberId: string | null = null;
 
@@ -147,6 +148,7 @@ export async function verifySubmittedPaymentCore(opts: {
 
       notifyCustomerName  = inv.customerName;
       notifyCustomerPhone = inv.customerPhone;
+      notifyCustomerEmail = inv.customerEmail;
       notifyInvoiceNumber = inv.invoiceNumber;
       notifyMemberId      = inv.memberId;
 
@@ -290,6 +292,7 @@ export async function verifySubmittedPaymentCore(opts: {
         void notifyWa({
           slug, tenantDb, event: "event_registered",
           phone: reg.attendeePhone,
+          email: reg.attendeeEmail,
           vars: {
             name:      reg.attendeeName,
             eventName: eventDetail.title,
@@ -305,6 +308,7 @@ export async function verifySubmittedPaymentCore(opts: {
     void notifyWa({
       slug, tenantDb, event: "payment_confirmed",
       phone: notifyCustomerPhone,
+      email: notifyCustomerEmail,
       vars: {
         name:          notifyCustomerName,
         invoiceNumber: notifyInvoiceNumber,
@@ -327,6 +331,7 @@ export async function verifySubmittedPaymentCore(opts: {
         void notifyWa({
           slug, tenantDb, event: "installment_payment_confirmed",
           phone: notifyCustomerPhone,
+          email: notifyCustomerEmail,
           vars: {
             name:             notifyCustomerName,
             invoiceNumber:    notifyInvoiceNumber,

@@ -302,6 +302,7 @@ export async function createInvoiceAction(
           id:            schema.invoices.id,
           customerName:  schema.invoices.customerName,
           customerPhone: schema.invoices.customerPhone,
+          customerEmail: schema.invoices.customerEmail,
         });
 
       // Insert items (dengan diskon per baris kalau voucher diterapkan)
@@ -354,12 +355,12 @@ export async function createInvoiceAction(
 
       return {
         invoiceId: invoice.id, invoiceNumber, customerName: invoice.customerName,
-        customerPhone: invoice.customerPhone, total, uniqueCode, isFullyPaid, newEventRegs,
+        customerPhone: invoice.customerPhone, customerEmail: invoice.customerEmail, total, uniqueCode, isFullyPaid, newEventRegs,
       };
     });
 
     // Kirim notifikasi WA jika nomor HP customer tersedia
-    if (result.customerPhone) {
+    if (result.customerPhone || result.customerEmail) {
       if (result.isFullyPaid) {
         // Voucher 100% — invoice sudah langsung lunas, TIDAK ada apa pun yang perlu dibayar.
         // Notifikasi STANDAR (payment_confirmed), bukan invoice_created — pola sama
@@ -367,6 +368,7 @@ export async function createInvoiceAction(
         void notifyWa({
           slug, tenantDb, event: "payment_confirmed",
           phone: result.customerPhone,
+          email: result.customerEmail,
           vars: {
             name:          result.customerName,
             invoiceNumber: result.invoiceNumber,
@@ -394,6 +396,7 @@ export async function createInvoiceAction(
           void notifyWa({
             slug, tenantDb, event: "event_registered",
             phone: reg.attendeePhone,
+            email: reg.attendeeEmail,
             vars: {
               name:      reg.attendeeName,
               eventName: eventDetail.title,
@@ -412,6 +415,7 @@ export async function createInvoiceAction(
           tenantDb,
           event: "invoice_created",
           phone: result.customerPhone,
+          email: result.customerEmail,
           vars: {
             name:          result.customerName,
             invoiceNumber: result.invoiceNumber,
@@ -695,17 +699,18 @@ export async function applyVoucherToInvoiceAction(
 
       return {
         total, isFullyPaid, newEventRegs,
-        customerPhone: lockedInv.customerPhone, customerName: lockedInv.customerName,
+        customerPhone: lockedInv.customerPhone, customerEmail: lockedInv.customerEmail, customerName: lockedInv.customerName,
         invoiceNumber: lockedInv.invoiceNumber,
       };
     });
 
-    if (result.isFullyPaid && result.customerPhone) {
+    if (result.isFullyPaid && (result.customerPhone || result.customerEmail)) {
       // Voucher menghabiskan seluruh sisa tagihan — notifikasi STANDAR (payment_confirmed),
       // bukan invoice_created — pola sama checkoutAction (cart/actions.ts).
       void notifyWa({
         slug, tenantDb, event: "payment_confirmed",
         phone: result.customerPhone,
+        email: result.customerEmail,
         vars: {
           name:          result.customerName,
           invoiceNumber: result.invoiceNumber,
@@ -733,6 +738,7 @@ export async function applyVoucherToInvoiceAction(
         void notifyWa({
           slug, tenantDb, event: "event_registered",
           phone: reg.attendeePhone,
+          email: reg.attendeeEmail,
           vars: {
             name:      reg.attendeeName,
             eventName: eventDetail.title,
@@ -1185,7 +1191,7 @@ export async function confirmInvoicePaymentAction(
     // Kumpulkan registrasi tiket baru (dari auto-create block di bawah) untuk
     // dikirimi notifikasi WA setelah transaction selesai (side-effect di luar tx).
     const newEventRegs: Array<{
-      eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null;
+      eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null; attendeeEmail: string | null;
     }> = [];
 
     // Diisi di dalam transaction jika invoice ini adalah cicilan — dipakai SETELAH commit
@@ -1358,6 +1364,7 @@ export async function confirmInvoicePaymentAction(
     void notifyWa({
       slug, tenantDb, event: "payment_confirmed",
       phone: inv.customerPhone,
+      email: inv.customerEmail,
       vars: {
         name:          inv.customerName,
         invoiceNumber: inv.invoiceNumber,
@@ -1380,6 +1387,7 @@ export async function confirmInvoicePaymentAction(
         void notifyWa({
           slug, tenantDb, event: "installment_payment_confirmed",
           phone: inv.customerPhone,
+          email: inv.customerEmail,
           vars: {
             name:             inv.customerName,
             invoiceNumber:    inv.invoiceNumber,
@@ -1422,6 +1430,7 @@ export async function confirmInvoicePaymentAction(
         void notifyWa({
           slug, tenantDb, event: "event_registered",
           phone: reg.attendeePhone,
+          email: reg.attendeeEmail,
           vars: {
             name:      reg.attendeeName,
             eventName: eventDetail.title,
@@ -1488,6 +1497,7 @@ export async function rejectPaymentAction(
       invoiceId:     schema.invoicePayments.invoiceId,
       customerName:  schema.invoices.customerName,
       customerPhone: schema.invoices.customerPhone,
+      customerEmail: schema.invoices.customerEmail,
       invoiceNumber: schema.invoices.invoiceNumber,
       paidAmount:    schema.invoices.paidAmount,
     })
@@ -1570,6 +1580,7 @@ export async function rejectPaymentAction(
       void notifyWa({
         slug, tenantDb, event: "payment_rejected",
         phone: invLink.customerPhone,
+        email: invLink.customerEmail,
         vars: {
           name:          invLink.customerName,
           invoiceNumber: invLink.invoiceNumber,
@@ -2170,6 +2181,7 @@ export async function updateFulfillmentStatusAction(
       invoiceNumber: schema.invoices.invoiceNumber,
       customerName:  schema.invoices.customerName,
       customerPhone: schema.invoices.customerPhone,
+      customerEmail: schema.invoices.customerEmail,
     })
     .from(schema.invoices)
     .where(eq(schema.invoices.id, line.invoiceId))
@@ -2219,6 +2231,7 @@ export async function updateFulfillmentStatusAction(
       void notifyWa({
         slug, tenantDb, event: waEvent,
         phone: inv.customerPhone,
+        email: inv.customerEmail,
         vars: {
           name:            inv.customerName,
           orderNumber:     inv.invoiceNumber,

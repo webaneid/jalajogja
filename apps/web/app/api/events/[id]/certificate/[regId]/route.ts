@@ -307,6 +307,7 @@ export async function POST(
   void notifyWa({
     slug, tenantDb: tenantClient, event: "event_certificate_ready",
     phone: reg.attendeePhone,
+    email: reg.attendeeEmail,
     vars: {
       name:      reg.attendeeName,
       eventName: event.title,
