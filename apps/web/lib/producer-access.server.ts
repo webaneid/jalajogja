@@ -75,19 +75,20 @@ export const getProducerAccess = cache(async (slug: string): Promise<ProducerAcc
   };
 });
 
-// Untuk /dashboard-redirect: tenant tempat akun ini berstatus produsen, HANYA bila aksesnya benar-benar lolos
-// (getProducerAccess penuh). Sengaja tidak cukup "baris producer_logins ada": produsen yang dinonaktifkan /
-// keluar keanggotaan akan dialihkan ke portal lalu ditolak → loop. UNIQUE(user_id) = paling banyak satu tenant.
-export async function findProducerPortalSlug(): Promise<string | null> {
+// Untuk /dashboard-redirect & pemilih tujuan: tenant tempat akun ini berstatus produsen, HANYA bila aksesnya
+// benar-benar lolos (getProducerAccess penuh). Sengaja tidak cukup "baris producer_logins ada": produsen yang
+// dinonaktifkan / keluar keanggotaan akan dialihkan ke portal lalu ditolak → loop. UNIQUE(user_id) = paling banyak
+// satu tenant.
+export async function findProducerPortal(): Promise<{ slug: string; name: string } | null> {
   const session = await getCurrentSession();
   const userId  = session?.user?.id ?? null;
   if (!userId) return null;
   const [row] = await db
-    .select({ slug: tenants.slug })
+    .select({ slug: tenants.slug, name: tenants.name })
     .from(producerLogins)
     .innerJoin(tenants, eq(tenants.id, producerLogins.tenantId))
     .where(and(eq(producerLogins.userId, userId), eq(tenants.isActive, true)))
     .limit(1);
   if (!row) return null;
-  return (await getProducerAccess(row.slug)) ? row.slug : null;
+  return (await getProducerAccess(row.slug)) ? row : null;
 }

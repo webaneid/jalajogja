@@ -227,3 +227,18 @@ Semantik diuji di Postgres sementara: produk internal lolos, produsen aktif lolo
 | [MEDIUM] `api/mitra/*` memakai slug mentah | `isActiveTenant(slug)` sebelum `createTenantDb` di `products` (GET/POST), `products/[id]`, `status` (404 bila tenant tak ada) dan `apply` (POST + DELETE) — termasuk 2 titik yang tidak tercatat auditor (`products/[id]`, `apply`). |
 
 `tsc` bersih. Catatan: `selfInstallAddonAction` (`settings/addons/actions.ts`) masih memakai cek role manual `["owner","admin"]` ('admin' bukan role tenant yang valid) — belum disentuh, dicatat untuk putaran berikutnya.
+
+## 16. Routing login multi-konteks (2026-10-31, permintaan user)
+
+**Masalah:** `/app/login` bersifat universal dan `/dashboard-redirect` memilih tenant tempat akun jadi PENGURUS pertama. Akun yang pengurus di tenant A dan produsen di tenant B selalu mendarat di dashboard A; portal B hanya terjangkau lewat URL langsung. Pengurus di dua tenant juga dilempar ke tenant yang acak (utang teknis lama `getFirstTenantForUser`).
+
+**Keputusan (bagian 1 + 2 dari usulan; bagian 3 "tautan login spesifik tenant `?tenant=`" ditunda):**
+1. **Hormati tenant yang dituju.** Layout dashboard (`(dashboard)/app/[tenant]/layout.tsx`): bila akun bukan pengurus tenant itu → jika dia PRODUSEN di tenant itu → langsung ke `/app/{slug}/portal-produsen` (tanpa lompatan; juga jalan di custom domain karena path `/app/{slug-sendiri}` diizinkan middleware); selain itu → `/dashboard-redirect?tenant={slug}`.
+   Akibatnya `forbis.id/admin` (→ login `forbis.id/login?redirect=/admin` → rewrite ke `/app/forbis/dashboard`) mengantar produsen forbis ke portal forbis, dan `jalakarta.com/app/forbis/...` sama.
+2. **Pemilih tujuan.** `/dashboard-redirect` (tanpa `?tenant`) memakai `lib/user-contexts.server.ts` `listUserContexts()` (semua baris `tenant.users` akun + status produsen yang lolos `getProducerAccess`): 0 konteks → `/no-tenant-access`; 1 → langsung masuk; ≥2 → halaman `/pilih-tujuan` (di luar `/app/*`, sama alasannya dengan `/no-tenant-access`) berisi pilihan "Dashboard Pengurus — A" / "Portal Produsen — B".
+   `?tenant=` yang tidak bisa diakses akun → tidak diam-diam menganggap berhasil: jatuh ke pemilih tujuan dengan pemberitahuan ("tidak punya akses di {slug}").
+
+**Keamanan:** `?tenant` dan `?ditolak` hanya diterima bila berbentuk slug (`^[a-z0-9-]{3,20}$`) dan, untuk `tenant`, lolos `isActiveTenant`; semua tujuan redirect dibangun di server dan sudah terverifikasi lolos guard halaman tujuan (tidak ada loop, tidak ada open redirect); pemilih hanya menampilkan konteks milik akun yang login.
+**Verifikasi:** `tsc` + `bun run build` bersih (rute `/pilih-tujuan` dan `/dashboard-redirect` terdaftar). Belum dites browser dengan akun ganda-peran.
+**Uji manual:** (1) akun pengurus-A + produsen-B login di `jalakarta.com/app/login` → halaman "Pilih Tujuan" berisi dua pilihan; (2) buka `/app/forbis/dashboard` (produsen forbis) → masuk portal forbis; (3) akun hanya produsen → langsung portal; akun hanya pengurus satu tenant → langsung dashboard (tidak berubah); (4) `/dashboard-redirect?tenant=forbis` untuk akun tanpa akses di forbis → "Pilih Tujuan" dengan pemberitahuan.
+**Sisa/diketahui:** `app/(auth)/layout.tsx` (pengguna login yang membuka halaman auth) masih memakai `getFirstTenantForUser`; di custom domain, redirect penolakan portal ke `/no-tenant-access` ikut di-rewrite middleware (UX, bukan keamanan); bagian 3 (`/app/login?tenant=`) belum dibuat.
