@@ -3,7 +3,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { ProductForm } from "@/components/toko/product-form";
-import { resolveProducers } from "@/lib/producer.server";
+import { listProducerOptions } from "@/lib/producer.server";
 import { hasFullAccess } from "@/lib/permissions";
 import type { SeoValues } from "@/components/seo/seo-panel";
 import type { ProductImage } from "@/app/(dashboard)/app/[tenant]/toko/actions";
@@ -77,11 +77,9 @@ export default async function ProductEditPage({
   // yang sedang dipakai produk ini tetap ikut agar pilihan sekarang tidak "hilang" dari form.
   let producerOptions: { value: string; label: string }[] | null = null;
   if (!product.mitraId && hasFullAccess(access.tenantUser, "toko")) {
-    const prodRows = await db.select({ id: schema.producers.id, isActive: schema.producers.isActive }).from(schema.producers);
-    const wanted = prodRows.filter((r) => r.isActive || r.id === product.producerId).map((r) => r.id);
-    const views = await resolveProducers(createTenantDb(slug), { id: access.tenant.id, name: access.tenant.name, tenantType: access.tenant.tenantType }, wanted);
-    producerOptions = [...views.values()].map((v) => ({
-      value: v.id as string,
+    const opts = await listProducerOptions(createTenantDb(slug), { alsoIncludeId: product.producerId });
+    producerOptions = opts.map((v) => ({
+      value: v.id,
       label: `${v.name} (${v.kind === "member" ? `anggota · ${v.sourceType}` : "custom"})${v.isActive ? "" : " — nonaktif"}`,
     }));
   }

@@ -35,19 +35,56 @@ export type ProducerView = {
 type TenantRef = { id: string; name: string; tenantType: string | null };
 
 // ─── Alamat dari field wilayah (custom + internal) — urutan sama dengan composeAddress() ──────────
+// `cache` (opsional) dipakai bersama dalam satu panggilan batch: produsen custom di provinsi/kota yang sama
+// tidak mengulang query nama wilayah yang sama.
+type RegionCache = Map<string, Promise<string | undefined>>;
+
+function regionName(cache: RegionCache | undefined, kind: "prov" | "reg" | "dist" | "vil", id: number | null | undefined): Promise<string | undefined> | null {
+  if (!id) return null;
+  const run = async (): Promise<string | undefined> => {
+    if (kind === "prov") return (await publicDb.query.refProvinces.findFirst({ where: eq(refProvinces.id, id), columns: { name: true } }))?.name;
+    if (kind === "reg")  return (await publicDb.query.refRegencies.findFirst({ where: eq(refRegencies.id, id),  columns: { name: true } }))?.name;
+    if (kind === "dist") return (await publicDb.query.refDistricts.findFirst({ where: eq(refDistricts.id, id), columns: { name: true } }))?.name;
+    return (await publicDb.query.refVillages.findFirst({ where: eq(refVillages.id, id), columns: { name: true } }))?.name;
+  };
+  if (!cache) return run();
+  const key = `${kind}:${id}`;
+  let hit = cache.get(key);
+  if (!hit) { hit = run(); cache.set(key, hit); }
+  return hit;
+}
+
 async function composeRegionText(f: {
   detail?: string | null; provinceId?: number | null; regencyId?: number | null;
   districtId?: number | null; villageId?: number | string | null; postalCode?: string | null;
-}): Promise<string | null> {
+}, cache?: RegionCache): Promise<string | null> {
   const [prov, reg, dist, vil] = await Promise.all([
-    f.provinceId ? publicDb.query.refProvinces.findFirst({ where: eq(refProvinces.id, f.provinceId), columns: { name: true } }) : null,
-    f.regencyId  ? publicDb.query.refRegencies.findFirst({ where: eq(refRegencies.id, f.regencyId),  columns: { name: true } }) : null,
-    f.districtId ? publicDb.query.refDistricts.findFirst({ where: eq(refDistricts.id, f.districtId), columns: { name: true } }) : null,
-    f.villageId  ? publicDb.query.refVillages.findFirst({ where: eq(refVillages.id, Number(f.villageId)), columns: { name: true } }) : null,
+    regionName(cache, "prov", f.provinceId),
+    regionName(cache, "reg", f.regencyId),
+    regionName(cache, "dist", f.districtId),
+    regionName(cache, "vil", f.villageId ? Number(f.villageId) : null),
   ]);
-  const parts = [f.detail, vil?.name, dist?.name, reg?.name, prov?.name, f.postalCode]
+  const parts = [f.detail, vil, dist, reg, prov, f.postalCode]
     .filter((p): p is string => !!p?.trim());
   return parts.length > 0 ? parts.join(", ") : null;
+}
+
+// ─── Nama produsen anggota — SATU fungsi untuk kartu (resolveProducers) dan dropdown (listProducerOptions) ──
+// Dipakai bersama supaya label di form produk selalu identik dengan nama di halaman Produsen.
+function memberProducerName(
+  kind: ProducerSourceKind,
+  nameCache: string | null,
+  sourceMissing: boolean,
+  src: { name?: string | null; brand?: string | null; title?: string | null } | undefined,
+  ownerName: string | undefined,
+): string {
+  let name = nameCache?.trim() || "(sumber dihapus)";
+  if (!sourceMissing && src) {
+    if (kind === "usaha")       name = composeProducerName("usaha", { name: src.name, brand: src.brand });
+    if (kind === "pesantren")   name = composeProducerName("pesantren", { name: src.name });
+    if (kind === "profesional") name = composeProducerName("profesional", { title: src.title, ownerName });
+  }
+  return name;
 }
 
 // ─── Internal: tenant sendiri (data dari pengaturan) ──────────────────────────────────────────────
@@ -123,12 +160,13 @@ export async function resolveProducers(
     await Promise.all(addressIds.map(async (id) => [id, await composeAddress(publicDb, id)] as const)),
   );
 
+  const regionCache: RegionCache = new Map();
   for (const r of rows) {
     if (r.type === "custom") {
       const addrText = await composeRegionText({
         detail: r.customAddressDetail, provinceId: r.customProvinceId, regencyId: r.customRegencyId,
         districtId: r.customDistrictId, villageId: r.customVillageId, postalCode: r.customPostalCode,
-      });
+      }, regionCache);
       out.set(r.id, {
         id: r.id, kind: "custom", sourceType: null, isActive: r.isActive,
         name: r.customName?.trim() || "(tanpa nama)", subtitle: "Produsen custom (bukan anggota)",
@@ -151,16 +189,11 @@ export async function resolveProducers(
     const sourceAddress = !sourceMissing && src?.addressId ? addressTexts.get(src.addressId) : null;
     const ownerAddress  = owner?.homeAddressId ? addressTexts.get(owner.homeAddressId) : null;
 
-    let name = r.nameCache?.trim() || "(sumber dihapus)";
+    const name = memberProducerName(kind, r.nameCache, sourceMissing, src as Parameters<typeof memberProducerName>[3], owner?.name);
     let subtitle: string | null = owner ? `Pemilik: ${owner.name}` : null;
-    if (!sourceMissing && src) {
-      if (kind === "usaha")      name = composeProducerName("usaha", { name: (src as typeof biz[number]).name, brand: (src as typeof biz[number]).brand });
-      if (kind === "pesantren")  name = composeProducerName("pesantren", { name: (src as typeof pes[number]).name });
-      if (kind === "profesional") {
-        const p = src as typeof pro[number];
-        name = composeProducerName("profesional", { title: p.title, ownerName: owner?.name });
-        subtitle = [p.professionType, p.institution].filter(Boolean).join(" · ") || subtitle;
-      }
+    if (!sourceMissing && src && kind === "profesional") {
+      const p = src as typeof pro[number];
+      subtitle = [p.professionType, p.institution].filter(Boolean).join(" · ") || subtitle;
     }
 
     // Keputusan user: ini alat internal admin untuk menghubungi produsen — data TETAP tampil walau pemilik
@@ -177,4 +210,56 @@ export async function resolveProducers(
     });
   }
   return out;
+}
+
+// ─── Opsi dropdown produsen (form produk) — RINGAN: hanya nama, tanpa kontak/alamat/wilayah/keanggotaan ──
+// Aturan nama sama persis dengan resolveProducers lewat memberProducerName(). Produsen internal tidak ikut
+// (form menambahkan pilihan "Internal" sendiri). `alsoIncludeId` = produsen nonaktif yang sedang dipakai
+// produk itu agar pilihan sekarang tidak "hilang" dari form.
+export type ProducerOption = { id: string; name: string; kind: "member" | "custom"; sourceType: ProducerSourceKind | null; isActive: boolean };
+
+export async function listProducerOptions(
+  tenantClient: TenantDb,
+  opts: { alsoIncludeId?: string | null } = {},
+): Promise<ProducerOption[]> {
+  const { db: tdb, schema } = tenantClient;
+  const all = await tdb.select({
+    id: schema.producers.id, type: schema.producers.type, sourceType: schema.producers.sourceType, sourceId: schema.producers.sourceId,
+    memberId: schema.producers.memberId, nameCache: schema.producers.nameCache, customName: schema.producers.customName, isActive: schema.producers.isActive,
+  }).from(schema.producers);
+  const rows = all.filter((r) => r.isActive || r.id === opts.alsoIncludeId);
+  if (rows.length === 0) return [];
+
+  const memberRows = rows.filter((r) => r.type === "member");
+  const idsOf = (t: ProducerSourceKind) => memberRows.filter((r) => r.sourceType === t && r.sourceId).map((r) => r.sourceId as string);
+  const [biz, pes, pro] = await Promise.all([
+    idsOf("usaha").length ? publicDb.select({ id: memberBusinesses.id, memberId: memberBusinesses.memberId, name: memberBusinesses.name, brand: memberBusinesses.brand })
+      .from(memberBusinesses).where(inArray(memberBusinesses.id, idsOf("usaha"))) : [],
+    idsOf("pesantren").length ? publicDb.select({ id: memberOwnedPesantren.id, memberId: memberOwnedPesantren.memberId, name: memberOwnedPesantren.name })
+      .from(memberOwnedPesantren).where(inArray(memberOwnedPesantren.id, idsOf("pesantren"))) : [],
+    idsOf("profesional").length ? publicDb.select({ id: memberProfessionals.id, memberId: memberProfessionals.memberId, title: memberProfessionals.title })
+      .from(memberProfessionals).where(inArray(memberProfessionals.id, idsOf("profesional"))) : [],
+  ]);
+  const bizMap = new Map(biz.map((r) => [r.id, r]));
+  const pesMap = new Map(pes.map((r) => [r.id, r]));
+  const proMap = new Map(pro.map((r) => [r.id, r]));
+
+  const ownerIds = [...new Set(memberRows.map((r) => r.memberId).filter((x): x is string => !!x))];
+  const ownerRows = ownerIds.length
+    ? await publicDb.select({ id: members.id, name: members.name }).from(members).where(inArray(members.id, ownerIds))
+    : [];
+  const ownerName = new Map(ownerRows.map((m) => [m.id, m.name]));
+
+  return rows.map((r): ProducerOption => {
+    if (r.type === "custom") {
+      return { id: r.id, name: r.customName?.trim() || "(tanpa nama)", kind: "custom", sourceType: null, isActive: r.isActive };
+    }
+    const kind = r.sourceType as ProducerSourceKind;
+    const src  = kind === "usaha" ? bizMap.get(r.sourceId ?? "") : kind === "pesantren" ? pesMap.get(r.sourceId ?? "") : proMap.get(r.sourceId ?? "");
+    const sourceMissing = !src || src.memberId !== r.memberId;
+    return {
+      id: r.id, kind: "member", sourceType: kind, isActive: r.isActive,
+      name: memberProducerName(kind, r.nameCache, sourceMissing, src as Parameters<typeof memberProducerName>[3], r.memberId ? ownerName.get(r.memberId) : undefined),
+    };
+  });
 }

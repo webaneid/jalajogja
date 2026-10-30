@@ -214,4 +214,9 @@ sebelum/sesudah. Catatan: uji browser tetap oleh user (admin perlu login). Catat
 - [x] Langkah 4 — SELESAI KODE 2026-10-31 (belum deploy, tanpa migration). `lib/escape-like.ts` (`escapeLike`: escape `\ % _`) dipakai di 3 cabang pencarian `api/ref/producer-sources/route.ts`. Diuji: unit (5 kasus) dan di Postgres sementara
       (`a_b` cocok literal, `axb` tidak; `50%` cocok literal, `500` tidak). UI pemilih tetap Combobox autocomplete (`components/ui/combobox`, debounce + pencarian server-side per ketikan) — standar UI project terpenuhi.
       `tsc` bersih. Security review: bukan perubahan keamanan (nilai sudah berparameter), hanya ketepatan hasil; guard API tidak berubah.
-- [ ] Langkah 5 — belum.
+- [x] Langkah 5 — SELESAI KODE 2026-10-31 (belum deploy, tanpa migration). `lib/producer.server.ts`: (a) `listProducerOptions()` ringan untuk dropdown form produk (hanya nama: tanpa kontak/alamat/wilayah/keanggotaan; produsen
+      nonaktif yang sedang dipakai produk ikut lewat `alsoIncludeId`) dipakai `produk/new` dan `produk/[id]/edit`; (b) cache `Map` nama wilayah per panggilan batch di `composeRegionText` (produsen custom di kota sama tidak mengulang query);
+      (c) nama produsen anggota dihitung SATU fungsi `memberProducerName()` yang dipakai kartu (`resolveProducers`) DAN dropdown — label identik karena kode yang sama, bukan karena disalin. Kontak/alamat/aturan fallback
+      tetap hanya di `resolveProducers`. `tsc` bersih. Security review: pemuat baru admin-only (pemanggil dijaga `hasFullAccess(toko)`), memuat LEBIH SEDIKIT data dari sebelumnya, tanpa permukaan baru.
+      **Belum diverifikasi dengan data nyata**: bandingkan label dropdown di form produk dengan nama di `/toko/produsen` (harus sama, termasuk produsen nonaktif yang dipakai produk, dan produsen yang sumbernya dihapus → "(sumber dihapus)" / nama cadangan).
+- Seluruh Langkah 1–5 selesai kode; tinggal deploy: migration **0075** di VPS dulu (diagnosa duplikat → migrate) lalu kode. Berikutnya: Portal Produsen (`docs/arsitektur-portal-produsen.md`, fase P1–P6).
