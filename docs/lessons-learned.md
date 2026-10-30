@@ -8,6 +8,13 @@
 
 ---
 
+## [2026-10-30] Ikon "kembali ke ikon Next.js": file-based `favicon.ico` menyuntik `<link>` ke SEMUA halaman; folder `app/favicon.ico` tak bisa jadi Route Handler
+**Masalah:** Semua tenant menampilkan ikon generik di tab/iPhone/Android padahal favicon sudah diatur. HTML produksi ternyata SUDAH memuat ikon tenant, tetapi `app/favicon.ico` (file-based) menyuntik `<link rel="icon" href="/favicon.ico" sizes="32x32">` ke setiap halaman dan bersaing dengan ikon tenant; manifest `/manifest.webmanifest` milik platform untuk semua tenant; `apple-touch-icon` berupa WebP (iOS butuh PNG); middleware mengecualikan `favicon.ico`/manifest sehingga custom domain tak pernah ter-rewrite ke tenant.
+**Fix:** endpoint PNG per tenant `/{slug}/tenant-icon/{32|48|180|192|512}` (Sharp, dibaca dari bucket tenant via SDK S3), manifest per tenant, hapus `app/favicon.ico` (redirect di `next.config` khusus host platform), cabut `favicon.ico`+`manifest.webmanifest` dari pengecualian middleware.
+**Pencegahan:** (1) Diagnosis ikon WAJIB lewat `curl` HTML produksi + `<link>` aktual, bukan menebak dari `metadata.icons`. (2) File convention `app/favicon.ico`/`icon.*` di ROOT menyuntik tautan ke semua halaman dan tidak bisa ditimpa per-tenant — jangan pakai bila ikon harus per-tenant. (3) Folder `app/favicon.ico/route.ts` di root GAGAL build (diperlakukan sebagai metadata) — pakai redirect `next.config` atau versi bersarang di `[tenant]/`. (4) Endpoint publik yang memproses gambar dari bucket WAJIB: HEAD cek ukuran sebelum unduh, whitelist format raster (tolak SVG), cache negatif, dan baca hanya dari bucket tenant itu sendiri.
+
+---
+
 ## [2026-10-30] Email tujuan yang diketik pelanggan anonim = vektor relay spam/phishing; transport SMTP tanpa pool = cron memicu blokir penyedia
 **Masalah (ditemukan di security review Fase 2, sebelum deploy):** Notifikasi email dikirim ke alamat yang diketik pelanggan saat checkout/pendaftaran (tanpa verifikasi — bisa milik orang lain). Penyerang bisa memakai email korban dan mengisi kolom nama dengan tautan → email "resmi" dari tenant membawa tautan penyerang, ke satu alamat berkali-kali (batas checkout 120/10 menit/IP terlalu longgar). Terpisah: `buildTransport` membuat koneksi SMTP baru tiap email — cron pengingat yang memanggil `void notifyWa()` dalam loop memicu ratusan koneksi serentak.
 **Fix:** `cleanPersonName()` membuang URL/domain/format dari nama di jalur email; `checkRateLimit('notif-email:<alamat>', 10, 1 jam)` per penerima; transport di-cache + `pool` (3 koneksi, 5 email/detik).

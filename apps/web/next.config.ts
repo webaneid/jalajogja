@@ -132,6 +132,12 @@ const nextConfig: NextConfig = {
     ];
 
     return [
+      // /favicon.ico di domain PLATFORM → ikon platform (docs/arsitektur-favicon.md § 3.3). Tidak bisa berupa file
+      // app/favicon.ico (menyuntik <link rel="icon"> generik ke semua halaman tenant) dan tidak bisa Route Handler di
+      // root (Next.js memperlakukan folder app/favicon.ico sebagai file metadata). WAJIB ownHostOnly: redirects()
+      // berjalan SEBELUM middleware, jadi tanpa guard host aturan ini juga mencegat custom domain tenant yang
+      // seharusnya di-rewrite middleware ke ikon tenant sendiri.
+      { source: "/favicon.ico", has: [{ type: "host" as const, value: "(www\\.|app\\.)?jalakarta\\.com" }], destination: "/icon.svg", permanent: false },
       ...moduleRedirects,
       ...eventRedirects,
       ...dokumenRedirects,

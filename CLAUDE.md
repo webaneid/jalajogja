@@ -1194,6 +1194,9 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
   (password tak tampil), UI kanal di `/settings/notifications`, email nyata invoice/event lewat SMTP platform (butuh SPF/DKIM `jalakarta.com` benar —
   cek `dig TXT`), email undangan pengurus, From per domain tenant. Catatan: Resend TIDAK bisa kirim dari alamat Gmail (butuh domain terverifikasi).
   Detail + status: `docs/arsitektur-notifikasi-email.md` § 8.
+- **2026-10-30 — Ikon tenant (favicon/apple-touch/manifest) SELESAI KODE, belum deploy**: ikon tenant kini PNG per ukuran lewat `/{slug}/tenant-icon/{size}`
+  (sumber favicon → cadangan logo), manifest per tenant, `app/favicon.ico` dihapus (penyebab ikon generik), middleware tak lagi mengecualikan favicon/manifest.
+  Tanpa migration. Detail + uji online yang tersisa: `docs/arsitektur-favicon.md` § 7.
 - **Sesi 2026-10-10 — ringkasan** (detail + keputusan: memory `project_session_log_20261010` dan dokumen masing-masing).
   Status git: SEMUA sudah di-push (`99875ec`, 2026-10-11) dan di-deploy ke VPS (migration `0073` jalan; build+restart OK; user cek "lainnya aman").
   Cron `pj-digest` TIAP JAM sudah dipasang di crontab user `webane` (log `/var/log/jalajogja-cron.log`); panggilan manual → `{"ok":true,"sent":{...0}}`.

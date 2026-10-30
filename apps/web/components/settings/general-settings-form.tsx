@@ -239,6 +239,10 @@ export function GeneralSettingsForm({
             Pilih Favicon
           </Button>
         )}
+        <p className="text-xs text-muted-foreground">
+          Dipakai sebagai ikon tab browser, ikon layar utama iPhone/Android, dan hasil pencarian Google. Gunakan gambar{" "}
+          <strong>persegi minimal 512×512 piksel</strong> — gambar kecil tampak buram di layar HP. Jika kosong, memakai Logo Website.
+        </p>
       </div>
 
       {/* Timezone */}

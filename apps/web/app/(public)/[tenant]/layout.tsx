@@ -9,6 +9,7 @@ import { parseNavMenu } from "@/lib/nav-menu";
 import { buildTenantThemeCss, getGoogleFontsUrl } from "@/lib/theme-palette";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { stripTenantPrefix } from "@/lib/strip-tenant-prefix";
+import { extractOwnObjectPath } from "@/lib/tenant-icon.server";
 import { TrackingScripts } from "@/components/website/public/tracking-scripts";
 import { readTrackingConfig } from "@/lib/tracking-ids";
 import type { Metadata } from "next";
@@ -28,7 +29,6 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
   const tenantClient     = createTenantDb(slug);
   const generalSettings  = await getSettings(tenantClient, "general");
-  const faviconUrl       = (generalSettings.favicon_url as string | undefined) ?? null;
   const siteName         = (generalSettings.site_name   as string | undefined) ?? slug;
   // Verifikasi webmaster (Search Console / Bing) — kode sudah divalidasi regex, lihat lib/tracking-ids.ts
   const tracking = readTrackingConfig(await getSettings(tenantClient, "seo"));
@@ -36,15 +36,28 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     ...(tracking.google ? { google: tracking.google } : {}),
     ...(tracking.bing ? { other: { "msvalidate.01": tracking.bing } } : {}),
   };
-  if (!faviconUrl) return { title: { default: siteName, template: `%s — ${siteName}` }, verification };
+
+  // Ikon tenant (docs/arsitektur-favicon.md § 3.2): PNG persegi dari endpoint /tenant-icon/{ukuran}, bukan URL WebP
+  // mentah (iOS butuh PNG; WebP 150px buram). Sumber = favicon, lalu logo. Tanpa sumber → tidak menimpa ikon platform.
+  const hasIcon = !!extractOwnObjectPath(slug, generalSettings.favicon_url) || !!extractOwnObjectPath(slug, generalSettings.logo_url);
+  const baseUrl = await resolveBaseUrl(slug);
+
   return {
     title: { default: siteName, template: `%s — ${siteName}` },
     verification,
-    icons: {
-      icon:     faviconUrl,
-      shortcut: faviconUrl,
-      apple:    faviconUrl,
-    },
+    ...(hasIcon
+      ? {
+          icons: {
+            icon: [
+              { url: `${baseUrl}/tenant-icon/32`, sizes: "32x32", type: "image/png" },
+              { url: `${baseUrl}/tenant-icon/48`, sizes: "48x48", type: "image/png" },
+            ],
+            shortcut: `${baseUrl}/tenant-icon/48`,
+            apple: [{ url: `${baseUrl}/tenant-icon/180`, sizes: "180x180", type: "image/png" }],
+          },
+        }
+      : {}),
+    manifest: `${baseUrl}/manifest.webmanifest`,
   };
 }
 

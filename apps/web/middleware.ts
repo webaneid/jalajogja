@@ -215,12 +215,15 @@ export async function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-// Path icon/manifest platform-level (app/icon.svg, app/apple-icon.png, app/manifest.ts →
-// /manifest.webmanifest) dikecualikan dari middleware — docs/rencana-perbaikan-akses-404.md
+// Path icon platform-level (app/icon.svg, app/apple-icon.png) dikecualikan dari middleware — docs/rencana-perbaikan-akses-404.md
 // Fase B. Browser (terutama HP) selalu fetch path ini di background terlepas ada <link>
 // deklarasi atau tidak; tanpa exclude, request ke path ini (yang tidak ada versi per-tenant-nya
 // sama sekali) tetap masuk logic resolve-custom-domain lalu jatuh ke catch-all [...slug] yang
 // query DB (sampai 4x) sebelum akhirnya 404 — boros untuk sesuatu yang seharusnya statis murni.
+//
+// `favicon.ico` dan `manifest.webmanifest` DICABUT dari pengecualian (2026-10-30, docs/arsitektur-favicon.md § 3.5):
+// keduanya kini PUNYA versi per-tenant (app/(public)/[tenant]/favicon.ico/route.ts dan .../manifest.webmanifest/route.ts)
+// yang bergantung pada rewrite custom domain di sini — persis kondisi yang dijelaskan untuk robots/sitemap di bawah.
 //
 // `robots.txt` dan `sitemap*.xml` SENGAJA TIDAK dimasukkan ke sini (beda dari draf rencana awal)
 // — dikonfirmasi saat eksekusi: keduanya PUNYA versi ter-nested per-tenant
@@ -232,6 +235,6 @@ export async function middleware(request: NextRequest) {
 // hasil rewrite tenant), tidak pernah jatuh ke catch-all sama sekali dalam kondisi normal.
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icon\\.svg|apple-icon\\.png|manifest\\.webmanifest|api/auth|dashboard-redirect).*)",
+    "/((?!_next/static|_next/image|icon\\.svg|apple-icon\\.png|api/auth|dashboard-redirect).*)",
   ],
 };
