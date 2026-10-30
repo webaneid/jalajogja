@@ -1,5 +1,6 @@
 "use client";
 
+import { safeInternalPath } from "@/lib/safe-redirect";
 import { useState, useTransition, useRef, useEffect } from "react";
 import { authClient }              from "@/lib/auth-client";
 import { useRouter }               from "next/navigation";
@@ -23,7 +24,8 @@ export function LoginForm({
   baseUrl?:    string;
 }) {
   const router = useRouter();
-  const dest   = redirectTo || `${baseUrl}/akun`;
+  // Defense in depth: walau page.tsx sudah menyaring, tujuan redirect dipakai ke window.location.href
+  const dest   = safeInternalPath(redirectTo, "") || `${baseUrl}/akun`;
 
   const [mode,     setMode]     = useState<LoginMode>("email");
   const [error,    setError]    = useState<string | null>(null);

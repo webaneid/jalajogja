@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 // GET /api/mitra/status?slug={tenant}
 // Cek status mitra + eligibility untuk anggota IKPM yang sedang login
 
+import { isActiveTenant } from "@/lib/tenant-active";
 import { isTenantMember as checkTenantMember } from "@/lib/tenant-membership.server";
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
@@ -33,6 +34,9 @@ export async function GET(req: NextRequest) {
   const isTenantMember = tenantRow
     ? await checkTenantMember(member.id, { id: tenantRow.id, tenantType: tenantRow.tenantType })
     : false;
+
+  // Slug palsu (bot/scanner) tidak boleh menyentuh schema tenant → 'relation does not exist' 500 + noise log
+  if (!tenantRow) return NextResponse.json({ error: "Tenant tidak ditemukan" }, { status: 404 });
 
   const { db: tenantDb, schema } = createTenantDb(slug);
 

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 // POST /api/mitra/apply — daftar sebagai mitra
 // DELETE /api/mitra/apply — batalkan pengajuan pending
 
+import { isActiveTenant } from "@/lib/tenant-active";
 import { isTenantMember as checkTenantMember } from "@/lib/tenant-membership.server";
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
@@ -61,6 +62,9 @@ export async function POST(req: NextRequest) {
     .limit(1);
   if (!business) return NextResponse.json({ error: "Data usaha tidak valid" }, { status: 400 });
 
+  // Slug palsu (bot/scanner) tidak boleh menyentuh schema tenant → 'relation does not exist' 500 + noise log
+  if (!(await isActiveTenant(slug))) return NextResponse.json({ error: "Tenant tidak ditemukan" }, { status: 404 });
+
   const { db: tenantDb, schema } = createTenantDb(slug);
 
   // Cek sudah mitra
@@ -103,6 +107,9 @@ export async function DELETE(req: NextRequest) {
 
   const slug = req.nextUrl.searchParams.get("slug");
   if (!slug) return NextResponse.json({ error: "slug diperlukan" }, { status: 400 });
+
+  // Slug palsu (bot/scanner) tidak boleh menyentuh schema tenant → 'relation does not exist' 500 + noise log
+  if (!(await isActiveTenant(slug))) return NextResponse.json({ error: "Tenant tidak ditemukan" }, { status: 404 });
 
   const { db: tenantDb, schema } = createTenantDb(slug);
 

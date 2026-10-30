@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 // PATCH  /api/mitra/products/[id]?slug= — edit produk
 // DELETE /api/mitra/products/[id]?slug= — hapus produk
 
+import { isActiveTenant } from "@/lib/tenant-active";
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { db, members, createTenantDb } from "@jalajogja/db";
@@ -18,6 +19,9 @@ async function getMitraProduct(req: NextRequest, slug: string, productId: string
     columns: { id: true },
   });
   if (!member) return null;
+
+  // Slug palsu (bot/scanner) tidak boleh menyentuh schema tenant → 'relation does not exist' 500 + noise log
+  if (!(await isActiveTenant(slug))) return null;
 
   const { db: tenantDb, schema } = createTenantDb(slug);
 

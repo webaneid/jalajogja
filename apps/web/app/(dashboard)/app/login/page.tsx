@@ -1,5 +1,6 @@
 "use client";
 
+import { safeInternalPath } from "@/lib/safe-redirect";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "@/lib/auth-client";
@@ -13,10 +14,7 @@ function AdminLoginForm() {
   const [loading, setLoading]   = useState(false);
 
   const rawRedirect = searchParams.get("redirect") ?? "";
-  const redirectTo =
-    rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
-      ? rawRedirect
-      : "/dashboard-redirect";
+  const redirectTo = safeInternalPath(rawRedirect, "/dashboard-redirect");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

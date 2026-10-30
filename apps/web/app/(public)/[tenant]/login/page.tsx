@@ -1,3 +1,4 @@
+import { safeInternalPath } from "@/lib/safe-redirect";
 import { redirect, notFound } from "next/navigation";
 import { headers }     from "next/headers";
 import { auth }        from "@/lib/auth";
@@ -41,7 +42,9 @@ export default async function LoginPage({
 }) {
   const { tenant: slug }   = await params;
   if (!(await isActiveTenant(slug))) notFound();
-  const { redirect: dest } = await searchParams;
+  const { redirect: rawDest } = await searchParams;
+  // Hanya path internal (anti open-redirect) — lib/safe-redirect.ts
+  const dest = safeInternalPath(rawDest, "") || undefined;
 
   // Tentukan baseUrl: custom domain → "" (no prefix), jalakarta.com → "/{slug}"
   const reqHeaders  = await headers();

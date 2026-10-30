@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 // GET  /api/mitra/products?slug= — list produk milik mitra yang login
 // POST /api/mitra/products       — buat produk baru
 
+import { isActiveTenant } from "@/lib/tenant-active";
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and, desc } from "drizzle-orm";
 import { db, members, createTenantDb } from "@jalajogja/db";
@@ -18,6 +19,9 @@ async function getMitraFromSession(req: NextRequest, slug: string) {
     columns: { id: true },
   });
   if (!member) return null;
+
+  // Slug palsu (bot/scanner) tidak boleh menyentuh schema tenant → 'relation does not exist' 500 + noise log
+  if (!(await isActiveTenant(slug))) return null;
 
   const { db: tenantDb, schema } = createTenantDb(slug);
   const [mitra] = await tenantDb
