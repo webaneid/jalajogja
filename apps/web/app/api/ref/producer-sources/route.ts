@@ -19,6 +19,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { tenantMembershipConditions } from "@/lib/tenant-membership.server";
 import { composeProducerName, type ProducerSourceKind } from "@/lib/producer-resolve";
+import { escapeLike } from "@/lib/escape-like";
 
 const LIMIT = 20;
 const TYPES: readonly ProducerSourceKind[] = ["usaha", "pesantren", "profesional"];
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
 
   const srcContact   = alias(contacts, "src_contact");
   const ownerContact = alias(contacts, "owner_contact");
-  const like = q ? `%${q}%` : null;
+  const like = q ? `%${escapeLike(q)}%` : null; // `%`/`_` dari pengguna dicari apa adanya
 
   try {
     if (type === "usaha") {

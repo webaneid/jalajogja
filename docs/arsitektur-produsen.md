@@ -211,4 +211,7 @@ sebelum/sesudah. Catatan: uji browser tetap oleh user (admin perlu login). Catat
       `lib/pg-error.ts` (`pgErrorCode`), `createMemberProducerAction` menangkap 23505, `deleteProducerAction` menangkap 23503. Diuji di Postgres sementara (bukan DB asli): index terbuat di tenant bersih, dilewati di tenant duplikat,
       tenant tanpa tabel dilewati, idempotent (jalan 2×), duplikat baru ditolak (23505), hapus produsen terpakai ditolak (23503), baris custom ganda tetap boleh. `tsc` bersih. Security review: hanya integritas data + pemetaan pesan error, tanpa permukaan baru.
       **Langkah di VPS (urut): (1) diagnosa duplikat (query di header migration; harus 0), (2) jalankan migration 0075 SEBELUM deploy kode, (3) deploy.**
-- [ ] Langkah 4–5 — belum.
+- [x] Langkah 4 — SELESAI KODE 2026-10-31 (belum deploy, tanpa migration). `lib/escape-like.ts` (`escapeLike`: escape `\ % _`) dipakai di 3 cabang pencarian `api/ref/producer-sources/route.ts`. Diuji: unit (5 kasus) dan di Postgres sementara
+      (`a_b` cocok literal, `axb` tidak; `50%` cocok literal, `500` tidak). UI pemilih tetap Combobox autocomplete (`components/ui/combobox`, debounce + pencarian server-side per ketikan) — standar UI project terpenuhi.
+      `tsc` bersih. Security review: bukan perubahan keamanan (nilai sudah berparameter), hanya ketepatan hasil; guard API tidak berubah.
+- [ ] Langkah 5 — belum.
