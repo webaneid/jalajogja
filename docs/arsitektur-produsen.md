@@ -202,4 +202,8 @@ sebelum/sesudah. Catatan: uji browser tetap oleh user (admin perlu login). Catat
 
 **Status eksekusi:**
 - [x] Langkah 1 — SELESAI KODE 2026-10-31 (`tsc` bersih; review keamanan: hanya memperketat validasi pada action yang sudah dijaga `getTenantAccess` + `hasFullAccess(toko)`, tanpa permukaan baru; belum dites browser).
-- [ ] Langkah 2–5 — belum.
+- [x] Langkah 2 — SELESAI KODE 2026-10-31 (`tsc` bersih; SQL dicek lewat `toSQL()`: `DELETE ... WHERE id=$1 AND NOT EXISTS (SELECT 1 FROM products WHERE producer_id = producers.id) RETURNING id`,
+      semua identifier terkualifikasi schema tenant; security review: guard/validasi UUID tidak berubah, tanpa string-concat). **Sisa celah sempit yang jujur dicatat**: pada isolasi READ COMMITTED,
+      bila produk dipasangi produsen itu di mikrodetik yang sama saat DELETE berjalan, subquery tidak dievaluasi ulang dan FK `ON DELETE SET NULL` bisa menjadikan produk "internal". Jauh lebih sempit
+      dari sebelumnya, tetapi tidak nol. Perbaikan tuntas = ubah FK jadi `ON DELETE RESTRICT` (DDL) — diusulkan digabung ke migration 0075 (Langkah 3); menunggu persetujuan.
+- [ ] Langkah 3–5 — belum.

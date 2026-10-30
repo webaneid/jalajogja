@@ -6,7 +6,7 @@
 //    memasukkan usaha anggota tenant B (IDOR lintas-tenant).
 //  - Produsen yang dipakai produk tidak boleh dihapus (hanya dinonaktifkan).
 import { revalidatePath } from "next/cache";
-import { eq, and, count } from "drizzle-orm";
+import { eq, and, count, sql } from "drizzle-orm";
 import { db as publicDb, createTenantDb, memberBusinesses, memberOwnedPesantren, memberProfessionals } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
@@ -202,9 +202,22 @@ export async function deleteProducerAction(slug: string, producerId: string): Pr
   if (!isValidUuid(producerId)) return { success: false, error: "Produsen tidak ditemukan." };
   try {
     const { db, schema } = createTenantDb(slug);
-    const [{ n }] = await db.select({ n: count() }).from(schema.products).where(eq(schema.products.producerId, producerId));
-    if (Number(n) > 0) return { success: false, error: `Produsen dipakai ${n} produk — nonaktifkan saja, atau ganti produsen produknya dulu.` };
-    await db.delete(schema.producers).where(eq(schema.producers.id, producerId));
+    // Satu pernyataan atomik: hapus HANYA bila tidak ada produk yang merujuk. Cek-lalu-hapus terpisah
+    // membuka celah — produk yang baru dipasangi produsen ini di antara dua langkah akan diam-diam
+    // jadi "internal" lewat FK ON DELETE SET NULL.
+    const deleted = await db.delete(schema.producers)
+      .where(and(
+        eq(schema.producers.id, producerId),
+        sql`NOT EXISTS (SELECT 1 FROM ${schema.products} WHERE ${schema.products.producerId} = ${schema.producers.id})`,
+      ))
+      .returning({ id: schema.producers.id });
+    if (deleted.length === 0) {
+      // Tidak terhapus: jelaskan alasannya (hanya untuk pesan; keputusan hapus sudah diambil atomik di atas).
+      const [exists] = await db.select({ id: schema.producers.id }).from(schema.producers).where(eq(schema.producers.id, producerId)).limit(1);
+      if (!exists) return { success: false, error: "Produsen tidak ditemukan." };
+      const [{ n }] = await db.select({ n: count() }).from(schema.products).where(eq(schema.products.producerId, producerId));
+      return { success: false, error: `Produsen dipakai ${n} produk — nonaktifkan saja, atau ganti produsen produknya dulu.` };
+    }
     refresh(slug);
     return { success: true, data: undefined };
   } catch (err) {
