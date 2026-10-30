@@ -1,4 +1,5 @@
-import { pgSchema, uuid, text, integer, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { pgSchema, uuid, text, integer, boolean, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ─── Produsen produk (ADMIN-ONLY) ─────────────────────────────────────────────────────────────
 // Siapa produsen/pemasok barang tiap produk TENANT. Internal (tenant sendiri) = TANPA baris:
@@ -48,6 +49,8 @@ export function createProducersTable(s: ReturnType<typeof pgSchema>) {
   }, (t) => ({
     memberIdx: index("producers_member_idx").on(t.memberId),
     typeIdx:   index("producers_type_idx").on(t.type),
+    // Produsen anggota tidak boleh ganda (migration 0075); baris custom (source_id NULL) tidak ikut
+    sourceUniq: uniqueIndex("producers_source_uniq").on(t.sourceType, t.sourceId).where(sql`${t.sourceType} IS NOT NULL AND ${t.sourceId} IS NOT NULL`),
   }));
 }
 

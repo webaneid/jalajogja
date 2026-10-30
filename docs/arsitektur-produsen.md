@@ -206,4 +206,9 @@ sebelum/sesudah. Catatan: uji browser tetap oleh user (admin perlu login). Catat
       semua identifier terkualifikasi schema tenant; security review: guard/validasi UUID tidak berubah, tanpa string-concat). **Sisa celah sempit yang jujur dicatat**: pada isolasi READ COMMITTED,
       bila produk dipasangi produsen itu di mikrodetik yang sama saat DELETE berjalan, subquery tidak dievaluasi ulang dan FK `ON DELETE SET NULL` bisa menjadikan produk "internal". Jauh lebih sempit
       dari sebelumnya, tetapi tidak nol. Perbaikan tuntas = ubah FK jadi `ON DELETE RESTRICT` (DDL) — diusulkan digabung ke migration 0075 (Langkah 3); menunggu persetujuan.
-- [ ] Langkah 3–5 — belum.
+- [x] Langkah 3 — SELESAI KODE 2026-10-31 (belum deploy). Migration `0075_producers_integrity.sql`: (a) unique index parsial `producers_source_uniq (source_type, source_id)`, tenant yang sudah punya duplikat DILEWATI dengan NOTICE;
+      (b) FK `products.producer_id` → `ON DELETE RESTRICT` (menutup celah sempit Langkah 2; digabung atas persetujuan user). Juga: `create-tenant-schema.ts` (index + RESTRICT untuk tenant baru), skema Drizzle `producers.ts`,
+      `lib/pg-error.ts` (`pgErrorCode`), `createMemberProducerAction` menangkap 23505, `deleteProducerAction` menangkap 23503. Diuji di Postgres sementara (bukan DB asli): index terbuat di tenant bersih, dilewati di tenant duplikat,
+      tenant tanpa tabel dilewati, idempotent (jalan 2×), duplikat baru ditolak (23505), hapus produsen terpakai ditolak (23503), baris custom ganda tetap boleh. `tsc` bersih. Security review: hanya integritas data + pemetaan pesan error, tanpa permukaan baru.
+      **Langkah di VPS (urut): (1) diagnosa duplikat (query di header migration; harus 0), (2) jalankan migration 0075 SEBELUM deploy kode, (3) deploy.**
+- [ ] Langkah 4–5 — belum.

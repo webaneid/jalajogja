@@ -8,6 +8,13 @@
 
 ---
 
+## [2026-10-31] Cek-lalu-hapus/cek-lalu-simpan terpisah = balapan; error Postgres dari Drizzle ≥0.44 ada di `.cause`, bukan `.code`
+**Masalah:** Audit produsen menemukan dua pola yang sama: (1) hapus produsen "cek dipakai produk → baru DELETE" — produk yang baru dipasangi produsen di sela dua langkah itu diam-diam jadi "internal" lewat FK `ON DELETE SET NULL`; (2) "cek duplikat → INSERT" — dua klik bersamaan lolos keduanya, tanpa unique index sebagai jaring pengaman.
+**Fix:** (1) satu pernyataan `DELETE ... WHERE id=$1 AND NOT EXISTS (...) RETURNING id` + FK diubah ke `ON DELETE RESTRICT` (database yang menolak, bukan aplikasi); (2) unique index parsial `(source_type, source_id)` + aksi menangkap SQLSTATE `23505`/`23503` dan membalas pesan ramah. Migration 0075 melewati tenant yang sudah punya duplikat (NOTICE) alih-alih gagal total, dan diuji di Postgres sementara (index, idempotensi, penolakan duplikat, penolakan hapus).
+**Pencegahan:** (a) Aturan yang HARUS dijaga integritasnya (unik, "jangan hapus bila dipakai") ditegakkan di DATABASE (unique index / FK RESTRICT); pengecekan di aplikasi hanya untuk pesan yang ramah. (b) Drizzle ≥0.44 membungkus error driver dalam `DrizzleQueryError` — kode SQLSTATE ada di `err.cause.code`; pakai `lib/pg-error.ts` `pgErrorCode(err)`, jangan baca `err.code` langsung. (c) Migration yang menambah constraint WAJIB mendiagnosa data lama dulu dan tidak boleh membuat deploy gagal.
+
+---
+
 ## [2026-10-30] Ikon "kembali ke ikon Next.js": file-based `favicon.ico` menyuntik `<link>` ke SEMUA halaman; folder `app/favicon.ico` tak bisa jadi Route Handler
 **Masalah:** Semua tenant menampilkan ikon generik di tab/iPhone/Android padahal favicon sudah diatur. HTML produksi ternyata SUDAH memuat ikon tenant, tetapi `app/favicon.ico` (file-based) menyuntik `<link rel="icon" href="/favicon.ico" sizes="32x32">` ke setiap halaman dan bersaing dengan ikon tenant; manifest `/manifest.webmanifest` milik platform untuk semua tenant; `apple-touch-icon` berupa WebP (iOS butuh PNG); middleware mengecualikan `favicon.ico`/manifest sehingga custom domain tak pernah ter-rewrite ke tenant.
 **Fix:** endpoint PNG per tenant `/{slug}/tenant-icon/{32|48|180|192|512}` (Sharp, dibaca dari bucket tenant via SDK S3), manifest per tenant, hapus `app/favicon.ico` (redirect di `next.config` khusus host platform), cabut `favicon.ico`+`manifest.webmanifest` dari pengecualian middleware.

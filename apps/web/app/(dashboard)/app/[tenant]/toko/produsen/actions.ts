@@ -13,6 +13,7 @@ import { hasFullAccess } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/phone";
 import { isValidUuid } from "@/lib/is-uuid";
 import { isTenantMember } from "@/lib/tenant-membership.server";
+import { pgErrorCode } from "@/lib/pg-error";
 import { resolveProducers } from "@/lib/producer.server";
 import type { ProducerSourceKind } from "@/lib/producer-resolve";
 
@@ -91,6 +92,8 @@ export async function createMemberProducerAction(
     refresh(slug);
     return { success: true, data: { producerId: row.id } };
   } catch (err) {
+    // Dua klik bersamaan lolos cek duplikat di atas → ditahan unique index producers_source_uniq (0075)
+    if (pgErrorCode(err) === "23505") return { success: false, error: "Sumber ini sudah terdaftar sebagai produsen." };
     console.error("[createMemberProducerAction]", err);
     return { success: false, error: "Gagal menyimpan produsen." };
   }
@@ -221,6 +224,8 @@ export async function deleteProducerAction(slug: string, producerId: string): Pr
     refresh(slug);
     return { success: true, data: undefined };
   } catch (err) {
+    // FK ON DELETE RESTRICT (0075): produk baru dipasangi produsen ini tepat saat dihapus → database menolak
+    if (pgErrorCode(err) === "23503") return { success: false, error: "Produsen baru saja dipakai produk — nonaktifkan saja, atau ganti produsen produknya dulu." };
     console.error("[deleteProducerAction]", err);
     return { success: false, error: "Gagal menghapus produsen." };
   }

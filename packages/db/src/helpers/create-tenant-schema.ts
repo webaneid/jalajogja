@@ -924,6 +924,8 @@ export async function createTenantSchemaInDb(
     `));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producers_member_idx ON "${s}".producers(member_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producers_type_idx   ON "${s}".producers(type)`));
+    // Produsen anggota tidak boleh ganda (migration 0075) — index parsial: baris custom (source_id NULL) tidak ikut
+    await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producers_source_uniq ON "${s}".producers(source_type, source_id) WHERE source_type IS NOT NULL AND source_id IS NOT NULL`));
 
     // ── 31. Product Categories ─────────────────────────────────────────────
     await tx.execute(sql.raw(`
@@ -972,7 +974,7 @@ export async function createTenantSchemaInDb(
         public_price      NUMERIC(15,2),
         member_price      NUMERIC(15,2),
         member_price_tenant_only BOOLEAN NOT NULL DEFAULT FALSE,  -- true = Harga Anggota khusus anggota tenant ini
-        producer_id      UUID           REFERENCES "${s}".producers(id) ON DELETE SET NULL,  -- NULL = produsen internal (tenant sendiri)
+        producer_id      UUID           REFERENCES "${s}".producers(id) ON DELETE RESTRICT,  -- NULL = produsen internal; produsen yang dipakai tak boleh terhapus (0075)
         product_type      TEXT           NOT NULL DEFAULT 'simple'
                                          CHECK (product_type IN ('simple','variable')),
         attribute_groups  JSONB,
