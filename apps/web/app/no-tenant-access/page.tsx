@@ -19,8 +19,8 @@ export default async function NoTenantAccessPage() {
         <h1 className="text-xl font-bold">Tidak Ada Akses Dashboard</h1>
         <p className="text-sm text-muted-foreground">
           Akun <span className="font-medium text-foreground">{session.user.email}</span> belum
-          terdaftar sebagai pengurus di tenant mana pun. Hubungi admin platform atau owner
-          tenant Anda untuk ditambahkan sebagai pengurus, atau masuk dengan akun lain.
+          terdaftar sebagai pengurus maupun produsen aktif di tenant mana pun. Hubungi admin platform atau owner
+          tenant Anda untuk ditambahkan (atau untuk mengaktifkan kembali akses produsen Anda), atau masuk dengan akun lain.
         </p>
         <SignOutButton />
       </div>
