@@ -1,7 +1,7 @@
 import "server-only";
 import { getSetting, getSettings, type createTenantDb } from "@jalajogja/db";
 import type { WaNotifConfig } from "@/lib/whatsapp";
-import { sendTenantMail, sendPlatformMail, isPlatformMailConfigured, type TenantSmtpConfig } from "@/lib/mail";
+import { sendMailForTenant, isMailSendable } from "@/lib/mail-dispatch.server";
 
 // Kanal OTP untuk gate checkout (type "checkout_verify"). Lihat docs/arsitektur-billing.md
 // § "Gate OTP checkout — kanal email + jalur tamu bila tak ada kanal".
@@ -21,9 +21,7 @@ export async function isWaOtpAvailable(tenantDb: TenantDbHandle): Promise<boolea
 
 /** Ada jalur email yang bisa dipakai (SMTP tenant lengkap ATAU SMTP platform)? */
 export async function isEmailOtpSendable(tenantDb: TenantDbHandle): Promise<boolean> {
-  if (isPlatformMailConfigured()) return true;
-  const smtp = await getSetting<TenantSmtpConfig>(tenantDb, "smtp_config", "mail");
-  return !!(smtp?.host && smtp.user && smtp.password);
+  return isMailSendable(tenantDb);
 }
 
 function escapeHtml(s: string): string {
@@ -40,18 +38,6 @@ export async function sendCheckoutOtpEmail(opts: {
     <p style="font-size:24px;font-weight:bold;letter-spacing:4px">${escapeHtml(code)}</p>
     <p>Berlaku ${expiryMinutes} menit. Jangan bagikan kode ini kepada siapa pun. Abaikan email ini bila Anda tidak sedang berbelanja.</p>`;
 
-  try {
-    const smtp = await getSetting<TenantSmtpConfig>(tenantDb, "smtp_config", "mail");
-    if (smtp) {
-      const sent = await sendTenantMail(smtp, { to, subject, html });
-      if (sent.ok) return true;
-    }
-    if (isPlatformMailConfigured()) {
-      const sent = await sendPlatformMail({ to, subject, html });
-      return sent.ok;
-    }
-  } catch (err) {
-    console.error("[sendCheckoutOtpEmail]", err);
-  }
-  return false;
+  const sent = await sendMailForTenant(tenantDb, { to, subject, html });
+  return sent.ok;
 }

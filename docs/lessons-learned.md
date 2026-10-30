@@ -8,6 +8,13 @@
 
 ---
 
+## [2026-10-30] "Kosongkan password = pertahankan yang lama" + host yang bisa diubah = pencurian kredensial; tombol "Tes" = pemindai jaringan
+**Masalah (ditemukan di security review, sebelum deploy):** Form SMTP tenant memakai pola umum "kolom password kosong = pakai yang tersimpan". Admin mana pun yang berhak mengelola SMTP bisa mengganti `host` ke server miliknya, mengosongkan password, lalu Simpan/Tes — server mendekripsi password tersimpan dan mengirimkannya (SMTP AUTH) ke host penyerang. Terpisah: `host` bebas diisi membuat tombol "Tes" bisa diarahkan ke `postgres:5432`/`minio:9000`/IP privat, dan pesan error koneksi membocorkan port terbuka (SSRF).
+**Fix:** `keepsSameCredentialTarget()` — password lama hanya dipertahankan bila host+user tidak berubah, selain itu wajib diisi ulang (save DAN test). `isDisallowedSmtpHost()` menolak nama tanpa titik (service Docker), localhost, `*.local/.internal`, IP privat/loopback/link-local.
+**Pencegahan:** Setiap fitur "secret tersimpan boleh dikosongkan di form" WAJIB mengikat secret itu ke tujuan/identitas yang sama (host+user, URL, dst); perubahan tujuan = secret harus diketik ulang. Setiap fitur yang membuat server membuka koneksi ke alamat yang diketik pengguna WAJIB menolak alamat internal. DNS rebinding tidak tertutup penuh oleh cek string — risiko diterima karena pengguna sudah terautentikasi dan berhak kelola tenant.
+
+---
+
 ## [2026-10-30] Guard tenant di `layout.tsx` TIDAK melindungi `generateMetadata`/page — Next.js merender paralel
 **Masalah:** Log produksi penuh `relation "tenant_sitemap.txt.settings" does not exist` (juga slug acak lain) dari bot yang membuka `/sitemap.txt`, `/wp-login.php`, dst. Request jatuh ke route dinamis `[tenant]`, lalu query ke schema yang tidak ada → 500 + log berisik. Tercatat sebagai Technical Debt sejak 2026-09-13.
 **Root cause:** `layout.tsx` sudah punya cek `tenants.isActive` + `notFound()`, tapi Next.js menjalankan layout, `page`, dan `generateMetadata` PARALEL — guard di layout tidak menghentikan query di dua lainnya. Asumsi sebelumnya "`getTenantSeoBase()` selalu aman" hanya benar kalau ia satu-satunya yang menyentuh DB: ia mengembalikan fallback (bukan melempar) untuk tenant palsu, jadi `createTenantDb(slug)`/`fetch*Entries` yang dipanggil sesudahnya (atau paralel, seperti `page.tsx` beranda) tetap crash. 22 `generateMetadata` + 12 route sitemap per-jenis + 5 page terdampak.

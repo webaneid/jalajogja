@@ -17,9 +17,11 @@ type DefaultValues = {
 export function EmailSettingsForm({
   slug,
   defaultValues,
+  hasPassword,
 }: {
   slug: string;
   defaultValues: DefaultValues;
+  hasPassword: boolean;
 }) {
   const router = useRouter();
   const [pending,  setPending]  = React.useState(false);
@@ -42,7 +44,7 @@ export function EmailSettingsForm({
   }
 
   async function handleTest() {
-    if (!values.host || !values.user || !values.password) {
+    if (!values.host || !values.user || (!values.password && !hasPassword)) {
       toast.error("Isi host, user, dan password terlebih dahulu.");
       return;
     }
@@ -109,7 +111,7 @@ export function EmailSettingsForm({
                 type={showPass ? "text" : "password"}
                 value={values.password}
                 onChange={set("password")}
-                placeholder="App password / API key"
+                placeholder={hasPassword ? "Tersimpan — kosongkan untuk mempertahankan" : "App password / API key"}
                 className="pr-9"
                 disabled={pending}
               />

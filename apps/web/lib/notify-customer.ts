@@ -10,9 +10,9 @@ import "server-only";
 // TIDAK dipakai untuk notifikasi WA yang sudah ada (payment_confirmed dkk, tetap lewat
 // notifyWa langsung seperti sebelumnya) — khusus 2 event baru yang butuh dual-channel.
 
-import { getSetting, createTenantDb } from "@jalajogja/db";
+import { createTenantDb } from "@jalajogja/db";
 import { notifyWa, resolveOrgName } from "./wa-notify";
-import { sendTenantMail, type TenantSmtpConfig } from "./mail";
+import { sendMailForTenant } from "./mail-dispatch.server";
 
 type NotifyCustomerOpts = {
   slug:     string;
@@ -29,13 +29,12 @@ async function sendEmailIfConfigured(
   html: string,
 ): Promise<void> {
   if (!to) return;
-  try {
-    const smtpConfig = await getSetting<TenantSmtpConfig>(tenantDb, "smtp_config", "mail");
-    if (!smtpConfig) return; // tenant belum setup SMTP — diam-diam skip, sama seperti WA
-    await sendTenantMail(smtpConfig, { to, subject, html });
-  } catch (err) {
-    console.error("[notify-customer] gagal kirim email:", err);
-  }
+  const sent = await sendMailForTenant(tenantDb, { to, subject, html });
+  if (!sent.ok) console.error("[notify-customer] gagal kirim email:", sent.error);
+}
+
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 /**
@@ -57,14 +56,14 @@ export async function notifyStockOut(
   const orgName = await resolveOrgName(tenantDb, slug);
   await sendEmailIfConfigured(
     tenantDb, email,
-    `Stok Produk Habis — ${invoiceNumber}`,
-    `<p>Halo ${name},</p>
-     <p>Stok produk <strong>${productName}</strong> pada pesanan <strong>${invoiceNumber}</strong>
+    `Stok Produk Habis — ${esc(invoiceNumber)}`,
+    `<p>Halo ${esc(name)},</p>
+     <p>Stok produk <strong>${esc(productName)}</strong> pada pesanan <strong>${esc(invoiceNumber)}</strong>
      sudah habis terjual ke pembeli lain.</p>
      <p><strong>Silakan konfirmasi terlebih dahulu ke kami sebelum Anda melakukan pembayaran</strong>,
      supaya tidak ada pembayaran untuk barang yang sudah tidak tersedia.</p>
-     <p><a href="${invoiceUrl}">Lihat pesanan Anda</a></p>
-     <p>Terima kasih,<br/>${orgName}</p>`,
+     <p><a href="${esc(invoiceUrl)}">Lihat pesanan Anda</a></p>
+     <p>Terima kasih,<br/>${esc(orgName)}</p>`,
   );
 }
 
@@ -86,13 +85,13 @@ export async function notifyOrderAutoCancelled(
   const orgName = await resolveOrgName(tenantDb, slug);
   await sendEmailIfConfigured(
     tenantDb, email,
-    `Pesanan Dibatalkan — ${invoiceNumber}`,
-    `<p>Halo ${name},</p>
-     <p>Pesanan Anda <strong>${invoiceNumber}</strong> telah dibatalkan otomatis karena belum
+    `Pesanan Dibatalkan — ${esc(invoiceNumber)}`,
+    `<p>Halo ${esc(name)},</p>
+     <p>Pesanan Anda <strong>${esc(invoiceNumber)}</strong> telah dibatalkan otomatis karena belum
      ada pembayaran hingga melewati batas waktu.</p>
      <p>Kalau Anda masih ingin melanjutkan pesanan ini, silakan hubungi kami — pesanan yang
      dibatalkan masih bisa diaktifkan kembali selama stok produk masih tersedia.</p>
-     <p><a href="${invoiceUrl}">Lihat pesanan Anda</a></p>
-     <p>Terima kasih,<br/>${orgName}</p>`,
+     <p><a href="${esc(invoiceUrl)}">Lihat pesanan Anda</a></p>
+     <p>Terima kasih,<br/>${esc(orgName)}</p>`,
   );
 }

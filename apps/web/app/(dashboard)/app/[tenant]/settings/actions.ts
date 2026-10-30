@@ -9,6 +9,7 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import type { Level, Module } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/phone";
+import { isValidEmailAddress } from "@/lib/mail";
 import { FORUM_MEMBERSHIP_NUMBER_FORMATS, type ForumMembershipNumberFormat } from "@/lib/forum-membership-number";
 import { isValidWhatsappGroupUrl, WHATSAPP_GROUP_SETTING_KEY } from "@/lib/whatsapp-group";
 import {
@@ -313,44 +314,122 @@ export async function saveDisplaySettingsAction(
 }
 
 // ── Email / SMTP ──────────────────────────────────────────────────────────────
+// Password SMTP dienkripsi at-rest (lib/secret-box.server.ts) dan TIDAK PERNAH dikirim balik ke
+// browser. Kolom password kosong saat simpan/tes = pertahankan nilai tersimpan.
+// docs/arsitektur-notifikasi-email.md § 6.
+type SmtpFormValues = {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  fromName: string;
+  fromEmail: string;
+};
+
+// Host harus nama domain publik. Menolak nama service internal Docker (postgres, minio — tanpa titik),
+// localhost, *.local/*.internal, dan IP literal privat/loopback — cegah tombol "Tes" dipakai memindai
+// jaringan internal VPS (SSRF). Catatan: DNS rebinding tidak tertutup penuh oleh cek string ini.
+function isDisallowedSmtpHost(raw: string): boolean {
+  const h = raw.trim().toLowerCase();
+  if (!/^[a-z0-9.-]+$/.test(h) || !h.includes(".")) return true;
+  if (h === "localhost" || h.endsWith(".local") || h.endsWith(".internal") || h.endsWith(".localhost")) return true;
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    if (a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return true;
+  }
+  return false;
+}
+
+// "Password kosong = pertahankan" HANYA berlaku bila host & user tidak berubah — kalau tidak, admin
+// lain bisa mengarahkan host ke server miliknya dan memancing server mengirim password tersimpan.
+function keepsSameCredentialTarget(
+  existing: { host?: string; user?: string } | null,
+  v: SmtpFormValues,
+): boolean {
+  return !!existing
+    && (existing.host ?? "").trim().toLowerCase() === v.host.trim().toLowerCase()
+    && (existing.user ?? "").trim() === v.user.trim();
+}
+
+function validateSmtpForm(v: SmtpFormValues): string | null {
+  if (!v.host.trim() || !v.user.trim()) return "Host dan username SMTP wajib diisi.";
+  if (isDisallowedSmtpHost(v.host)) return "Host SMTP harus berupa nama domain server email publik (mis. smtp.gmail.com).";
+  if (!Number.isInteger(v.port) || v.port < 1 || v.port > 65535) return "Port tidak valid.";
+  if (/[\r\n]/.test(v.host + v.user + v.fromName + v.fromEmail)) return "Input mengandung karakter tidak valid.";
+  if (v.fromEmail.trim() && !isValidEmailAddress(v.fromEmail.trim())) return "Email pengirim tidak valid.";
+  return null;
+}
+
 export async function saveSmtpConfigAction(
   slug: string,
-  values: {
-    host: string;
-    port: number;
-    user: string;
-    password: string;
-    fromName: string;
-    fromEmail: string;
-  }
+  values: SmtpFormValues,
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { error: "Akses ditolak." };
   if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
 
+  const invalid = validateSmtpForm(values);
+  if (invalid) return { error: invalid };
+
+  const { isSecretKeyConfigured, encryptSecret } = await import("@/lib/secret-box.server");
+  if (!isSecretKeyConfigured()) {
+    return { error: "Server belum siap menyimpan kredensial dengan aman (SMTP_ENCRYPTION_KEY belum diset). Hubungi admin platform." };
+  }
+
   const tenantDb = createTenantDb(slug);
-  await upsertSettings(tenantDb, "mail", { smtp_config: values });
+  let storedPassword: string;
+  if (values.password) {
+    storedPassword = encryptSecret(values.password);
+  } else {
+    const existing = await getSetting<{ host?: string; user?: string; password?: string }>(tenantDb, "smtp_config", "mail");
+    if (!existing?.password) return { error: "Password SMTP wajib diisi." };
+    if (!keepsSameCredentialTarget(existing, values)) {
+      return { error: "Host atau username berubah — isi ulang password SMTP." };
+    }
+    storedPassword = existing.password; // pertahankan (sudah terenkripsi)
+  }
+
+  await upsertSettings(tenantDb, "mail", {
+    smtp_config: {
+      host:      values.host.trim(),
+      port:      values.port,
+      user:      values.user.trim(),
+      password:  storedPassword,
+      fromName:  values.fromName.trim(),
+      fromEmail: values.fromEmail.trim(),
+    },
+  });
+  revalidatePath(`/app/${slug}/settings/email`);
   return {};
 }
 
 /**
  * Kirim email test pakai konfigurasi SMTP yang SEDANG DIISI di form (bukan yang
- * tersimpan di DB) — supaya admin bisa cek sebelum klik Simpan.
+ * tersimpan di DB) — supaya admin bisa cek sebelum klik Simpan. Password kosong = pakai
+ * yang tersimpan (didekripsi).
  */
 export async function sendTestEmailAction(
   slug: string,
-  values: {
-    host: string;
-    port: number;
-    user: string;
-    password: string;
-    fromName: string;
-    fromEmail: string;
-  }
+  values: SmtpFormValues,
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { error: "Akses ditolak." };
   if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
+
+  const invalid = validateSmtpForm(values);
+  if (invalid) return { error: invalid };
+
+  let password = values.password;
+  if (!password) {
+    const { decryptSecret } = await import("@/lib/secret-box.server");
+    const existing = await getSetting<{ host?: string; user?: string; password?: string }>(createTenantDb(slug), "smtp_config", "mail");
+    if (!keepsSameCredentialTarget(existing, values)) {
+      return { error: "Host atau username berubah — isi password SMTP terlebih dahulu." };
+    }
+    password = (existing?.password && decryptSecret(existing.password)) || "";
+    if (!password) return { error: "Isi password SMTP terlebih dahulu." };
+  }
 
   const { getCurrentSession } = await import("@/lib/tenant");
   const session = await getCurrentSession();
@@ -358,7 +437,7 @@ export async function sendTestEmailAction(
   if (!targetEmail) return { error: "Tidak ada alamat tujuan — isi Email Pengirim dulu." };
 
   const { sendTenantMail } = await import("@/lib/mail");
-  const result = await sendTenantMail(values, {
+  const result = await sendTenantMail({ ...values, password }, {
     to:      targetEmail,
     subject: "Email Test — Konfigurasi SMTP",
     html:    `<p>Ini email test dari pengaturan SMTP tenant <strong>${slug}</strong>. Kalau Anda menerima ini, konfigurasi SMTP sudah benar.</p>`,

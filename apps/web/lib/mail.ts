@@ -12,6 +12,21 @@ import nodemailer from "nodemailer";
 
 export type SendMailResult = { ok: true } | { ok: false; error: string };
 
+// Cegah header injection: CR/LF tidak boleh ada di to/subject/nama pengirim.
+export function stripHeaderChars(s: string): string {
+  return s.replace(/[\r\n]+/g, " ").trim();
+}
+
+const EMAIL_RE = /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/;
+export function isValidEmailAddress(s: string): boolean {
+  return s.length <= 254 && EMAIL_RE.test(s);
+}
+
+// Nama tampilan aman untuk header From: tanpa kutip, kurung sudut, CR/LF.
+function safeDisplayName(s: string): string {
+  return stripHeaderChars(s).replace(/["<>\\]/g, "").slice(0, 80);
+}
+
 function buildTransport(opts: {
   host: string;
   port: number;
@@ -32,10 +47,22 @@ export function isPlatformMailConfigured(): boolean {
   return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
+// Alamat murni dari SMTP_FROM ('"Jalakarta" <no-reply@x>' atau 'no-reply@x'); fallback SMTP_USER.
+function platformFromAddress(): string {
+  const raw = process.env.SMTP_FROM ?? "";
+  const m = raw.match(/<([^>]+)>/);
+  const addr = (m ? m[1] : raw).trim();
+  return isValidEmailAddress(addr) ? addr : (process.env.SMTP_USER ?? "");
+}
+
 export async function sendPlatformMail(opts: {
   to: string;
   subject: string;
   html: string;
+  /** Nama tampilan pengirim (mis. nama tenant). Alamat TETAP alamat platform (SPF/DKIM). */
+  fromName?: string;
+  /** Alamat balasan (mis. email kontak tenant) — divalidasi, diabaikan bila tidak valid. */
+  replyTo?: string | null;
 }): Promise<SendMailResult> {
   if (!isPlatformMailConfigured()) {
     return { ok: false, error: "SMTP platform belum dikonfigurasi di server." };
@@ -45,11 +72,17 @@ export async function sendPlatformMail(opts: {
   const port = Number(process.env.SMTP_PORT ?? 587);
   const user = process.env.SMTP_USER!;
   const pass = process.env.SMTP_PASS!;
-  const from = process.env.SMTP_FROM ?? `"Jalakarta" <${user}>`;
+  const to = stripHeaderChars(opts.to);
+  if (!isValidEmailAddress(to)) return { ok: false, error: "Alamat email tujuan tidak valid." };
+  const displayName = opts.fromName ? safeDisplayName(opts.fromName) : "";
+  const from = displayName
+    ? `"${displayName}" <${platformFromAddress()}>`
+    : (process.env.SMTP_FROM ?? `"Jalakarta" <${user}>`);
+  const replyTo = opts.replyTo && isValidEmailAddress(opts.replyTo.trim()) ? opts.replyTo.trim() : undefined;
 
   try {
     const transport = buildTransport({ host, port, user, pass });
-    await transport.sendMail({ from, to: opts.to, subject: opts.subject, html: opts.html });
+    await transport.sendMail({ from, to, replyTo, subject: stripHeaderChars(opts.subject), html: opts.html });
     return { ok: true };
   } catch (err) {
     console.error("[mail] sendPlatformMail gagal:", err);
@@ -70,11 +103,13 @@ export type TenantSmtpConfig = {
 
 export async function sendTenantMail(
   config: TenantSmtpConfig,
-  opts: { to: string; subject: string; html: string },
+  opts: { to: string; subject: string; html: string; replyTo?: string | null },
 ): Promise<SendMailResult> {
   if (!config.host || !config.user || !config.password) {
     return { ok: false, error: "SMTP tenant belum dikonfigurasi lengkap." };
   }
+  const to = stripHeaderChars(opts.to);
+  if (!isValidEmailAddress(to)) return { ok: false, error: "Alamat email tujuan tidak valid." };
 
   try {
     const transport = buildTransport({
@@ -84,10 +119,12 @@ export async function sendTenantMail(
       pass: config.password,
     });
     const fromEmail = config.fromEmail || config.user;
+    const replyTo = opts.replyTo && isValidEmailAddress(opts.replyTo.trim()) ? opts.replyTo.trim() : undefined;
     await transport.sendMail({
-      from:    `"${config.fromName || "Notifikasi"}" <${fromEmail}>`,
-      to:      opts.to,
-      subject: opts.subject,
+      from:    `"${safeDisplayName(config.fromName || "Notifikasi")}" <${stripHeaderChars(fromEmail)}>`,
+      to,
+      replyTo,
+      subject: stripHeaderChars(opts.subject),
       html:    opts.html,
     });
     return { ok: true };

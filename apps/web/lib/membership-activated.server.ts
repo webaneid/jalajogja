@@ -7,7 +7,7 @@ import { sendWaNotification } from "@/lib/whatsapp";
 import { renderTemplateString } from "@/lib/wa-templates";
 import { resolveWaTemplateText, resolveOrgName, waAppUrl } from "@/lib/wa-notify";
 import { isValidWhatsappGroupUrl, WHATSAPP_GROUP_SETTING_KEY } from "@/lib/whatsapp-group";
-import { sendTenantMail, sendPlatformMail, isPlatformMailConfigured, type TenantSmtpConfig } from "@/lib/mail";
+import { sendMailForTenant } from "@/lib/mail-dispatch.server";
 
 // Notifikasi ke ANGGOTA saat keanggotaannya di sebuah tenant menjadi aktif: nomor anggota + arahan
 // ke /akun. WA bila terkirim, kalau tidak → email (SMTP tenant, fallback SMTP platform). Lihat
@@ -115,14 +115,7 @@ export async function notifyMembershipActivated(opts: {
       ${hasGroup ? "<p>Setelah masuk, gabung ke grup WhatsApp organisasi lewat kartu <strong>Gabung Grup WhatsApp</strong> di halaman tersebut.</p>" : ""}
       <p>Wassalamu'alaikum wr. wb.<br/>${escapeHtml(orgName)}</p>`;
 
-    const smtp = await getSetting<TenantSmtpConfig>(tenantDb, "smtp_config", "mail");
-    if (smtp) {
-      const sent = await sendTenantMail(smtp, { to: person.email, subject, html });
-      if (sent.ok) return;
-    }
-    if (isPlatformMailConfigured()) {
-      await sendPlatformMail({ to: person.email, subject, html });
-    }
+    await sendMailForTenant(tenantDb, { to: person.email, subject, html });
   } catch (err) {
     console.error("[notifyMembershipActivated]", err);
   }

@@ -7,7 +7,7 @@ import {
 } from "@jalajogja/db";
 import { sendWaNotification, type WaNotifKey } from "@/lib/whatsapp";
 import { resolveOrgName, waAppUrl, waRupiah } from "@/lib/wa-notify";
-import { sendTenantMail, sendPlatformMail, isPlatformMailConfigured, type TenantSmtpConfig } from "@/lib/mail";
+import { sendMailForTenant } from "@/lib/mail-dispatch.server";
 import { getTenantTimezone, formatInTz, todayInTz } from "@/lib/tenant-timezone.server";
 import { normalizePhone, displayPhone } from "@/lib/phone";
 import {
@@ -148,16 +148,8 @@ async function deliverToRecipient(opts: {
 
   const html = `<div style="font-family:sans-serif;white-space:pre-wrap">${escapeHtml(waText.replace(/\*/g, ""))
     .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')}</div>`;
-  const smtp = await getSetting<TenantSmtpConfig>(tenantDb, "smtp_config", "mail");
-  if (smtp) {
-    const sent = await sendTenantMail(smtp, { to: recipient.email, subject, html });
-    if (sent.ok) return "email";
-  }
-  if (isPlatformMailConfigured()) {
-    const sent = await sendPlatformMail({ to: recipient.email, subject, html });
-    if (sent.ok) return "email";
-  }
-  return "none";
+  const sent = await sendMailForTenant(tenantDb, { to: recipient.email, subject, html });
+  return sent.ok ? "email" : "none";
 }
 
 // ── Jadwal ────────────────────────────────────────────────────────────────────────────

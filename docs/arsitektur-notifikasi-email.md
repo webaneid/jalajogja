@@ -1,6 +1,6 @@
 # Arsitektur Notifikasi Email — Paritas dengan WhatsApp, Fallback Platform, Pilihan Penyedia
 
-> **Status: RENCANA (2026-10-30) — belum dieksekusi.** Menunggu jawaban § 7. Dokumen ini ditulis
+> **Status: KEPUTUSAN DIKUNCI 2026-10-30 (§ 7) — eksekusi bertahap, lihat § 8 untuk status.** Dokumen ini ditulis
 > sesuai SOP "docs sebelum kode". Terkait: `docs/arsitektur-whatsapp.md`,
 > `docs/arsitektur-notifikasi-pengurus.md` (notifikasi PJ/admin), `lib/mail.ts`.
 
@@ -109,11 +109,28 @@ Opsi lanjutan (bukan sekarang): API HTTP Resend native — hanya berguna kalau p
 - Anti-penyalahgunaan: email hanya dipicu kejadian transaksi/aktivasi, bukan endpoint publik bebas;
   endpoint yang sudah publik (OTP) tetap mempertahankan rate limit-nya.
 
-## 7. Pertanyaan terbuka (butuh jawaban sebelum eksekusi)
+## 7. Keputusan user (2026-10-30)
 
-1. Matriks § 3.4 menggantikan tiga toggle lama dan sisi admin diserahkan ke PJ — setuju?
-2. Kanal default `auto` (kirim ke semua kanal tersedia) — setuju, atau email-only dulu?
-3. Daftar event inti Fase 2 (§ 3.4) — ada yang mau ditambah/dikurangi?
-4. Alamat From fallback platform: pakai `SMTP_FROM` yang sudah ada, atau alamat khusus
-   (mis. `no-reply@jalakarta.com`)? Perlu dicek SPF/DKIM-nya.
-5. Enkripsi at-rest kredensial SMTP tenant: sekarang atau ditunda?
+1. **Email jadi kanal UTAMA untuk semua notifikasi** (alasan: WA user sempat diblokir; banyak pengguna belum siap WA).
+   WhatsApp menjadi PELENGKAP: dikirim hanya bila WA tenant aktif DAN toggle WA event itu menyala. Penerima tanpa
+   alamat email tetap dapat WA bila tersedia. Berlaku untuk seluruh event WA yang ada (~25), bertahap — event inti dulu.
+2. **Default kanal = email** (`channel_mode`: `"email_first"` default; `"email_only"`, `"wa_only"` opsional).
+3. Daftar event inti § 3.4 disetujui.
+4. Fallback platform: From `"{Nama Tenant}" <no-reply@jalakarta.com>`, Reply-To email kontak tenant. **Override per domain tenant
+   diinginkan** — dibuat sebagai fase terpisah dengan DAFTAR DOMAIN TERVERIFIKASI (env `SMTP_VERIFIED_DOMAINS`, domain
+   sudah diverifikasi SPF/DKIM di penyedia platform) dan hanya platform admin yang boleh menetapkan; tenant TIDAK boleh
+   mengisi bebas (celah pemalsuan pengirim lewat SMTP platform).
+5. **Enkripsi at-rest kredensial SMTP tenant: dikerjakan sekarang** (AES-256-GCM, kunci env `SMTP_ENCRYPTION_KEY`).
+   Karena belum ada tenant yang menyimpan SMTP, tidak ada data lama yang perlu dimigrasi; nilai tanpa awalan `enc:v1:`
+   tetap dibaca apa adanya (kompatibilitas).
+6. Penyedia yang direkomendasikan: Resend (SMTP, tanpa kode baru); Gmail hanya untuk volume kecil.
+
+## 8. Status eksekusi
+
+- [x] Fase 1 — SELESAI KODE 2026-10-30 (belum deploy): `lib/mail-dispatch.server.ts` (`sendMailForTenant`), `lib/secret-box.server.ts` (AES-256-GCM),
+      4 pemanggil dimigrasi, `notify-customer` kini fallback platform + escapeHtml, header injection ditutup di `lib/mail.ts`.
+      **Syarat deploy: set `SMTP_ENCRYPTION_KEY` di `.env.local` VPS SEBELUM build** (`openssl rand -base64 32`; jangan diganti sesudahnya).
+      Tanpa kunci, tombol Simpan di `/settings/email` menolak (sengaja, tidak pernah menyimpan plaintext).
+- [ ] Fase 2 — email paritas via `notifyWa()` + `channel_mode` + matriks event × kanal
+- [~] Fase 3 — SEBAGIAN: password tidak lagi dikirim ke client + "kosong = pertahankan" (SELESAI KODE). Preset penyedia di form BELUM.
+- [ ] Fase 4 — From per domain tenant (daftar domain terverifikasi)

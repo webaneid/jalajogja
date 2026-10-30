@@ -34,11 +34,12 @@ export default async function EmailSettingsPage({
 
       <EmailSettingsForm
         slug={slug}
+        hasPassword={!!smtp?.password}
         defaultValues={{
           host:      smtp?.host      ?? "",
           port:      smtp?.port      ?? 587,
           user:      smtp?.user      ?? "",
-          password:  smtp?.password  ?? "",
+          password:  "", // tidak pernah dikirim ke browser; kosong = pertahankan yang tersimpan
           fromName:  smtp?.fromName  ?? "",
           fromEmail: smtp?.fromEmail ?? "",
         }}
