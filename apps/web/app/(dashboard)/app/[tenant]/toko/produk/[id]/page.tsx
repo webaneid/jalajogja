@@ -1,144 +1,93 @@
+// Halaman produk tunggal ADMIN — tampilan bertab memakai komponen BERSAMA dengan Portal Produsen
+// (components/toko/product-detail/*; data: lib/product-detail.server.ts). Ubah tampilan di komponen bersama = berlaku di
+// admin DAN produsen. Doc: docs/arsitektur-portal-produsen.md § 17.
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
+import { eq } from "drizzle-orm";
+import { Pencil } from "lucide-react";
 import Link from "next/link";
-import { Pencil, Download, Package } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { resolveProductBuyers } from "@/lib/product-buyers.server";
-import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
-import { ProductBuyerList } from "@/components/toko/product-buyer-list";
-import { ProductReportCard } from "@/components/toko/product-report-card";
-import { ProducerCard } from "@/components/toko/producer-card";
+import { loadProductDetail } from "@/lib/product-detail.server";
 import { resolveProducers, resolveInternalProducer } from "@/lib/producer.server";
 import { buildProductReport, buildProductConclusion } from "@/lib/product-report";
 import { hasFullAccess } from "@/lib/permissions";
 import { isValidUuid } from "@/lib/is-uuid";
-
-function formatRupiah(amount: number | string) {
-  const n = typeof amount === "string" ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-  }).format(n || 0);
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  draft:    "bg-muted text-muted-foreground",
-  active:   "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200",
-  archived: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  draft:    "Draft",
-  active:   "Aktif",
-  archived: "Diarsipkan",
-};
-
-function getFirstImage(images: unknown): string | null {
-  if (!Array.isArray(images) || images.length === 0) return null;
-  const first = images[0] as { url?: string; variants?: Record<string, string> | null };
-  return first?.variants?.square ?? first?.url ?? null;
-}
+import { ProductDetailHeader } from "@/components/toko/product-detail/product-detail-header";
+import { ProductDetailTabNav, productTabs, resolveActiveTab } from "@/components/toko/product-detail/product-detail-tabs";
+import { TabRingkasan } from "@/components/toko/product-detail/tab-ringkasan";
+import { TabPesanan } from "@/components/toko/product-detail/tab-pesanan";
+import { TabDetail } from "@/components/toko/product-detail/tab-detail";
+import { TabLaporan } from "@/components/toko/product-detail/tab-laporan";
+import { rupiah } from "@/components/toko/product-detail/format";
 
 export default async function ProdukDetailPage({
-  params,
+  params, searchParams,
 }: {
   params: Promise<{ tenant: string; id: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const { tenant: slug, id: productId } = await params;
+  const { tab } = await searchParams;
   if (!isValidUuid(productId)) notFound();
   const access = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
 
   const tenantClient = createTenantDb(slug);
 
-  const { product, rows } = await resolveProductBuyers(tenantClient, productId, { includeAll: true });
-  if (!product) notFound();
-
-  let priceLabel = formatRupiah(product.price);
-  if (product.productType === "variable") {
-    const ranges = await resolveVariantPriceRanges(tenantClient, [product.id]);
-    const range = ranges.get(product.id);
-    if (range) {
-      priceLabel = range.min === range.max
-        ? formatRupiah(range.min)
-        : `${formatRupiah(range.min)} – ${formatRupiah(range.max)}`;
-    }
-  }
-
-  const lunasCount    = rows.filter((r) => r.paymentStatusLabel === "Lunas").length;
-  const sebagianCount = rows.filter((r) => r.paymentStatusLabel === "Sebagian").length;
-  const belumCount    = rows.filter((r) => r.paymentStatusLabel === "Belum Bayar").length;
-  const thumbUrl       = getFirstImage(product.images);
+  const [detail, buyers] = await Promise.all([
+    loadProductDetail(tenantClient, productId),
+    resolveProductBuyers(tenantClient, productId, { includeAll: true }),
+  ]);
+  if (!detail || !buyers.product) notFound();
+  const rows = buyers.rows;
 
   // Laporan keuangan produk memuat MODAL (Harga Dasar) = rahasia bisnis → hanya hasFullAccess(toko).
   // Akses baca-saja tetap melihat Daftar Pembeli tapi tanpa modal/laba.
   const canSeeReport = hasFullAccess(access.tenantUser, "toko");
-  const report       = canSeeReport ? buildProductReport(rows) : null;
-  const conclusion   = report ? buildProductConclusion(report, formatRupiah) : [];
+  const tabs   = productTabs("admin", { canSeeReport });
+  const active = resolveActiveTab(tab, tabs);
 
   // ProductBuyerList = client component → props ter-serialize ke browser. Daftar tidak menampilkan modal,
   // jadi MODAL per baris dikosongkan untuk SEMUA pengguna sebelum dikirim (jangan bocor lewat view-source,
   // pelajaran sama dengan Harga Dasar di payload publik — lessons-learned [2026-10-09]).
   const listRows = rows.map((r) => ({ ...r, unitCost: null }));
 
-  // Produsen (ADMIN-ONLY, docs/arsitektur-produsen.md) — hanya produk tenant & pengguna akses penuh.
-  // producerId null = internal (tenant sendiri).
-  const producerTenant = { id: access.tenant.id, name: access.tenant.name, tenantType: access.tenant.tenantType };
-  const producerView = canSeeReport && !product.mitraId
-    ? (product.producerId
-        ? (await resolveProducers(tenantClient, producerTenant, [product.producerId])).get(product.producerId) ?? null
-        : await resolveInternalProducer(tenantClient, producerTenant))
-    : null;
+  const counts = {
+    total:     rows.length,
+    lunas:     rows.filter((r) => r.paymentStatusLabel === "Lunas").length,
+    sebagian:  rows.filter((r) => r.paymentStatusLabel === "Sebagian").length,
+    belum:     rows.filter((r) => r.paymentStatusLabel === "Belum Bayar").length,
+    unitLunas: rows.filter((r) => r.paymentStatusLabel === "Lunas").reduce((a, r) => a + r.quantity, 0),
+    stock:     detail.stock,
+  };
+
+  // Tab Laporan & Produsen — dihitung HANYA bila tab itu aktif dan pengguna berhak
+  let laporan: React.ReactNode = null;
+  if (active === "laporan" && canSeeReport) {
+    const report     = buildProductReport(rows);
+    const conclusion = buildProductConclusion(report, rupiah);
+    const producerTenant = { id: access.tenant.id, name: access.tenant.name, tenantType: access.tenant.tenantType };
+    const [pRow] = await tenantClient.db
+      .select({ producerId: tenantClient.schema.products.producerId, mitraId: tenantClient.schema.products.mitraId })
+      .from(tenantClient.schema.products).where(eq(tenantClient.schema.products.id, productId)).limit(1);
+    const producerView = pRow && !pRow.mitraId
+      ? (pRow.producerId
+          ? (await resolveProducers(tenantClient, producerTenant, [pRow.producerId])).get(pRow.producerId) ?? null
+          : await resolveInternalProducer(tenantClient, producerTenant))
+      : null;
+    laporan = <TabLaporan slug={slug} producerView={producerView} report={report} conclusion={conclusion}
+      exportHref={`/api/products/${productId}/export-buyers?tenant=${slug}&all=1`} />;
+  }
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="border-b border-border bg-card px-6 py-4">
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/app/${slug}/toko/produk`}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            ← Produk
-          </Link>
-          <span className="text-muted-foreground">/</span>
-          <span className="text-sm font-medium truncate max-w-[200px]">{product.name}</span>
-        </div>
-      </div>
-
       <main className="flex-1 overflow-y-auto p-6 space-y-6">
-        {/* Info Produk */}
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="flex items-start gap-4 flex-1 min-w-0">
-            <div className="h-20 w-20 rounded-lg border border-border bg-muted/30 overflow-hidden shrink-0">
-              {thumbUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={thumbUrl} alt={product.name} className="h-full w-full object-cover" />
-              ) : (
-                <div className="h-full w-full flex items-center justify-center text-muted-foreground/30">
-                  <Package className="h-8 w-8" />
-                </div>
-              )}
-            </div>
-            <div className="space-y-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-bold">{product.name}</h1>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[product.status] ?? ""}`}>
-                  {STATUS_LABELS[product.status] ?? product.status}
-                </span>
-              </div>
-              {product.sku && (
-                <p className="text-xs text-muted-foreground">SKU: {product.sku}</p>
-              )}
-              <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">{priceLabel}</span>
-                <span>Stok: {product.stock}</span>
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-2 shrink-0">
+        <ProductDetailHeader
+          product={detail}
+          backHref={`/app/${slug}/toko/produk`}
+          backLabel="Produk"
+          actions={
             <Link
               href={`/app/${slug}/toko/produk/${productId}/edit`}
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted transition-colors"
@@ -146,69 +95,14 @@ export default async function ProdukDetailPage({
               <Pencil className="h-4 w-4" />
               Edit
             </Link>
-          </div>
-        </div>
+          }
+        />
+        <ProductDetailTabNav basePath={`/app/${slug}/toko/produk/${productId}`} tabs={tabs} active={active} />
 
-        {/* Statistik ringkas */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { label: "Total Pembelian", value: rows.length,     color: "text-foreground" },
-            { label: "Lunas",           value: lunasCount,      color: "text-green-600"  },
-            { label: "Sebagian",        value: sebagianCount,   color: "text-amber-600"  },
-            { label: "Belum Bayar",     value: belumCount,      color: "text-red-600"    },
-          ].map(({ label, value, color }) => (
-            <div key={label} className="rounded-xl border border-border bg-card p-4 space-y-1">
-              <p className="text-xs text-muted-foreground">{label}</p>
-              <p className={`text-2xl font-bold ${color}`}>{value}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Produsen — ADMIN-ONLY: siapa produsennya + kontak cepat (WhatsApp) */}
-        {producerView && (
-          <section className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Produsen</h2>
-              <Link href={`/app/${slug}/toko/produsen`} className="text-xs font-medium text-primary hover:underline">Kelola produsen →</Link>
-            </div>
-            <ProducerCard v={producerView} productCount={0} showCount={false} />
-          </section>
-        )}
-
-        {/* Laporan Produk — keuntungan, uang masuk, ongkir terpisah + kesimpulan */}
-        {report && (
-          <ProductReportCard
-            report={report}
-            conclusion={conclusion}
-            exportHref={`/api/products/${productId}/export-buyers?tenant=${slug}&all=1`}
-          />
-        )}
-
-        {/* Daftar Pembeli */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <h2 className="text-sm font-semibold">Daftar Pembeli</h2>
-            <div className="flex items-center gap-1.5">
-              <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
-                <a href={`/api/products/${productId}/export-buyers?tenant=${slug}`}>
-                  <Download className="h-3 w-3 mr-1" />
-                  Export Pembeli (Sudah Bayar)
-                </a>
-              </Button>
-              <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
-                <a href={`/api/products/${productId}/export-buyers?tenant=${slug}&all=1`}>
-                  <Download className="h-3 w-3 mr-1" />
-                  Export Semua Pembeli
-                </a>
-              </Button>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground -mt-1">
-            &ldquo;Export Pembeli (Sudah Bayar)&rdquo; hanya invoice berstatus Lunas. &ldquo;Export Semua
-            Pembeli&rdquo; menyertakan semua status termasuk yang belum bayar/dibatalkan.
-          </p>
-          <ProductBuyerList slug={slug} rows={listRows} />
-        </div>
+        {active === "ringkasan" && <TabRingkasan view="admin" counts={counts} />}
+        {active === "pesanan"   && <TabPesanan slug={slug} productId={productId} rows={listRows} />}
+        {active === "detail"    && <TabDetail product={detail} tenantSlug={slug} showCost={canSeeReport} />}
+        {active === "laporan"   && laporan}
       </main>
     </div>
   );

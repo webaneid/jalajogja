@@ -284,3 +284,8 @@ di custom domain, tautan ke tenant LAIN di halaman pemilih dibuat absolut ke jal
 
 ### 17.6 Keputusan yang menunggu user
 (a) Pesanan yang tampil untuk produsen: hanya **Lunas** (usulan) atau semua status. (b) Data pembeli yang diizinkan: sesuai § 17.2 butir 3 (usulan) — khususnya TANPA uang dan TANPA alamat rumah profil. (c) Halaman produk tunggal ADMIN ikut dirombak menjadi bertab (usulan, sesuai permintaan "tampilan admin dan produsen sama"). (d) Export Excel/label untuk produsen ditunda ke fase kirim paket.
+
+### 17.7 Status eksekusi
+- [x] **T1 — SELESAI KODE 2026-10-31** (`tsc` bersih; belum dites browser/deploy): `lib/product-detail.server.ts` (`loadProductDetail`, opsi `ownerProducerId` untuk kepemilikan produsen), komponen bersama `components/toko/product-detail/` (`ProductDetailHeader`, `ProductDetailTabNav` + `productTabs()`/`resolveActiveTab()`, `TabRingkasan`, `TabPesanan` (cabang admin), `TabDetail`, `TabLaporan` (khusus admin)), dan halaman admin `toko/produk/[id]/page.tsx` dirombak memakainya (tab: Ringkasan · Pesanan Masuk · Detail Produk · Laporan & Produsen [hanya `hasFullAccess(toko)`]).
+      Yang dijaga: logika data tidak berubah (`resolveProductBuyers` tetap, MODAL `unitCost` tetap dikosongkan sebelum ke komponen client, laporan+kartu produsen hanya dihitung bila tab aktif DAN berhak); `?tab=` divalidasi (tab tak dikenal / tak diizinkan → tab pertama). **Temuan saat review T1 & sudah diperbaiki:** tab Detail Produk yang baru akan memperlihatkan Harga Dasar (modal) kepada pengguna admin baca-saja (sebelumnya disembunyikan) → ditambah prop `showCost` (admin: hanya `hasFullAccess(toko)`; produsen: true).
+      Portal Produsen belum memakai komponen bersama (halaman detail P4 lama masih berjalan) — beralih di T2.
