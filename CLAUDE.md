@@ -1188,7 +1188,7 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
   front-end publik. Migration `0074` sudah jalan di VPS. Detail: `docs/arsitektur-seo.md` § 3. Belum diuji sungguhan: GTM dan Meta Pixel.
 - **2026-10-30 — Notifikasi Email (Fase 1+2 SELESAI KODE, belum deploy)**: email jadi kanal utama notifikasi pelanggan, WA pelengkap
   (`channel_mode` default `email_first`); fallback SMTP platform; password SMTP tenant terenkripsi. **Syarat deploy: set `SMTP_ENCRYPTION_KEY`
-  di `.env.local` VPS sebelum build.** Tanpa migration. Sisa: Fase 3 (preset penyedia di form), Fase 4 (From per domain tenant).
+  di `.env.local` VPS sebelum build.** Tanpa migration. Sisa: Fase 4 (From per domain tenant, daftar domain terverifikasi).
   Detail + status: `docs/arsitektur-notifikasi-email.md` § 8.
 - **Sesi 2026-10-10 — ringkasan** (detail + keputusan: memory `project_session_log_20261010` dan dokumen masing-masing).
   Status git: SEMUA sudah di-push (`99875ec`, 2026-10-11) dan di-deploy ke VPS (migration `0073` jalan; build+restart OK; user cek "lainnya aman").

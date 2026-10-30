@@ -143,5 +143,8 @@ Opsi lanjutan (bukan sekarang): API HTTP Resend native — hanya berguna kalau p
       Belum tercakup: OTP daftar/reset/login via email (alur OTP checkout via email sudah ada), `product_stock_out` &
       `order_auto_cancelled` (punya jalur email sendiri di `notify-customer.ts`), `officer_invite`, `letter_sign_request`,
       `profile_incomplete_reminder` (tetap WA).
-- [~] Fase 3 — SEBAGIAN: password tidak lagi dikirim ke client + "kosong = pertahankan" (SELESAI KODE). Preset penyedia di form BELUM.
+- [x] Fase 3 — SELESAI KODE 2026-10-30 (belum deploy): password tidak dikirim ke client + "kosong = pertahankan" (terikat host+user),
+      dan preset penyedia (Gmail/Workspace, Resend, Brevo, Lainnya) lewat Combobox di `/settings/email` — mengisi host/port
+      (+ user "resend" untuk Resend) dan menampilkan catatan khusus per penyedia (App Password, verifikasi domain, batas harian).
+      Tanpa kode kirim baru — semua tetap SMTP lewat nodemailer.
 - [ ] Fase 4 — From per domain tenant (daftar domain terverifikasi)
