@@ -34,7 +34,7 @@ export default async function ProducerProductDetailPage({
   if (!detail) notFound();
 
   // Kepemilikan terbukti di atas → aman memuat pembeli. Hanya pesanan lunas; proyeksi allow-list di server.
-  const { rows: buyerRows } = await resolveProductBuyers(tenantClient, detail.id, { includeAll: false });
+  const { rows: buyerRows } = await resolveProductBuyers(tenantClient, detail.id, { includeAll: false, skipMemberAddress: true });
   const orders = toProducerBuyerRows(buyerRows);
 
   const tabs   = productTabs("producer");

@@ -80,7 +80,9 @@ export type ProductBuyersResult = {
 export async function resolveProductBuyers(
   tenantClient: TenantDb,
   productId:    string,
-  opts:         { includeAll: boolean },
+  // skipMemberAddress: JANGAN kumpulkan "Alamat User" (alamat rumah profil anggota) sama sekali — dipakai Portal Produsen
+  // (defense in depth: data itu tak boleh ada di memori jalur produsen + hemat query composeAddress per anggota).
+  opts:         { includeAll: boolean; skipMemberAddress?: boolean },
 ): Promise<ProductBuyersResult> {
   const { db, schema } = tenantClient;
 
@@ -189,7 +191,7 @@ export async function resolveProductBuyers(
   // email), kolom tetap kosong. Limitasi yang diterima: invoice historis dari SEBELUM gate
   // OTP dibangun (commit ed5ce17) tidak bisa dibedakan dari sini — residual risk kecil,
   // dicatat sebagai limitasi eksplisit di dokumen.
-  const invoicesWithMember = invoiceRows.filter((i) => i.memberId);
+  const invoicesWithMember = opts.skipMemberAddress ? [] : invoiceRows.filter((i) => i.memberId);
   const memberAddressMap = new Map<string, string>();
   if (invoicesWithMember.length > 0) {
     const memberIds = [...new Set(invoicesWithMember.map((i) => i.memberId as string))];
