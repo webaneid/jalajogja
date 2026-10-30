@@ -180,3 +180,24 @@ jual 30.000 / 5 unit lunas → terjual 25 unit, pendapatan 450.000, modal ke pro
 **Keputusan yang masih menunggu user:** (1) "modal ke produsen" ditampilkan sebagai "Yang harus dibayar ke produsen" atau laporan biasa
 (usulan: laporan biasa; catat pembayaran ke produsen = fitur terpisah yang lebih besar); (2) setuju filter periode + isi export di atas.
 Setelah disetujui: urutan SOP (docs → kode → `tsc` → security review → commit).
+
+
+## 15. RENCANA — Perbaikan hasil audit kode (2026-10-31, belum dikerjakan)
+
+Hasil pembacaan kode 2026-10-31 (tanpa menjalankan aplikasi): tidak ada celah serius, ada 5 catatan berisiko rendah. Dikerjakan
+**SEBELUM** Portal Produsen (`docs/arsitektur-portal-produsen.md`), satu langkah satu commit, urutan SOP tiap langkah:
+`tsc` → security review → commit (push hanya bila diminta). Tambahan sebelum mulai: periksa bahwa `includeCost` export pembeli
+(`export-buyers/route.ts:88`) memang `hasFullAccess(toko)` — sudah terbaca benar, tinggal dicatat lulus.
+
+| Langkah | Masalah | Perbaikan | Migration | Risiko / catatan |
+|---|---|---|---|---|
+| 1 | `createMemberProducerAction` tidak cek profesional `is_active` (picker sudah menyaring, aksi langsung tidak) | Muat `memberProfessionals.isActive` bersama pemilik; tolak bila nonaktif ("Profesional nonaktif tidak bisa dijadikan produsen") | — | Sangat kecil. Hanya `createMemberProducerAction` |
+| 2 | Hapus produsen: cek-lalu-hapus dua langkah → produk yang baru dipasangi bisa diam-diam jadi "internal" (FK `SET NULL`) | Satu pernyataan atomik: `DELETE FROM producers WHERE id=$1 AND NOT EXISTS (SELECT 1 FROM products WHERE producer_id=$1) RETURNING id`; 0 baris → pesan "dipakai produk atau tidak ditemukan" (pesan jumlah produk dihitung terpisah hanya untuk tampilan) | — | Kecil. Perilaku untuk admin tidak berubah |
+| 3 | Duplikat produsen dari dua klik bersamaan (tidak ada unique index) | (a) Cek duplikat yang sudah ada di tiap tenant — query diagnosa dulu, bersihkan manual bila ada; (b) `CREATE UNIQUE INDEX IF NOT EXISTS producers_source_uniq ON producers(source_type, source_id) WHERE source_type IS NOT NULL AND source_id IS NOT NULL` di migration + `create-tenant-schema.ts`; (c) aksi menangkap error `23505` → pesan "Sumber ini sudah terdaftar" | **0075** (loop tenant aktif; jalankan di VPS sebelum deploy kode) | Sedang: migration gagal bila ada duplikat → langkah (a) wajib lebih dulu. Index parsial, tidak mengunci baris custom |
+| 4 | Kata kunci pencarian picker: `%` dan `_` tidak di-escape (hasil jadi terlalu longgar; bukan injeksi) | Helper kecil `escapeLike()` (escape `\ % _`) + `ilike(..., like, { escape })`/pola `ESCAPE '\'` di 3 query `producer-sources/route.ts`; helper ditaruh di `lib/` agar bisa dipakai pencarian lain | — | Kecil. Tidak ada helper serupa di repo (dicek) |
+| 5 | Performa: dropdown produsen di form produk memuat `resolveProducers` penuh (kontak+alamat+wilayah) padahal hanya perlu nama; wilayah produsen custom di-query sendiri-sendiri | (a) `listProducerOptions()` ringan di `producer.server.ts`: hanya nama (usaha/pesantren/profesional + pemilik) tanpa kontak/alamat; dipakai `produk/new` dan `[id]/edit`; (b) `composeRegionText` memakai cache `Map` per id wilayah dalam satu panggilan batch | — | Sedang: `resolveProducers` tetap jadi satu-satunya sumber untuk kartu/export (aturan fallback tidak diduplikasi); yang diringankan hanya jalur dropdown. Uji ulang: label dropdown identik dengan sebelum perubahan |
+
+**Verifikasi tiap langkah:** `bun run type-check`; langkah 3 — jalankan query diagnosa duplikat + uji dua klik cepat di tenant uji; langkah 5 — bandingkan label dropdown
+sebelum/sesudah. Catatan: uji browser tetap oleh user (admin perlu login). Catat hasilnya di bagian status di bawah dan, bila ada pelajaran baru, di `lessons-learned.md`.
+
+**Status eksekusi:** belum dimulai.

@@ -241,6 +241,7 @@ pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
 | Notifikasi Email (paritas WA, fallback SMTP platform, preset Gmail/Resend, From per domain) — SELESAI + deployed 2026-10-30 | `docs/arsitektur-notifikasi-email.md` |
 | Notifikasi PJ modul (digest + verifikasi bendahara via tautan) — keuangan+keanggotaan+toko+donasi+event SELESAI KODE 2026-10-10, belum deploy | `docs/arsitektur-notifikasi-pengurus.md` |
 | Produsen produk (admin-only: internal/anggota/custom) — deployed 2026-10-09 | `docs/arsitektur-produsen.md` |
+| Portal Produsen (produsen login, lihat produknya sendiri, baca-saja) — RENCANA 2026-10-31, belum ada kode; perbaikan audit § 15 di dokumen produsen dikerjakan lebih dulu | `docs/arsitektur-portal-produsen.md` |
 | Penulis & Editor Post (byline system) | `docs/arsitektur-penulis-post.md` |
 | Data Pesantren anggota | `docs/arsitektur-pesantren.md` |
 | Data Profesional anggota — perencanaan, belum dieksekusi | `docs/arsitektur-profesional.md` |

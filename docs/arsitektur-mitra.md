@@ -630,3 +630,22 @@ Phase 3 — Integrasi Produk & Transaksi
 | Rekening pembayaran | Selalu rekening tenant/IKPM — tidak ada rekening mitra di sistem |
 | Pencairan ke mitra | Manual via `disbursements` (modul keuangan existing) |
 | Transaksi | Melalui universal payment system (orders → payments → finance) |
+
+
+## Rencana Integrasi dengan Status Produsen (dicatat 2026-10-31, BELUM dikerjakan)
+
+Keputusan user: **Mitra adalah status anggota yang lebih lengkap di masa depan**; Produsen (`docs/arsitektur-produsen.md`, `docs/arsitektur-portal-produsen.md`)
+harus dirancang agar kelak terintegrasi dengannya. Kerangka yang dijaga mulai sekarang:
+
+- **Keduanya "status pada anggota", bukan role pengurus.** Produsen = baris `public.producer_logins` (satu akun = satu tenant) + baris `tenant_{slug}.producers`;
+  Mitra = baris `tenant_{slug}.mitras`. Tidak ada yang masuk `tenant.users` (alasan: `docs/arsitektur-portal-produsen.md` § 2–3).
+- **Pintu masuk dashboard satu per status**, bukan satu role gemuk: produsen lewat `getProducerAccess`; kelak mitra memakai pola yang sama (`getMitraAccess`) atau
+  pintu gabungan "portal anggota-usaha" dengan menu per status. Menu portal harus disusun dari daftar status/kemampuan yang dimiliki akun, bukan hardcode satu menu.
+- **Model data dibiarkan terbuka untuk penggabungan**: sumber yang sama (usaha anggota `member_businesses`) dipakai Produsen (`source_type='usaha'`) dan Mitra (`business_id`).
+  Satu usaha bisa jadi produsen dan mitra sekaligus; penyatuan kedua catatan (mis. satu profil "pemasok" dengan tanda `is_producer` / `is_mitra`) diputuskan saat fase integrasi,
+  BUKAN sekarang — jangan menggabungkan tabel sebelum alur mitra penuh dibahas.
+- **Produk mitra vs produk produsen** hari ini saling meniadakan (`mitra_id` terisi → tanpa `producer_id`; produsen hanya untuk produk tenant). Saat integrasi, aturan ini ditinjau:
+  mungkin produk mitra juga punya produsen. Jangan menambah asumsi baru yang mengunci aturan itu.
+- **Aturan keanggotaan, penonaktifan, dan akses** (anggota sah tenant; nonaktif → akses hilang & tidak bisa dipesan) memakai satu fungsi bersama
+  `lib/tenant-membership.server.ts`, sama seperti Harga Anggota dan Produsen, agar mitra mengikuti aturan yang sama.
+- Hal yang SENGAJA belum dibahas: harga & komisi produk mitra, pencairan ke mitra, laporan per produsen/mitra, tampilan "status mitra yang lebih lengkap". Dibahas pada sesi terpisah.
