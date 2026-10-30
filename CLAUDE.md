@@ -1190,9 +1190,11 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
   (`channel_mode` default `email_first`); fallback SMTP platform (From = nama tenant @domain platform, Reply-To = kontak tenant); password SMTP
   tenant terenkripsi (`SMTP_ENCRYPTION_KEY`); preset Gmail/Resend/Brevo; From per domain tenant lewat `SMTP_VERIFIED_DOMAINS` (diatur platform admin);
   email undangan pengurus otomatis. Tanpa migration.
-  TERVERIFIKASI online: tes email SMTP tenant (Gmail App Password, tenant `forbis`) masuk. BELUM diverifikasi online: simpan SMTP + muat ulang
-  (password tak tampil), UI kanal di `/settings/notifications`, email nyata invoice/event lewat SMTP platform (butuh SPF/DKIM `jalakarta.com` benar —
-  cek `dig TXT`), email undangan pengurus, From per domain tenant. Catatan: Resend TIDAK bisa kirim dari alamat Gmail (butuh domain terverifikasi).
+  TERVERIFIKASI online: tes email SMTP tenant (Gmail App Password, tenant `forbis`) masuk; SMTP platform = Resend, domain `jalakarta.com` verified
+  (From `no-reply@jalakarta.com`), email tagihan nyata masuk dengan SPF PASS + DKIM PASS (2026-10-31). DMARC: record `_dmarc` (`p=none`) ditambahkan
+  2026-10-31; 2 email uji pertama masih `FAIL` (dugaan cache negatif ~30 mnt, belum dikonfirmasi PASS — cek ulang). BELUM diverifikasi online: simpan SMTP
+  + muat ulang (password tak tampil), UI kanal di `/settings/notifications`, email undangan pengurus, From per domain tenant. Catatan: Resend TIDAK bisa
+  kirim dari alamat Gmail (butuh domain terverifikasi); paket gratis ±100 email/hari.
   Detail + status: `docs/arsitektur-notifikasi-email.md` § 8.
 - **2026-10-30 — Ikon tenant (favicon/apple-touch/manifest) SELESAI + DEPLOYED**: ikon tenant kini PNG per ukuran lewat `/{slug}/tenant-icon/{size}`
   (sumber favicon → cadangan logo), manifest per tenant, `app/favicon.ico` dihapus (penyebab ikon generik), middleware tak lagi mengecualikan favicon/manifest.

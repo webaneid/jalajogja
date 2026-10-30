@@ -161,3 +161,8 @@ Opsi lanjutan (bukan sekarang): API HTTP Resend native — hanya berguna kalau p
 
 **Setup server untuk Fase 4 (opsional, hanya bila ingin From per domain):** verifikasi domain di penyedia SMTP platform (tambah DNS
 SPF/DKIM), tambahkan domain ke `SMTP_VERIFIED_DOMAINS` di `.env.local`, restart PM2, lalu isi alamat per tenant di halaman platform.
+
+**Status DNS/SMTP platform (2026-10-31):** SMTP platform = Resend (`smtp.resend.com`:465, user `resend`), `SMTP_FROM=no-reply@jalakarta.com`,
+`SMTP_VERIFIED_DOMAINS=jalakarta.com`; domain verified di Resend. Uji email tagihan nyata: SPF PASS, DKIM PASS (domain jalakarta.com).
+DMARC: TXT `_dmarc` = `v=DMARC1; p=none; rua=...` ditambahkan di Cloudflare; dua uji pertama masih FAIL (record terbaca benar di 8.8.8.8/1.1.1.1;
+dugaan cache negatif SOA 1800 dtk) — ulang uji; bila tetap FAIL, baca header `Authentication-Results`. Naikkan `p=quarantine` hanya setelah PASS stabil.
