@@ -99,16 +99,15 @@ async function buildRows(
   });
 }
 
-export async function listProducerOrders(
+async function listByOwned(
   tenantClient: TenantDb,
-  producerId: string,
+  owned: Awaited<ReturnType<typeof producerItemIds>>,
   opts: { q?: string; page: number; pageSize: number },
 ): Promise<{ rows: ProducerOrderRow[]; total: number }> {
   const { db, schema } = tenantClient;
-  const owned = await producerItemIds(tenantClient, producerId);
   if (owned.ids.size === 0) return { rows: [], total: 0 };
 
-  // Invoice yang memuat item produsen ini (subquery — tanpa menarik semua id ke memori)
+  // Invoice yang memuat item-item ini (subquery — tanpa menarik semua id ke memori)
   const mineInvoiceIds = db.select({ id: schema.invoiceItems.invoiceId }).from(schema.invoiceItems)
     .where(and(eq(schema.invoiceItems.itemType, "product"), inArray(schema.invoiceItems.itemId, [...owned.ids])));
 
@@ -132,6 +131,36 @@ export async function listProducerOrders(
   ]);
 
   return { rows: await buildRows(tenantClient, invoices, owned), total: Number(total) };
+}
+
+/** Menu Pesanan: semua produk milik produsen (producerId WAJIB dari sesi). */
+export async function listProducerOrders(
+  tenantClient: TenantDb,
+  producerId: string,
+  opts: { q?: string; page: number; pageSize: number },
+): Promise<{ rows: ProducerOrderRow[]; total: number }> {
+  return listByOwned(tenantClient, await producerItemIds(tenantClient, producerId), opts);
+}
+
+/**
+ * Tab "Pesanan Masuk" di halaman produk tunggal: pesanan lunas yang memuat SATU produk (+ variasinya).
+ * Tampilan sama dengan menu Pesanan. productId WAJIB sudah terbukti boleh diakses pemanggil (admin: getTenantAccess +
+ * loadProductDetail; produsen: loadProductDetail dengan ownerProducerId) — fungsi ini TIDAK memeriksa kepemilikan sendiri.
+ * Item yang tampil hanya milik produk ini; `isMixed` di sini berarti "invoice juga memuat barang lain" (tab tidak menampilkannya).
+ */
+export async function listProductOrders(
+  tenantClient: TenantDb,
+  productId: string,
+  opts: { q?: string; page: number; pageSize: number },
+): Promise<{ rows: ProducerOrderRow[]; total: number }> {
+  const { db, schema } = tenantClient;
+  const variations = await db.select({ id: schema.productVariations.id, combo: schema.productVariations.attributeCombo })
+    .from(schema.productVariations).where(eq(schema.productVariations.productId, productId));
+  const owned = {
+    ids: new Set<string>([productId, ...variations.map((v) => v.id)]),
+    variationCombo: new Map(variations.map((v) => [v.id, (v.combo ?? {}) as Record<string, string>])),
+  };
+  return listByOwned(tenantClient, owned, opts);
 }
 
 /** Satu invoice — null bila tidak lunas ATAU tidak memuat item produsen ini (kepemilikan dibuktikan di sini). */

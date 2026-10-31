@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { resolveProductBuyers } from "@/lib/product-buyers.server";
+import { listProductOrders } from "@/lib/producer-orders.server";
 import { loadProductDetail } from "@/lib/product-detail.server";
 import { resolveProducers, resolveInternalProducer } from "@/lib/producer.server";
 import { buildProductReport, buildProductConclusion } from "@/lib/product-report";
@@ -25,10 +26,10 @@ export default async function ProdukDetailPage({
   params, searchParams,
 }: {
   params: Promise<{ tenant: string; id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string; page?: string }>;
 }) {
   const { tenant: slug, id: productId } = await params;
-  const { tab } = await searchParams;
+  const { tab, q, page } = await searchParams;
   if (!isValidUuid(productId)) notFound();
   const access = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
@@ -48,11 +49,6 @@ export default async function ProdukDetailPage({
   const tabs   = productTabs("admin", { canSeeReport });
   const active = resolveActiveTab(tab, tabs);
 
-  // ProductBuyerList = client component → props ter-serialize ke browser. Daftar tidak menampilkan modal,
-  // jadi MODAL per baris dikosongkan untuk SEMUA pengguna sebelum dikirim (jangan bocor lewat view-source,
-  // pelajaran sama dengan Harga Dasar di payload publik — lessons-learned [2026-10-09]).
-  const listRows = rows.map((r) => ({ ...r, unitCost: null }));
-
   const counts = {
     total:     rows.length,
     lunas:     rows.filter((r) => r.paymentStatusLabel === "Lunas").length,
@@ -61,6 +57,18 @@ export default async function ProdukDetailPage({
     unitLunas: rows.filter((r) => r.paymentStatusLabel === "Lunas").reduce((a, r) => a + r.quantity, 0),
     stock:     detail.stock,
   };
+
+  // Tab Pesanan Masuk — tabel SAMA dengan menu Pesanan produsen (pesanan lunas produk ini). Produk sudah terbukti ada (loadProductDetail).
+  let pesananTab: React.ReactNode = null;
+  if (active === "pesanan") {
+    const pageNum = Math.min(10_000, Math.max(1, parseInt(page ?? "1") || 1));
+    const query = (q ?? "").trim().slice(0, 80);
+    const { rows: orderRows, total } = await listProductOrders(tenantClient, productId, { q: query, page: pageNum, pageSize: 20 });
+    pesananTab = (
+      <TabPesanan slug={slug} productId={productId} rows={orderRows} total={total} page={pageNum} pageSize={20} q={query}
+        basePath={`/app/${slug}/toko/produk/${productId}`} viewHref={(id) => `/app/${slug}/toko/pesanan/invoice/${id}`} canExport />
+    );
+  }
 
   // Tab Laporan & Produsen — dihitung HANYA bila tab itu aktif dan pengguna berhak
   let laporan: React.ReactNode = null;
@@ -100,7 +108,7 @@ export default async function ProdukDetailPage({
         <ProductDetailTabNav basePath={`/app/${slug}/toko/produk/${productId}`} tabs={tabs} active={active} />
 
         {active === "ringkasan" && <TabRingkasan counts={counts} />}
-        {active === "pesanan"   && <TabPesanan slug={slug} productId={productId} rows={listRows} canExport linkInvoices />}
+        {active === "pesanan"   && pesananTab}
         {active === "detail"    && <TabDetail product={detail} tenantSlug={slug} showCost={canSeeReport} />}
         {active === "laporan"   && laporan}
       </main>
