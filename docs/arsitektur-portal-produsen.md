@@ -510,3 +510,29 @@ Ada endpoint cetak label (`POST …/order/api/v1/orders/print-label`, header `x-
 - [x] **L3b SELESAI KODE** (`tsc` bersih; belum dites browser; tanpa migration). `/app/{slug}/toko/pengaturan` → bagian **Logo Kurir** (`courier-logos-form.tsx` + `saveCourierLogosAction`): daftar kurir = yang diaktifkan tenant di add-on RajaOngkir (bila terpasang; selain itu semua 16 kurir), tiap kurir "Pilih logo" lewat **MediaPicker** (Media Library admin) / Ganti / Hapus; tersimpan di settings group `toko`, key `courier_logos` `{ kode: url }`. Dibaca `buildLabelData` → disematkan base64 ke PDF label. Kurir tanpa logo = badge teks tebal.
 - Keamanan (tinjau mandiri; aksi kecil): `getTenantAccess` + `hasFullAccess(toko)`; kunci dibatasi daftar kurir resmi; URL wajib berawalan `MINIO_PUBLIC_URL/` (selaras batas SSRF `imageToDataUri`), maks 500 karakter; entri kosong dibuang.
 - **Keputusan COD (user 2026-11-01): sistem tidak memakai COD** → temuan COD § 21.6 tidak perlu ditindaklanjuti; kotak label selalu "NON-COD" dalam praktik. "Ambil di tempat" tetap prabayar lewat tenant (invoice lunas, tampil di Pesanan) tetapi tidak dikirim kurir → tak ikut batch/resi/label. Kode COD dibiarkan dorman.
+
+## 22. Tindakan masal "Buat Batch" + filter status pesanan — RENCANA (2026-11-01, ditulis SEBELUM kode)
+
+**Permintaan user:** (1) tindakan masal **Buat Batch pengiriman** dari tabel pesanan: tab "Pesanan Masuk" di halaman produk tunggal dan menu Pesanan portal produsen; (2) **filter berdasarkan status** di tabel itu. **Keputusan user (2026-11-01):** Buat Batch masal juga tersedia di **dashboard admin** (tab produk admin), bukan hanya portal.
+
+### 22.1 Rancangan
+- **Satu inti pembuatan batch** `lib/producer-batch.server.ts` → `createBatchCore(tenantDb, producerId, input)` (dipindahkan dari `createBatchAction`: validasi nama/tanggal/id, kelayakan lewat `getProducerOrdersByIds` + `isBatchable`, transaksi insert batch + tautan + `pending → processing` compare-and-set, notifikasi "Diproses" sekali per invoice). Dua pintu akses MEMANGGIL inti yang sama setelah otorisasi masing-masing:
+  - produsen: `createBatchAction` (sudah ada; `producerId` dari sesi) — dirapikan memanggil inti.
+  - admin: `createBatchAsAdminAction(slug, producerId, input)` — `getTenantAccess` + `hasFullAccess(toko)`; `producerId` wajib baris `producers` milik tenant & AKTIF; semua invoice harus milik produsen itu (pemeriksaan kepemilikan yang sama). Batch tercatat atas nama produsen tsb dan terlihat di portalnya. Admin tidak punya halaman batch; kelanjutan (Dikemas/resi) lewat alur fulfillment admin yang sudah ada atau portal produsen — keduanya mengubah status pengiriman yang sama.
+- **UI:** `BulkPrintBar` menjadi bar tindakan masal: "Cetak Label (N)" + "Buat Batch (N)" (hanya bila `batch` aktif; N = terpilih ∩ layak batch: berstatus Menunggu, kurir, bukan ambil-sendiri; yang tidak layak dilewati dengan keterangan). Klik "Buat Batch" → popup: nama batch bawaan (`DDMMYYYY####`), tanggal kirim, ringkasan jumlah → simpan. Produsen: setelah sukses menuju halaman batch; admin: pesan sukses + tabel disegarkan (status → Diproses).
+- **Admin hanya untuk produk berprodusen:** tab produk admin menampilkan "Buat Batch" hanya bila produk punya `producer_id` (produk internal tak punya produsen → tak ada batch; tombol tersembunyi dengan keterangan).
+- **Filter status:** `?status=pending|processing|packed|shipped|delivered` (status pengiriman, `invoice_shipping_lines.status` baris tenant) di menu Pesanan portal dan tab Pesanan Masuk produk (admin + produsen). Chip: **Semua · Menunggu · Diproses · Dikemas · Dikirim · Diterima** dengan jumlah per status (satu query ber-`GROUP BY` pada himpunan pesanan lunas yang sama; jumlah mengabaikan pencarian agar stabil). Paginasi/pencarian mempertahankan filter. Status tak dikenal diabaikan (= Semua).
+- **Loader:** `listByOwned` menerima `status`, mengembalikan `statusCounts`; dipakai `listProducerOrders` dan `listProductOrders`.
+
+### 22.2 Risiko & mitigasi
+- Aksi tulis admin baru atas nama produsen → otorisasi `hasFullAccess(toko)`; `producerId` dari input DIVERIFIKASI ke tabel produsen tenant (bukan dipercaya) dan kepemilikan tiap invoice dibuktikan lagi terhadap produsen itu; invoice produsen lain/campuran/ambil-sendiri/belum lunas ditolak seluruhnya.
+- Refactor `createBatchAction` ke inti bersama → perilaku produsen TIDAK boleh berubah (pesan error, notifikasi sekali, rollback); diuji ulang + audit.
+- Cakupan daftar dibatasi 100 invoice per batch (seperti sekarang); seleksi masal tidak lintas halaman (per halaman 20).
+- Tidak ada migration (tabel batch sudah ada).
+
+### 22.3 Fase (tiap fase: tsc → security review → commit; push hanya bila diminta)
+| Fase | Isi |
+|---|---|
+| B1 | Filter status: loader + chip + paginasi (portal Pesanan, tab produk admin & produsen) |
+| B2 | `createBatchCore` + `createBatchAsAdminAction` + refactor `createBatchAction` |
+| B3 | Bar tindakan masal + popup Buat Batch di `OrdersTable`; pemasangan di tiga tempat |
