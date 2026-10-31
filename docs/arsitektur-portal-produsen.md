@@ -578,3 +578,30 @@ Ada endpoint cetak label (`POST …/order/api/v1/orders/print-label`, header `x-
 - **Audit `security-auditor` (0 Critical, 0 High, 2 Medium PRA-EKSISTING, 3 Low, 2 Info):** tak ada data penjual lain/email/modal/tautan pembayaran yang sampai ke produsen; item difilter di SQL; rincian biaya invoice campuran dihitung hanya dari item miliknya; kepemilikan dibuktikan sebelum memuat item; aksi admin `updateFulfillmentStatusAction` tetap menolak produsen (`getTenantAccess`). Diperbaiki: (L2) nama/tautan batch di detail produsen hanya bila batch milik produsen itu.
 - **TEMUAN PRA-EKSISTING — menunggu keputusan user (bukan bagian perubahan ini):** (M1) `updateFulfillmentStatusAction` dan `updateAdminShippingTrackingAction` (`finance/billing/actions.ts`) hanya memeriksa `getTenantAccess` tanpa `hasFullAccess(toko)` — pengurus ber-role tanpa akses toko bisa memajukan status/resi lewat pemanggilan langsung Server Action; (M2) halaman detail admin mengikuti akses BACA toko (viewer toko melihat email/alamat pelanggan) — konfirmasi kebijakan. Diterima (Low/Info): baris pengiriman tenant dipakai bersama pada invoice campuran (ongkir/resi gabungan terlihat); catatan invoice tampil penuh; kepemilikan dihitung dari `producerId` produk saat ini (memindahkan produk memindahkan visibilitas pesanan lama).
 - Uji manual: (1) bandingkan `pesanan/invoice/{id}` (admin) dengan `/pesanan/{id}` (produsen) untuk invoice yang sama: kartu Info Pelanggan, Item Pesanan (foto, harga, rincian biaya), Pengiriman & Fulfillment identik; produsen tanpa email, tanpa "Detail Pembayaran", tanpa tombol ubah status; (2) invoice campuran: produsen hanya melihat item miliknya + catatan rincian; (3) pesanan berbatch Dikemas: tombol Cetak Label + Input Resi di kedua halaman; (4) halaman admin lama tetap normal (regresi tampilan).
+
+## 24. Pengiriman per produsen (ongkir & resi per gudang) — RENCANA (2026-11-01, ditulis SEBELUM kode)
+> Keputusan arsitektur: **`docs/decisions/adr-0005-pengiriman-per-produsen.md`**. Dipicu masukan user: pesanan berisi barang dari dua produsen = dua gudang = dua ongkir/paket/resi.
+
+### 24.1 Temuan kode (2026-11-01)
+- `checkout/page.tsx:321` & `order-create-client.tsx`: `groupKey = sellerType:sellerId:originCityId` → produsen berbeda di kota sama / tanpa gudang TERGABUNG (salah); beda kota terpisah hanya karena kebetulan.
+- `cart/actions.ts` (`checkoutAction`): baris pengiriman datang dari KLIEN (`shipping.lines[]`: seller, asal, kurir, biaya); `invoice_items` hanya punya `seller_type/seller_id` (mitra), tidak mencatat produsen.
+- `invoice_shipping_lines` tanpa `producer_id`; kode fitur portal memakai pola "satu baris tenant per invoice" di: `lib/producer-batch.server.ts`, `producer-orders.server.ts`, `shipping-label/build.server.ts`, `order-detail.server.ts`, `app/api/produsen/resi/route.ts`, `pj-notification.server.ts`, `product-report.ts`, `app/api/products/[id]/export-buyers/route.ts`, `components/keuangan/billing/invoice-detail-client.tsx`.
+- `producer_shipment_invoices` UNIQUE(invoice_id): satu invoice paling banyak satu batch.
+
+### 24.2 Keputusan user (2026-11-01)
+1. Dua produsen gudang sekota/segudang → **selalu dua paket**.
+2. Pesanan lama → **dibiarkan** (isi otomatis `producer_id` hanya bila satu produsen).
+3. Judul paket untuk pelanggan → **"Paket dari {kota asal}"** (produsen tak diperlihatkan).
+4. Ambil di tempat → **ikut gudang produsen** (fallback lokasi produk/toko).
+
+### 24.3 Fase (tiap fase: tsc → matriks uji → security review → commit; push hanya bila diminta)
+| Fase | Isi |
+|---|---|
+| F1 | **Skema:** migration `0081` — `invoice_items.producer_id`, `invoice_shipping_lines.producer_id`, `producer_shipment_invoices.shipping_line_id` (+ backfill pesanan lama bila satu produsen; UNIQUE baru; UNIQUE(invoice_id) dilepas SETELAH backfill), DDL tenant baru, Drizzle. Kode lama tetap jalan (kolom nullable). |
+| F2 | **Checkout:** kelompok ongkir per produsen (publik `checkout/page.tsx` + `cart/actions.ts`; admin `pesanan/new` + `toko/actions.ts`): `producerId` per grup/baris, diturunkan & DIVALIDASI server dari produk di keranjang; `invoice_items.producer_id` disnapshot; pickup per paket ikut gudang produsen. |
+| F3 | **Loader & portal:** daftar Pesanan/tab produk/detail per PENGIRIMAN (kunci `shipping_line_id`), "Campuran" didefinisikan ulang; batch memuat pengiriman (`createBatchCore`, tambah/keluarkan, dikemas). |
+| F4 | **Label, resi, fulfillment:** label per pengiriman (berat, item, COD per baris), route resi per baris (CAS `shipping_line_id`), kartu fulfillment admin berlabel produsen, status pelanggan per paket. |
+| F5 | **Pelengkap:** laporan produk, ekspor pembeli, notifikasi PJ, tampilan keuangan — hilangkan asumsi satu baris tenant; matriks uji akhir. |
+
+### 24.4 Matriks uji (dipakai tiap fase)
+A+B produsen sama → 1 paket · A(P1)+B(P2) gudang beda kota → 2 · A(P1)+B(P2) gudang SAMA kota → 2 · A(P1)+C(toko) → 2 · A(P1)+D(mitra) → 2 · produsen tanpa gudang + produsen bergudang · pickup per paket · gratis ongkir per produk · pesanan lama (satu baris campuran) tetap tampil sebagai campuran · dua produsen masing-masing membuat batch/cetak/resi untuk invoice yang sama tanpa saling mengganggu · pelanggan membayar SATU kali.
