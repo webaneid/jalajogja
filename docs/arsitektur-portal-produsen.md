@@ -12,7 +12,7 @@
 > | § 21 | Cetak Label PDF (7 format, Inter, Code128, Logo Kurir di Pengaturan Toko; cetak = Dikemas otomatis) (L1–L3b) | DEPLOYED, belum dikonfirmasi user |
 > | § 22 | Buat Batch masal (produsen + admin atas nama produsen) + filter status (B1–B3) | DEPLOYED, belum dikonfirmasi user |
 > | § 23 | Detail pesanan admin = produsen (`OrderDetailView`), aksi Cetak Label + Input/Ubah Resi | DEPLOYED (sampai koreksi § 23.4), belum dikonfirmasi user |
-> | § 24 | **Pengiriman per produsen (ADR-0005)** — F1 skema (migration 0081) DEPLOYED; **F2 checkout + F3 portal per pengiriman (migration 0082) SUDAH DI-PUSH, BELUM DEPLOY**; F4–F5 sisa | lihat § 24.8 |
+> | § 24 | **Pengiriman per produsen (ADR-0005)** — F1 skema (migration 0081) DEPLOYED; **F2 checkout + F3 portal per pengiriman (migration 0082) DEPLOYED 2026-11-01 (VPS di `6241288`, migration 0082 jalan 1×, build+restart OK, log bersih); uji browser § 24.8 belum**; F4–F5 sisa | lihat § 24.8 |
 >
 > **Langkah berikutnya (urut):** deploy F2+F3 (langkah di CLAUDE.md "Status Project (terkini)" dan § 24.8) → uji skenario multi-produsen di `forbis` → F4 (verifikasi mendalam label/resi/fulfillment) → F5 (laporan produk, ekspor pembeli, notifikasi PJ) →
 > keputusan terbuka (lihat CLAUDE.md). Aturan kerja: dokumen dulu → kode → tsc+build → audit `security-auditor` → commit; push hanya bila diminta.
