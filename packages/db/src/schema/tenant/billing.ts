@@ -346,6 +346,9 @@ export function createInvoiceShippingLinesTable(s: ReturnType<typeof pgSchema>) 
     pickupMapsUrl:      text("pickup_maps_url"),
     // Konfirmasi COD diterima — TANPA default, selalu null sampai diisi eksplisit oleh aksi
     // konfirmasi (lesson lama: kolom konfirmasi tidak boleh punya DEFAULT NOW()).
+    // Penanda notifikasi "Diproses" sudah terkirim (dari jalur Portal Produsen) — cegah spam saat invoice
+    // dikeluarkan lalu dimasukkan ke batch berulang. null = belum pernah. Hanya diisi jalur batch produsen.
+    processingNotifiedAt: timestamp("processing_notified_at", { withTimezone: true }),
     codConfirmedAt:  timestamp("cod_confirmed_at", { withTimezone: true }),
     codPaymentId:    uuid("cod_payment_id"), // referensi ke payments.id, tanpa FK constraint
     createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

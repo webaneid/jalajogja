@@ -1457,6 +1457,7 @@ export async function createTenantSchemaInDb(
         pickup_location_name TEXT,
         pickup_address       TEXT,
         pickup_maps_url      TEXT,
+        processing_notified_at TIMESTAMPTZ,
         cod_confirmed_at TIMESTAMPTZ,
         cod_payment_id   UUID,
         created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
@@ -1465,6 +1466,30 @@ export async function createTenantSchemaInDb(
     `));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_shipping_invoice_id ON "${s}".invoice_shipping_lines(invoice_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_shipping_seller     ON "${s}".invoice_shipping_lines(seller_type, seller_id)`));
+
+    // ── Batch pengiriman produsen (Portal Produsen, docs/arsitektur-portal-produsen.md § 19) ──
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".producer_shipment_batches (
+        id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        producer_id   UUID        NOT NULL REFERENCES "${s}".producers(id) ON DELETE RESTRICT,
+        name          TEXT        NOT NULL,
+        shipping_date DATE        NOT NULL,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT producer_shipment_batches_name_uniq UNIQUE (producer_id, name)
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_shipment_batches_producer_idx ON "${s}".producer_shipment_batches(producer_id)`));
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".producer_shipment_invoices (
+        id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        batch_id   UUID        NOT NULL REFERENCES "${s}".producer_shipment_batches(id) ON DELETE RESTRICT,
+        invoice_id UUID        NOT NULL REFERENCES "${s}".invoices(id) ON DELETE RESTRICT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT producer_shipment_invoices_invoice_uniq UNIQUE (invoice_id)
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_shipment_invoices_batch_idx ON "${s}".producer_shipment_invoices(batch_id)`));
 
     // ── 39. SEO Page Overrides (Fase 3, docs/arsitektur-seo.md § 3.3) ───────
     await tx.execute(sql.raw(`

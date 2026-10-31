@@ -28,6 +28,7 @@ import { createSettingsTable, createMenusTable, createMenuItemsTable } from "./s
 import { createSeoPageOverridesTable } from "./seo";
 import { createMitraApplicationsTable, createMitrasTable } from "./mitra";
 import { createProducersTable } from "./producers";
+import { createProducerShipmentBatchesTable, createProducerShipmentInvoicesTable } from "./producer-shipments";
 import {
   createCartsTable,
   createCartItemsTable,
@@ -109,6 +110,8 @@ function buildTenantSchema(slug: string) {
     mitraApplications:  createMitraApplicationsTable(s),
     mitras:             createMitrasTable(s),
     producers:          createProducersTable(s),
+    producerShipmentBatches:  createProducerShipmentBatchesTable(s),
+    producerShipmentInvoices: createProducerShipmentInvoicesTable(s),
     // Settings & navigasi
     settings: createSettingsTable(s),
     menus: createMenusTable(s),
@@ -153,4 +156,5 @@ export * from "./settings";
 export * from "./billing";
 export * from "./mitra";
 export * from "./producers";
+export * from "./producer-shipments";
 export * from "./seo";
