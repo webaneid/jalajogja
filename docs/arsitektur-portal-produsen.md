@@ -469,7 +469,7 @@ Ada endpoint cetak label (`POST …/order/api/v1/orders/print-label`, header `x-
 1. **Semua 7 format** sejak rilis pertama: kertas biasa 1 / 2 / 4 / 6 label per halaman (A4; 1 & 2 juga cocok A5) dan thermal 10×10, 10×15, 8×6 cm.
 2. **Dikemas otomatis:** produsen DAN admin boleh; mencetak label = tahap mengemas → pesanan berstatus **Diproses** otomatis menjadi **Dikemas** saat PDF berhasil dibuat (satu langkah saja, mengikuti aturan fulfillment; cetak ulang aman). **Tombol manual "Tandai Dikemas" TETAP ada** sebagai jalur alternatif (user: "atau dia mengubah manual, klik dikemas").
 3. **Barcode bawah = nama batch** (mis. 011120260001) untuk memindai tumpukan paket per batch; label di luar batch menampilkan "Dibuat pada" saja.
-4. **Logo kurir:** API tidak menyediakan → folder aset `public/couriers/{kode}.svg` (16 kode di `lib/rajaongkir-couriers.ts`), diisi user; tanpa berkas = badge teks tebal.
+4. **Logo kurir:** API tidak menyediakan → **diunggah admin di Pengaturan Toko** per kurir (16 kode di `lib/rajaongkir-couriers.ts`; daftar mengikuti kurir yang diaktifkan tenant di add-on RajaOngkir). Tersimpan di settings tenant (kunci `courier_logos`, `{ kode: url gambar }`; gambar lewat Media Library admin). Tanpa logo = badge teks tebal. (Menggantikan rencana awal "folder `public/couriers`".)
 
 ### 21.3 Rancangan
 - **Mesin:** HTML+CSS → PDF dengan Playwright (pola sama sertifikat event/surat). Satu template label berparameter (ukuran label + grid per halaman + kepadatan font); format kecil (8×6) memakai tata letak ringkas. Barcode Code128 lewat `bwip-js` (dependency baru; `qrcode` yang ada hanya QR).
@@ -484,3 +484,9 @@ Ada endpoint cetak label (`POST …/order/api/v1/orders/print-label`, header `x-
 | L1 | Prototipe desain label (7 format) dengan data contoh → PDF untuk ditinjau user, SEBELUM disambung ke data/route |
 | L2 | Route `/api/labels` + data nyata + barcode + izin akses + efek Dikemas |
 | L3 | Popup format + ikon printer/checkbox di `OrdersTable`, batch, titik masuk admin |
+| L3b | Pengaturan Toko → bagian **Logo Kurir** (unggah per kurir, simpan `courier_logos`); label memakai logo ini (disematkan base64 ke PDF agar tak bergantung jaringan) |
+
+### 21.5 Status L1 — prototipe desain (2026-11-01)
+- [x] **L1 SELESAI** (`tsc` bersih; belum tersambung ke data/route): `lib/shipping-label/{types,formats,render}.ts` (mesin render murni: `renderLabelsHtml(LabelData[], format)`, Code128 via `bwip-js` — dependency baru) + alat pratinjau `apps/web/scripts/preview-labels.ts` (`bun run scripts/preview-labels.ts <folder> [format…]`, data contoh, tanpa DB) → 7 PDF.
+- Desain: monokrom (aman thermal), 4 varian tata letak (`wide` untuk A4 1/2/4 per halaman, `tall` 10×15, `compact` 10×10 & A4 6/halaman, `mini` 8×6); kotak penerima/pengirim mengisi ruang sisa; COD tampil inversi hitam + nominal tagih; "Member of {tenant}" + logo tenant + logo kurir (atau badge teks); barcode invoice (kanan atas) + barcode batch (bawah, hanya bila di batch); alamat panjang dipotong rapi (line-clamp).
+- Belum: font Inter ter-embed (sekarang Helvetica/Arial fallback — di VPS cek font yang tersedia), sumber logo tenant/kurir dari data nyata, route, popup, efek Dikemas (L2–L3b).
