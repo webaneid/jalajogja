@@ -336,6 +336,7 @@ export function createInvoiceShippingLinesTable(s: ReturnType<typeof pgSchema>) 
     trackingNumber:  text("tracking_number"),            // resi, diisi mitra setelah kirim
     // Foto/bukti resi (path di bucket tenant) — diisi Portal Produsen saat status → shipped. null = tanpa foto (jalur admin/mitra).
     trackingProofPath: text("tracking_proof_path"),
+    trackingProofMediaId: uuid("tracking_proof_media_id"), // → public.member_media.id (tanpa FK lintas schema)
     shippedAt:       timestamp("shipped_at",   { withTimezone: true }),
     deliveredAt:     timestamp("delivered_at", { withTimezone: true }),
     status:          text("status", { enum: SHIPPING_STATUSES }).notNull().default("pending"),

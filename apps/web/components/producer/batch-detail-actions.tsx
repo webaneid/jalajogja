@@ -33,8 +33,9 @@ export function BatchPackAll({ slug, batchId, processingCount }: { slug: string;
 }
 
 /** Tombol per baris: Tandai Dikemas (Diproses) · Input Resi (Dikemas) · Keluarkan (belum ada resi) · resi + foto (Dikirim). */
-export function BatchRowActions({ slug, batchId, invoiceId, status, trackingNumber, proofUrl }: {
+export function BatchRowActions({ slug, batchId, invoiceId, status, trackingNumber, proofUrl, canChangePhoto }: {
   slug: string; batchId: string; invoiceId: string; status: string | null; trackingNumber: string | null; proofUrl: string | null;
+  canChangePhoto: boolean; // false bila foto resi sudah lewat masa simpan 30 hari (dihapus otomatis)
 }) {
   const { error, pending, run } = useAct();
   const canRemove = status === "processing" || status === "packed";
@@ -44,7 +45,9 @@ export function BatchRowActions({ slug, batchId, invoiceId, status, trackingNumb
       {(status === "shipped" || status === "delivered") && (
         <div className="text-right text-xs">
           {trackingNumber && <div className="font-mono font-medium">{trackingNumber}</div>}
-          {proofUrl && <a href={proofUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Foto resi</a>}
+          {proofUrl
+            ? <a href={proofUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Foto resi</a>
+            : <span className="text-muted-foreground">Foto resi sudah dihapus (lewat 30 hari)</span>}
         </div>
       )}
       <div className="flex flex-wrap justify-end gap-1">
@@ -55,33 +58,41 @@ export function BatchRowActions({ slug, batchId, invoiceId, status, trackingNumb
         {status === "packed" && !resiOpen && (
           <button onClick={() => setResiOpen(true)} className="rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground">Input Resi</button>
         )}
+        {status === "shipped" && !resiOpen && (
+          <button onClick={() => setResiOpen(true)} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted">Ubah Resi</button>
+        )}
         {canRemove && (
           <button disabled={pending} onClick={() => { if (window.confirm("Keluarkan pesanan ini dari batch? Status kembali ke Menunggu.")) run(() => removeInvoiceFromBatchAction(slug, batchId, invoiceId)); }}
             className="rounded-md border border-border px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50">Keluarkan</button>
         )}
       </div>
-      {resiOpen && status === "packed" && <ResiForm slug={slug} batchId={batchId} invoiceId={invoiceId} onClose={() => setResiOpen(false)} />}
+      {resiOpen && (status === "packed" || status === "shipped") && (
+        <ResiForm slug={slug} batchId={batchId} invoiceId={invoiceId} edit={status === "shipped"} initialResi={trackingNumber ?? ""} canChangePhoto={canChangePhoto} onClose={() => setResiOpen(false)} />
+      )}
       {error && <p className="max-w-[220px] text-right text-xs text-red-700">{error}</p>}
     </div>
   );
 }
 
-/** Form nomor resi + foto resi → POST /api/produsen/resi (status → Dikirim). Kompresi klien hanya hemat bandwidth. */
-function ResiForm({ slug, batchId, invoiceId, onClose }: { slug: string; batchId: string; invoiceId: string; onClose: () => void }) {
+/** Form nomor resi + foto resi → POST /api/produsen/resi. Buat (Dikemas → Dikirim) atau ubah (sudah Dikirim; foto opsional). */
+function ResiForm({ slug, batchId, invoiceId, edit, initialResi, canChangePhoto, onClose }: {
+  slug: string; batchId: string; invoiceId: string; edit: boolean; initialResi: string; canChangePhoto: boolean; onClose: () => void;
+}) {
   const router = useRouter();
-  const [resi, setResi] = useState("");
+  const [resi, setResi] = useState(initialResi);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const changed = edit ? (resi.trim() !== initialResi || !!file) : (resi.trim().length >= 3 && !!file);
   const submit = async () => {
-    if (!file) { setError("Foto resi wajib diunggah."); return; }
+    if (!edit && !file) { setError("Foto resi wajib diunggah."); return; }
     setBusy(true); setError(null);
     try {
-      const small = await compressImage(file);
       const fd = new FormData();
       fd.set("batchId", batchId); fd.set("invoiceId", invoiceId);
-      fd.set("trackingNumber", resi.trim()); fd.set("file", small);
+      fd.set("trackingNumber", resi.trim() === initialResi && edit ? "" : resi.trim());
+      if (file) fd.set("file", await compressImage(file));
       const res = await fetch(`/api/produsen/resi?tenant=${encodeURIComponent(slug)}`, { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.error ?? "Gagal menyimpan resi."); return; }
@@ -97,10 +108,17 @@ function ResiForm({ slug, batchId, invoiceId, onClose }: { slug: string; batchId
   return (
     <div className="w-60 space-y-2 rounded-md border border-border bg-background p-2 text-left">
       <input value={resi} onChange={(e) => setResi(e.target.value)} placeholder="Nomor resi" maxLength={40} className="h-8 w-full rounded border border-border bg-background px-2 font-mono text-xs" />
-      <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="w-full text-xs" />
+      {(!edit || canChangePhoto) ? (
+        <label className="block space-y-0.5">
+          <span className="text-[11px] text-muted-foreground">{edit ? "Ganti foto resi (opsional)" : "Foto resi (wajib)"}</span>
+          <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="w-full text-xs" />
+        </label>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">Foto resi sudah lewat masa simpan 30 hari — hanya nomor resi yang bisa diubah.</p>
+      )}
       {error && <p className="text-xs text-red-700">{error}</p>}
       <div className="flex gap-1">
-        <button disabled={busy || resi.trim().length < 3 || !file} onClick={submit} className="rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50">{busy ? "Mengirim…" : "Kirim"}</button>
+        <button disabled={busy || !changed} onClick={submit} className="rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50">{busy ? "Menyimpan…" : edit ? "Simpan" : "Kirim"}</button>
         <button disabled={busy} onClick={onClose} className="rounded border border-border px-2 py-1 text-xs hover:bg-muted">Batal</button>
       </div>
     </div>

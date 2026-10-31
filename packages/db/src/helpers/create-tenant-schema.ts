@@ -1458,6 +1458,7 @@ export async function createTenantSchemaInDb(
         pickup_address       TEXT,
         pickup_maps_url      TEXT,
         tracking_proof_path TEXT,
+        tracking_proof_media_id UUID,
         processing_notified_at TIMESTAMPTZ,
         cod_confirmed_at TIMESTAMPTZ,
         cod_payment_id   UUID,

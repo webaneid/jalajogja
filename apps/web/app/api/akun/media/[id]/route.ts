@@ -4,6 +4,7 @@ import { eq, and }                   from "drizzle-orm";
 import { db, members, memberMedia }  from "@jalajogja/db";
 import { auth }                      from "@/lib/auth";
 import { deleteFile }                from "@/lib/minio";
+import { createTenantDb }            from "@jalajogja/db";
 
 async function getSessionMember(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -34,6 +35,7 @@ export async function DELETE(
       path:             memberMedia.path,
       variants:         memberMedia.variants,
       sourceTenantSlug: memberMedia.sourceTenantSlug,
+      purpose:          memberMedia.purpose,
     })
     .from(memberMedia)
     .where(and(eq(memberMedia.id, id), eq(memberMedia.memberId, member!.id)))
@@ -49,6 +51,16 @@ export async function DELETE(
 
   await Promise.allSettled(pathsToDelete.map(p => deleteFile(file.sourceTenantSlug, p)));
   await db.delete(memberMedia).where(and(eq(memberMedia.id, id), eq(memberMedia.memberId, member!.id)));
+
+  // Bukti pengiriman produsen: kosongkan rujukan di pengiriman supaya tidak ada tautan foto rusak (nomor resi tetap).
+  if (file.purpose === "resi") {
+    try {
+      const { db: tdb, schema } = createTenantDb(file.sourceTenantSlug); // slug dari baris DB, bukan dari request
+      await tdb.update(schema.invoiceShippingLines)
+        .set({ trackingProofPath: null, trackingProofMediaId: null, updatedAt: new Date() })
+        .where(eq(schema.invoiceShippingLines.trackingProofMediaId, id));
+    } catch (e) { console.error("[akun-media] kosongkan rujukan resi gagal:", e); }
+  }
 
   return NextResponse.json({ success: true });
 }

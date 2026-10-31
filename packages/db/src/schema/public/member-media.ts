@@ -24,6 +24,10 @@ export const memberMedia = pgTable("member_media", {
   originalMime: text("original_mime"),
   originalExpiresAt: timestamp("original_expires_at", { withTimezone: true }),
 
+  // null = media umum; 'resi' = bukti pengiriman produsen (memuat data pembeli → tidak tampil di picker cover,
+  // dihapus otomatis 30 hari setelah tanggal kirim). Docs: arsitektur-portal-produsen.md § 19.12.
+  purpose: text("purpose"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   memberIdIdx: index("idx_member_media_member_id").on(t.memberId),

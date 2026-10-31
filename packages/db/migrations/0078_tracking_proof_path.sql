@@ -1,5 +1,5 @@
--- Migration: foto/bukti resi pengiriman (Portal Produsen S4) — docs/arsitektur-portal-produsen.md § 19.10.
--- Kolom invoice_shipping_lines.tracking_proof_path (nullable). Idempotent; tidak mengubah data.
+-- Migration: foto/bukti resi pengiriman (Portal Produsen S4) — docs/arsitektur-portal-produsen.md § 19.10 + 19.12.
+-- Kolom invoice_shipping_lines.tracking_proof_path + tracking_proof_media_id (nullable). Idempotent; tidak mengubah data.
 --
 -- Jalankan: docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/0078_tracking_proof_path.sql
 
@@ -15,6 +15,7 @@ BEGIN
       CONTINUE;
     END IF;
     EXECUTE format('ALTER TABLE %I.invoice_shipping_lines ADD COLUMN IF NOT EXISTS tracking_proof_path TEXT', t);
+    EXECUTE format('ALTER TABLE %I.invoice_shipping_lines ADD COLUMN IF NOT EXISTS tracking_proof_media_id UUID', t);
     RAISE NOTICE 'OK %', t;
   END LOOP;
 END $$;

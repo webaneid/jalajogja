@@ -27,12 +27,12 @@ export type ProducerOrderRow = {
   deliveryMethod: string | null;        // 'courier' | 'pickup' (ambil sendiri tidak dikirim kurir → tak bisa di batch)
   trackingNumber: string | null;        // resi (diisi saat Dikirim)
   trackingProofPath: string | null;     // path foto resi di bucket tenant (URL dibentuk di halaman)
+  shippedAt:     Date | null;           // tanggal kirim (dasar masa simpan foto resi 30 hari)
   isMixed:       boolean;               // ada item selain milik produsen ini di invoice yang sama
 };
 
 export type ProducerOrderDetail = ProducerOrderRow & {
   checkoutAddress: string;
-  shippedAt:       Date | null;
 };
 
 /** id produk + id variasi milik produsen (invoice_items.itemId = id produk untuk simple, id variasi untuk variable). */
@@ -67,7 +67,7 @@ async function buildRows(
       deliveryMethod: schema.invoiceShippingLines.deliveryMethod, courier: schema.invoiceShippingLines.courier,
       service: schema.invoiceShippingLines.service, paymentMethod: schema.invoiceShippingLines.paymentMethod,
       status: schema.invoiceShippingLines.status, createdAt: schema.invoiceShippingLines.createdAt,
-      trackingNumber: schema.invoiceShippingLines.trackingNumber, trackingProofPath: schema.invoiceShippingLines.trackingProofPath,
+      trackingNumber: schema.invoiceShippingLines.trackingNumber, trackingProofPath: schema.invoiceShippingLines.trackingProofPath, shippedAt: schema.invoiceShippingLines.shippedAt,
     }).from(schema.invoiceShippingLines).where(inArray(schema.invoiceShippingLines.invoiceId, invoiceIds))
       .orderBy(schema.invoiceShippingLines.createdAt),
   ]);
@@ -93,6 +93,7 @@ async function buildRows(
       deliveryMethod: line?.deliveryMethod ?? null,
       trackingNumber: line?.trackingNumber ?? null,
       trackingProofPath: line?.trackingProofPath ?? null,
+      shippedAt: line?.shippedAt ?? null,
       isMixed: mine.length !== its.length,
     };
   });
@@ -155,16 +156,9 @@ export async function getProducerOrder(
   const [row] = await buildRows(tenantClient, [inv], owned);
   if (!row || row.items.length === 0) return null; // bukan invoice milik produsen ini
 
-  const [line] = await db.select({
-    shippedAt: schema.invoiceShippingLines.shippedAt,
-  }).from(schema.invoiceShippingLines)
-    .where(and(eq(schema.invoiceShippingLines.invoiceId, inv.id), eq(schema.invoiceShippingLines.sellerType, "tenant")))
-    .limit(1);
-
   return {
     ...row,
     checkoutAddress: [inv.shippingAddress, inv.shippingCityName].filter((p): p is string => !!p?.trim()).join(", "),
-    shippedAt: line?.shippedAt ?? null,
   };
 }
 

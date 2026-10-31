@@ -24,6 +24,7 @@ export type MemberMediaItem = {
   mimeType: string;
   url: string;
   variants?: Record<string, string> | null;
+  purpose?: string | null; // 'resi' = bukti pengiriman produsen (hanya tampil di /akun/media, bukan di picker)
   createdAt: string;
 };
 

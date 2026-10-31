@@ -24,7 +24,7 @@ export default function AkunMediaPage() {
 
   async function fetchMedia(page = 0) {
     setLoading(true);
-    const res = await fetch(`/api/akun/media?tenant=${slug}&page=${page}`);
+    const res = await fetch(`/api/akun/media?tenant=${slug}&page=${page}&include=all`);
     if (res.ok) {
       const data = await res.json();
       setMedia(data.data ?? []);
@@ -157,6 +157,9 @@ export default function AkunMediaPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {media.map((item) => (
             <div key={item.id} className="group relative aspect-square rounded-lg border border-border overflow-hidden bg-muted">
+              {item.purpose === "resi" && (
+                <span className="absolute left-1 top-1 z-10 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white">Bukti pengiriman</span>
+              )}
               {item.mimeType.startsWith("image/") ? (
                 <Image
                   src={resolveThumb(item)}

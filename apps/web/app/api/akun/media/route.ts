@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse }    from "next/server";
-import { eq, desc }                    from "drizzle-orm";
+import { and, eq, desc, isNull }        from "drizzle-orm";
 import { db, members, memberMedia }    from "@jalajogja/db";
 import { auth }                        from "@/lib/auth";
 import { publicUrl }                   from "@/lib/minio";
@@ -31,7 +31,8 @@ export async function GET(req: NextRequest) {
   const rows = await db
     .select()
     .from(memberMedia)
-    .where(eq(memberMedia.memberId, member!.id))
+    // Media bertujuan khusus (purpose, mis. bukti pengiriman produsen) disembunyikan dari picker; /akun/media meminta include=all
+    .where(and(eq(memberMedia.memberId, member!.id), req.nextUrl.searchParams.get("include") === "all" ? undefined : isNull(memberMedia.purpose)))
     .orderBy(desc(memberMedia.createdAt))
     .limit(PAGE_SIZE)
     .offset(page * PAGE_SIZE);
