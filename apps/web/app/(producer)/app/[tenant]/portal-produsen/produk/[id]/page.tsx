@@ -9,7 +9,7 @@ import { getProducerAccess } from "@/lib/producer-access.server";
 import { isValidUuid } from "@/lib/is-uuid";
 import { loadProductDetail } from "@/lib/product-detail.server";
 import { resolveProductBuyers } from "@/lib/product-buyers.server";
-import { listProductOrders } from "@/lib/producer-orders.server";
+import { listProductOrders, parseStatusFilter } from "@/lib/producer-orders.server";
 import { ProductDetailHeader } from "@/components/toko/product-detail/product-detail-header";
 import { ProductDetailTabNav, productTabs, resolveActiveTab } from "@/components/toko/product-detail/product-detail-tabs";
 import { TabRingkasan } from "@/components/toko/product-detail/tab-ringkasan";
@@ -20,10 +20,10 @@ export default async function ProducerProductDetailPage({
   params, searchParams,
 }: {
   params: Promise<{ tenant: string; id: string }>;
-  searchParams: Promise<{ tab?: string; q?: string; page?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string; page?: string; status?: string }>;
 }) {
   const { tenant: slug, id } = await params;
-  const { tab, q, page } = await searchParams;
+  const { tab, q, page, status } = await searchParams;
 
   const access = await getProducerAccess(slug);
   if (!access) redirect("/no-tenant-access");
@@ -53,9 +53,11 @@ export default async function ProducerProductDetailPage({
   // Tab Pesanan Masuk: tabel SAMA dengan menu Pesanan (pesanan lunas produk ini). Kepemilikan produk sudah terbukti di atas.
   const pageNum = Math.min(10_000, Math.max(1, parseInt(page ?? "1") || 1));
   const query = (q ?? "").trim().slice(0, 80);
-  const { rows: orderRows, total: orderTotal } = active === "pesanan"
-    ? await listProductOrders(tenantClient, detail.id, { q: query, page: pageNum, pageSize: 20 })
-    : { rows: [], total: 0 };
+  const statusFilter = parseStatusFilter(status);
+  const emptyCounts = { all: 0, pending: 0, processing: 0, packed: 0, shipped: 0, delivered: 0 };
+  const { rows: orderRows, total: orderTotal, statusCounts } = active === "pesanan"
+    ? await listProductOrders(tenantClient, detail.id, { q: query, page: pageNum, pageSize: 20, status: statusFilter })
+    : { rows: [], total: 0, statusCounts: emptyCounts };
 
   return (
     <div className="space-y-6">
@@ -66,7 +68,7 @@ export default async function ProducerProductDetailPage({
       {active === "ringkasan" && <TabRingkasan counts={counts} />}
       {active === "pesanan" && (
         <TabPesanan slug={slug} productId={detail.id} rows={orderRows} total={orderTotal} page={pageNum} pageSize={20} q={query}
-          basePath={basePath} viewHref={(oid) => `/app/${slug}/portal-produsen/pesanan/${oid}`} canExport={false} print={{ slug, blockMixed: false }} />
+          basePath={basePath} viewHref={(oid) => `/app/${slug}/portal-produsen/pesanan/${oid}`} canExport={false} print={{ slug, blockMixed: false }} status={statusFilter} statusCounts={statusCounts} />
       )}
       {active === "detail" && <TabDetail product={detail} tenantSlug={access.tenant.slug} showCost />}
     </div>

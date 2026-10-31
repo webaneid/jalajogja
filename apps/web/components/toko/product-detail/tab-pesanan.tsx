@@ -6,19 +6,23 @@ import Link from "next/link";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrdersTable } from "@/components/orders/orders-table";
-import type { ProducerOrderRow } from "@/lib/producer-orders.server";
+import { StatusFilter } from "@/components/orders/status-filter";
+import type { ProducerOrderRow, OrderStatusFilter, StatusCounts } from "@/lib/producer-orders.server";
 
-export function TabPesanan({ slug, productId, rows, total, page, pageSize, q, basePath, viewHref, canExport, print }: {
+export function TabPesanan({ slug, productId, rows, total, page, pageSize, q, basePath, viewHref, canExport, print, status, statusCounts }: {
   slug: string; productId: string; rows: ProducerOrderRow[]; total: number; page: number; pageSize: number; q: string;
   basePath: string;                       // /app/{slug}/toko/produk/{id} atau /app/{slug}/portal-produsen/produk/{id}
   viewHref: (invoiceId: string) => string;
   canExport: boolean;
   print?: { slug: string; blockMixed: boolean }; // cetak label (satuan + masal)
+  status: OrderStatusFilter | null;               // filter status pengiriman aktif
+  statusCounts: StatusCounts;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const href = (p: number) => {
+  const href = (p: number, st: OrderStatusFilter | null = status) => {
     const sp = new URLSearchParams({ tab: "pesanan" });
     if (q) sp.set("q", q);
+    if (st) sp.set("status", st);
     if (p > 1) sp.set("page", String(p));
     return `${basePath}?${sp.toString()}`;
   };
@@ -50,13 +54,16 @@ export function TabPesanan({ slug, productId, rows, total, page, pageSize, q, ba
 
       <form action={basePath} method="get" className="flex flex-wrap items-center gap-2">
         <input type="hidden" name="tab" value="pesanan" />
+        {status && <input type="hidden" name="status" value={status} />}
         <input name="q" defaultValue={q} placeholder="Cari nomor invoice / nama pemesan…" className="h-9 w-full max-w-xs rounded-md border border-border bg-background px-3 text-sm" />
         <button type="submit" className="h-9 rounded-md border border-border bg-card px-3 text-sm font-medium hover:bg-muted">Cari</button>
-        {q && <Link href={`${basePath}?tab=pesanan`} className="text-sm text-muted-foreground hover:underline">Reset</Link>}
+        {(q || status) && <Link href={`${basePath}?tab=pesanan`} className="text-sm text-muted-foreground hover:underline">Reset</Link>}
       </form>
 
+      <StatusFilter active={status} counts={statusCounts} hrefFor={(st) => href(1, st)} />
+
       <OrdersTable rows={rows} showMixed={false} print={print} viewHref={viewHref}
-        emptyText={q ? "Tidak ada pesanan yang cocok." : "Belum ada pesanan lunas untuk produk ini."} />
+        emptyText={q || status ? "Tidak ada pesanan yang cocok." : "Belum ada pesanan lunas untuk produk ini."} />
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm">

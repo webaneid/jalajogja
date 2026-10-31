@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { resolveProductBuyers } from "@/lib/product-buyers.server";
-import { listProductOrders } from "@/lib/producer-orders.server";
+import { listProductOrders, parseStatusFilter } from "@/lib/producer-orders.server";
 import { loadProductDetail } from "@/lib/product-detail.server";
 import { resolveProducers, resolveInternalProducer } from "@/lib/producer.server";
 import { buildProductReport, buildProductConclusion } from "@/lib/product-report";
@@ -26,10 +26,10 @@ export default async function ProdukDetailPage({
   params, searchParams,
 }: {
   params: Promise<{ tenant: string; id: string }>;
-  searchParams: Promise<{ tab?: string; q?: string; page?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string; page?: string; status?: string }>;
 }) {
   const { tenant: slug, id: productId } = await params;
-  const { tab, q, page } = await searchParams;
+  const { tab, q, page, status } = await searchParams;
   if (!isValidUuid(productId)) notFound();
   const access = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
@@ -63,10 +63,11 @@ export default async function ProdukDetailPage({
   if (active === "pesanan") {
     const pageNum = Math.min(10_000, Math.max(1, parseInt(page ?? "1") || 1));
     const query = (q ?? "").trim().slice(0, 80);
-    const { rows: orderRows, total } = await listProductOrders(tenantClient, productId, { q: query, page: pageNum, pageSize: 20 });
+    const statusFilter = parseStatusFilter(status);
+    const { rows: orderRows, total, statusCounts } = await listProductOrders(tenantClient, productId, { q: query, page: pageNum, pageSize: 20, status: statusFilter });
     pesananTab = (
       <TabPesanan slug={slug} productId={productId} rows={orderRows} total={total} page={pageNum} pageSize={20} q={query}
-        basePath={`/app/${slug}/toko/produk/${productId}`} viewHref={(id) => `/app/${slug}/toko/pesanan/invoice/${id}`} canExport print={{ slug, blockMixed: false }} />
+        basePath={`/app/${slug}/toko/produk/${productId}`} viewHref={(id) => `/app/${slug}/toko/pesanan/invoice/${id}`} canExport print={{ slug, blockMixed: false }} status={statusFilter} statusCounts={statusCounts} />
     );
   }
 

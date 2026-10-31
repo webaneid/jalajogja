@@ -99,46 +99,70 @@ async function buildRows(
   });
 }
 
+export const ORDER_STATUS_FILTERS = ["pending", "processing", "packed", "shipped", "delivered"] as const;
+export type OrderStatusFilter = typeof ORDER_STATUS_FILTERS[number];
+/** Nilai ?status= dari URL → filter valid atau null (= Semua). */
+export const parseStatusFilter = (v: unknown): OrderStatusFilter | null =>
+  ORDER_STATUS_FILTERS.find((s) => s === v) ?? null;
+export type StatusCounts = Record<OrderStatusFilter, number> & { all: number };
+const EMPTY_COUNTS: StatusCounts = { all: 0, pending: 0, processing: 0, packed: 0, shipped: 0, delivered: 0 };
+
 async function listByOwned(
   tenantClient: TenantDb,
   owned: Awaited<ReturnType<typeof producerItemIds>>,
-  opts: { q?: string; page: number; pageSize: number },
-): Promise<{ rows: ProducerOrderRow[]; total: number }> {
+  opts: { q?: string; page: number; pageSize: number; status?: OrderStatusFilter | null },
+): Promise<{ rows: ProducerOrderRow[]; total: number; statusCounts: StatusCounts }> {
   const { db, schema } = tenantClient;
-  if (owned.ids.size === 0) return { rows: [], total: 0 };
+  if (owned.ids.size === 0) return { rows: [], total: 0, statusCounts: { ...EMPTY_COUNTS } };
 
   // Invoice yang memuat item-item ini (subquery — tanpa menarik semua id ke memori)
   const mineInvoiceIds = db.select({ id: schema.invoiceItems.invoiceId }).from(schema.invoiceItems)
     .where(and(eq(schema.invoiceItems.itemType, "product"), inArray(schema.invoiceItems.itemId, [...owned.ids])));
 
+  const L = schema.invoiceShippingLines;
+  // Filter status pengiriman = status baris pengiriman penjual tenant (satu sumber dengan admin & pelanggan)
+  const withStatus = opts.status
+    ? inArray(schema.invoices.id, db.select({ id: L.invoiceId }).from(L).where(and(eq(L.sellerType, "tenant"), eq(L.status, opts.status))))
+    : undefined;
+
   const q = (opts.q ?? "").trim().slice(0, 80);
   const where = and(
     eq(schema.invoices.status, "paid"),
     inArray(schema.invoices.id, mineInvoiceIds),
+    withStatus,
     q ? or(
       ilike(schema.invoices.invoiceNumber, `%${escapeLike(q)}%`),
       ilike(schema.invoices.customerName, `%${escapeLike(q)}%`),
     ) : undefined,
   );
 
-  const [invoices, [{ total }]] = await Promise.all([
+  const [invoices, [{ total }], countRows] = await Promise.all([
     db.select({
       id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber, createdAt: schema.invoices.createdAt,
       customerName: schema.invoices.customerName, customerPhone: schema.invoices.customerPhone,
     }).from(schema.invoices).where(where).orderBy(desc(schema.invoices.createdAt))
       .limit(opts.pageSize).offset((opts.page - 1) * opts.pageSize),
     db.select({ total: sql<number>`count(*)::int` }).from(schema.invoices).where(where),
+    // Jumlah per status untuk chip filter — himpunan pesanan lunas yang sama, MENGABAIKAN pencarian & filter (angka stabil)
+    db.select({ status: L.status, n: sql<number>`count(distinct ${L.invoiceId})::int` }).from(L)
+      .innerJoin(schema.invoices, eq(schema.invoices.id, L.invoiceId))
+      .where(and(eq(schema.invoices.status, "paid"), eq(L.sellerType, "tenant"), inArray(L.invoiceId, mineInvoiceIds)))
+      .groupBy(L.status),
   ]);
 
-  return { rows: await buildRows(tenantClient, invoices, owned), total: Number(total) };
+  const statusCounts: StatusCounts = { ...EMPTY_COUNTS };
+  for (const r of countRows) {
+    if ((ORDER_STATUS_FILTERS as readonly string[]).includes(r.status)) { statusCounts[r.status as OrderStatusFilter] = r.n; statusCounts.all += r.n; }
+  }
+  return { rows: await buildRows(tenantClient, invoices, owned), total: Number(total), statusCounts };
 }
 
 /** Menu Pesanan: semua produk milik produsen (producerId WAJIB dari sesi). */
 export async function listProducerOrders(
   tenantClient: TenantDb,
   producerId: string,
-  opts: { q?: string; page: number; pageSize: number },
-): Promise<{ rows: ProducerOrderRow[]; total: number }> {
+  opts: { q?: string; page: number; pageSize: number; status?: OrderStatusFilter | null },
+): Promise<{ rows: ProducerOrderRow[]; total: number; statusCounts: StatusCounts }> {
   return listByOwned(tenantClient, await producerItemIds(tenantClient, producerId), opts);
 }
 
@@ -151,8 +175,8 @@ export async function listProducerOrders(
 export async function listProductOrders(
   tenantClient: TenantDb,
   productId: string,
-  opts: { q?: string; page: number; pageSize: number },
-): Promise<{ rows: ProducerOrderRow[]; total: number }> {
+  opts: { q?: string; page: number; pageSize: number; status?: OrderStatusFilter | null },
+): Promise<{ rows: ProducerOrderRow[]; total: number; statusCounts: StatusCounts }> {
   const { db, schema } = tenantClient;
   const variations = await db.select({ id: schema.productVariations.id, combo: schema.productVariations.attributeCombo })
     .from(schema.productVariations).where(eq(schema.productVariations.productId, productId));

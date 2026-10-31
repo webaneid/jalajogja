@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createTenantDb } from "@jalajogja/db";
 import { getProducerAccess } from "@/lib/producer-access.server";
-import { listProducerOrders } from "@/lib/producer-orders.server";
+import { listProducerOrders, parseStatusFilter, type OrderStatusFilter } from "@/lib/producer-orders.server";
+import { StatusFilter } from "@/components/orders/status-filter";
 import { OrdersTable } from "@/components/orders/orders-table";
 
 const PAGE_SIZE = 20;
@@ -13,25 +14,27 @@ export default async function ProducerOrdersPage({
   params, searchParams,
 }: {
   params: Promise<{ tenant: string }>;
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; status?: string }>;
 }) {
   const { tenant: slug } = await params;
-  const { q, page } = await searchParams;
+  const { q, page, status } = await searchParams;
 
   const access = await getProducerAccess(slug);
   if (!access) redirect("/no-tenant-access");
 
   const currentPage = Math.min(10_000, Math.max(1, parseInt(page ?? "1") || 1));
   const query = (q ?? "").trim().slice(0, 80);
-  const { rows, total } = await listProducerOrders(createTenantDb(access.tenant.slug), access.producer.id, {
-    q: query, page: currentPage, pageSize: PAGE_SIZE,
+  const statusFilter = parseStatusFilter(status);
+  const { rows, total, statusCounts } = await listProducerOrders(createTenantDb(access.tenant.slug), access.producer.id, {
+    q: query, page: currentPage, pageSize: PAGE_SIZE, status: statusFilter,
   });
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const base = `/app/${slug}/portal-produsen/pesanan`;
-  const href = (p: number) => {
+  const href = (p: number, st: OrderStatusFilter | null = statusFilter) => {
     const sp = new URLSearchParams();
     if (query) sp.set("q", query);
+    if (st) sp.set("status", st);
     if (p > 1) sp.set("page", String(p));
     const s = sp.toString();
     return s ? `${base}?${s}` : base;
@@ -47,8 +50,11 @@ export default async function ProducerOrdersPage({
       <form action={base} method="get" className="flex flex-wrap items-center gap-2">
         <input name="q" defaultValue={query} placeholder="Cari nomor invoice / nama pemesan…" className="h-9 w-full max-w-xs rounded-md border border-border bg-background px-3 text-sm" />
         <button type="submit" className="h-9 rounded-md border border-border bg-card px-3 text-sm font-medium hover:bg-muted">Cari</button>
-        {query && <Link href={base} className="text-sm text-muted-foreground hover:underline">Reset</Link>}
+        {statusFilter && <input type="hidden" name="status" value={statusFilter} />}
+        {(query || statusFilter) && <Link href={base} className="text-sm text-muted-foreground hover:underline">Reset</Link>}
       </form>
+
+      <StatusFilter active={statusFilter} counts={statusCounts} hrefFor={(st) => href(1, st)} />
 
       <OrdersTable rows={rows} showMixed print={{ slug, blockMixed: true }} viewHref={(id) => `${base}/${id}`}
         emptyText={query ? "Tidak ada pesanan yang cocok." : "Belum ada pesanan lunas."} />
