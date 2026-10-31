@@ -31,8 +31,11 @@ export type ProducerOrderRow = {
   isMixed:       boolean;               // ada item selain milik produsen ini di invoice yang sama
 };
 
+export type InvoiceBatchRef = { id: string; name: string; producerId: string };
+
 export type ProducerOrderDetail = ProducerOrderRow & {
   checkoutAddress: string;
+  batch: InvoiceBatchRef | null;     // batch pengiriman yang memuat invoice ini (null = belum masuk batch)
 };
 
 /** id produk + id variasi milik produsen (invoice_items.itemId = id produk untuk simple, id variasi untuk variable). */
@@ -215,7 +218,19 @@ export async function getProducerOrder(
   return {
     ...row,
     checkoutAddress: [inv.shippingAddress, inv.shippingCityName].filter((p): p is string => !!p?.trim()).join(", "),
+    batch: await getInvoiceBatch(tenantClient, inv.id),
   };
+}
+
+/** Batch yang memuat invoice ini (satu invoice paling banyak satu batch). TIDAK memeriksa siapa pemanggilnya — pemanggil sudah mengotorisasi. */
+export async function getInvoiceBatch(tenantClient: TenantDb, invoiceId: string): Promise<InvoiceBatchRef | null> {
+  const { db, schema } = tenantClient;
+  const [b] = await db.select({
+    id: schema.producerShipmentBatches.id, name: schema.producerShipmentBatches.name, producerId: schema.producerShipmentBatches.producerId,
+  }).from(schema.producerShipmentInvoices)
+    .innerJoin(schema.producerShipmentBatches, eq(schema.producerShipmentBatches.id, schema.producerShipmentInvoices.batchId))
+    .where(eq(schema.producerShipmentInvoices.invoiceId, invoiceId)).limit(1);
+  return b ?? null;
 }
 
 // ─── Batch pengiriman (S3) ──────────────────────────────────────────────────────────────────────────────

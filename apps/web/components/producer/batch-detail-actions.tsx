@@ -75,7 +75,7 @@ export function BatchRowActions({ slug, batchId, invoiceId, status, trackingNumb
 }
 
 /** Form nomor resi + foto resi → POST /api/produsen/resi. Buat (Dikemas → Dikirim) atau ubah (sudah Dikirim; foto opsional). */
-function ResiForm({ slug, batchId, invoiceId, edit, initialResi, canChangePhoto, onClose }: {
+export function ResiForm({ slug, batchId, invoiceId, edit, initialResi, canChangePhoto, onClose }: {
   slug: string; batchId: string; invoiceId: string; edit: boolean; initialResi: string; canChangePhoto: boolean; onClose: () => void;
 }) {
   const router = useRouter();

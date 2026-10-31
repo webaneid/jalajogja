@@ -8,7 +8,10 @@ import { FulfillmentCard } from "@/components/toko/fulfillment-client";
 import type { FulfillmentShippingLine } from "@/components/toko/fulfillment-client";
 import { displayPhone } from "@/lib/phone";
 import { publicUrl } from "@/lib/minio";
-import { PrintLabelsButton } from "@/components/orders/print-label-dialog";
+import { OrderDetailActions } from "@/components/orders/order-detail-actions";
+import { getInvoiceBatch } from "@/lib/producer-orders.server";
+import { hasFullAccess } from "@/lib/permissions";
+import { isValidUuid } from "@/lib/is-uuid";
 
 function fmt(n: number | string) {
   const v = typeof n === "string" ? parseFloat(n) : n;
@@ -40,6 +43,7 @@ export default async function FulfillmentPage({
   const { tenant: slug, invoiceId } = await params;
   const access = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
+  if (!isValidUuid(invoiceId)) notFound(); // segmen URL mentah ke kolom UUID → 404 bersih, bukan 500 (lessons-learned 2026-09-18)
 
   const { db, schema } = createTenantDb(slug);
 
@@ -130,6 +134,10 @@ export default async function FulfillmentPage({
       status:         sl.status as FulfillmentShippingLine["status"],
     }));
 
+  // Batch pengiriman (bila pesanan ada di batch produsen) — menentukan apakah aksi Input/Ubah Resi tampil
+  const batchRef = await getInvoiceBatch(createTenantDb(slug), invoiceId);
+  const mainLine = tenantLines[0];
+
   function getThumb(images: unknown): string | null {
     if (!Array.isArray(images) || images.length === 0) return null;
     const img = images[0] as { variants?: Record<string, string>; url?: string };
@@ -158,7 +166,16 @@ export default async function FulfillmentPage({
         <h1 className="text-xl font-semibold mt-1">{inv.customerName}</h1>
         <p className="text-sm text-muted-foreground">{fmtDate(inv.createdAt)}</p>
         {inv.status === "paid" && (
-          <div className="mt-3"><PrintLabelsButton slug={slug} invoiceIds={[invoiceId]} label="Cetak Label" /></div>
+          <div className="mt-3">
+            <OrderDetailActions
+              slug={slug} invoiceId={invoiceId} status={mainLine?.status ?? null}
+              batch={batchRef ? { id: batchRef.id, name: batchRef.name } : null}
+              trackingNumber={mainLine?.trackingNumber ?? null} proofUrl={mainLine?.trackingProofUrl ?? null}
+              canChangePhoto={!mainLine?.shippedAt || Date.now() - new Date(mainLine.shippedAt).getTime() <= 30 * 86_400_000}
+              canPrint
+              canResi={hasFullAccess(access.tenantUser, "toko")}
+            />
+          </div>
         )}
       </div>
 
@@ -169,6 +186,7 @@ export default async function FulfillmentPage({
           ["Email",         inv.customerEmail ?? "—"],
           ["Alamat Kirim",  [inv.shippingAddress, inv.shippingCityName].filter(Boolean).join(", ") || "—"],
           ...(inv.notes ? [["Catatan", inv.notes]] : []),
+          ...(batchRef ? [["Batch Pengiriman", batchRef.name]] : []),
         ].map(([label, value]) => (
           <div key={label} className="flex justify-between px-4 py-3 gap-3">
             <span className="text-muted-foreground shrink-0 w-28">{label}</span>

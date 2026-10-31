@@ -5,6 +5,9 @@
 //  - status Diterima (delivered) → terkunci.
 // Foto disimpan di Media Library ANGGOTA (public.member_media, purpose='resi') milik anggota-pemilik produsen — satu folder
 // per produsen: akun/{memberId}/YYYY/MM/uuid_resi.webp. Hanya hasil WebP yang disimpan (file asli tidak pernah ditulis).
+// Dua pintu akses (§ 23): PRODUSEN (getProducerAccess; batch miliknya sendiri) ATAU ADMIN (getTenantAccess + hasFullAccess(toko); batch milik
+// produsen mana pun di tenant itu — producerId DITURUNKAN dari batch di database, bukan dari input). Foto selalu masuk Media Library
+// anggota milik produsen pemilik batch.
 // Route handler (bukan Server Action) karena Server Action dibatasi body 1 MB. Urutan jaminan: Origin/Referer → getProducerAccess
 // (sesi, SEBELUM body dibaca) → rate limit → Content-Length → validasi → kepemilikan lewat loader → compare-and-set di DB.
 export const dynamic = "force-dynamic";
@@ -15,6 +18,8 @@ import sharp from "sharp";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { createTenantDb, db as publicDb, memberMedia } from "@jalajogja/db";
 import { getProducerAccess } from "@/lib/producer-access.server";
+import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess } from "@/lib/permissions";
 import { getProducerOrdersByIds } from "@/lib/producer-orders.server";
 import { isValidUuid } from "@/lib/is-uuid";
 import { uploadFile, deleteFile, ensureBucket } from "@/lib/minio";
@@ -38,13 +43,19 @@ export async function POST(req: NextRequest) {
   if (!from) return fail("Permintaan ditolak.", 403);
   try { if (new URL(from).host !== host) return fail("Permintaan ditolak.", 403); } catch { return fail("Permintaan ditolak.", 403); }
 
-  // Autentikasi SEBELUM body dibaca (cegah non-produsen memaksa server mem-buffer body besar). slug lewat query string.
+  // Autentikasi SEBELUM body dibaca (cegah non-pengguna memaksa server mem-buffer body besar). slug lewat query string.
+  // Admin (akses PENUH toko) dicoba dulu; selain itu jalur produsen. Admin tanpa akses penuh TIDAK otomatis menjadi produsen.
   const slug = req.nextUrl.searchParams.get("tenant") ?? "";
-  const access = slug ? await getProducerAccess(slug) : null;
-  if (!access) return fail("Akses ditolak.", 403);
+  if (!slug) return fail("Akses ditolak.", 403);
+  const admin = await getTenantAccess(slug);
+  const adminOk = !!admin && hasFullAccess(admin.tenantUser, "toko");
+  const prod = adminOk ? null : await getProducerAccess(slug);
+  if (!adminOk && !prod) return fail("Akses ditolak.", 403);
+  const tenantSlug = adminOk ? admin!.tenant.slug : prod!.tenant.slug;
+  const userKey = adminOk ? `a:${admin!.tenantUser.id}` : `p:${prod!.userId}`;
 
   // Pembatas laju per akun: 20 permintaan / 10 menit (tiap permintaan memicu dekode Sharp + upload)
-  const rl = checkRateLimit(`produsen-resi:${access.userId}`, 20, 10 * 60_000);
+  const rl = checkRateLimit(`produsen-resi:${userKey}`, 20, 10 * 60_000);
   if (!rl.allowed) return fail("Terlalu banyak percobaan. Coba lagi beberapa menit lagi.", 429);
 
   // Ukuran dari Content-Length dicek sebelum formData() mem-buffer body
@@ -64,18 +75,30 @@ export async function POST(req: NextRequest) {
   if (resiInput && !RESI_RE.test(resiInput)) return fail("Nomor resi 3–40 karakter (huruf, angka, titik, strip, garis miring).", 400);
   if (file && file.size > MAX_SIZE) return fail("Ukuran foto maksimal 8 MB.", 400);
 
-  const tenantDb = createTenantDb(access.tenant.slug);
+  const tenantDb = createTenantDb(tenantSlug);
   const { db, schema } = tenantDb;
-  const tenantSlug = access.tenant.slug;
 
-  // Kepemilikan: batch milik produsen sesi → invoice ada di batch itu → invoice lunas & memuat item produsen
-  const [batch] = await db.select({ id: schema.producerShipmentBatches.id }).from(schema.producerShipmentBatches)
-    .where(and(eq(schema.producerShipmentBatches.id, batchId), eq(schema.producerShipmentBatches.producerId, access.producer.id))).limit(1);
+  // Kepemilikan: produsen → batch milik produsen sesi; admin → batch mana pun di tenant ini (producerId diturunkan dari batch).
+  // Lalu: invoice ada di batch itu → invoice lunas & memuat item produsen pemilik batch.
+  const [batch] = await db.select({ id: schema.producerShipmentBatches.id, producerId: schema.producerShipmentBatches.producerId })
+    .from(schema.producerShipmentBatches)
+    .where(adminOk
+      ? eq(schema.producerShipmentBatches.id, batchId)
+      : and(eq(schema.producerShipmentBatches.id, batchId), eq(schema.producerShipmentBatches.producerId, prod!.producer.id)))
+    .limit(1);
   if (!batch) return fail("Batch tidak ditemukan.", 404);
+  const producerId = batch.producerId;
+  // Pemilik ruang Media Library foto resi = anggota pemilik produsen (produsen: dari sesi; admin: dari baris produsen batch)
+  let ownerMemberId: string | null = prod ? prod.producer.memberId : null;
+  if (adminOk) {
+    const [pr] = await db.select({ memberId: schema.producers.memberId }).from(schema.producers).where(eq(schema.producers.id, producerId)).limit(1);
+    ownerMemberId = pr?.memberId ?? null;
+  }
+  if (!ownerMemberId) return fail("Produsen ini tidak memiliki akun anggota — resi tidak bisa diisi.", 409);
   const [link] = await db.select({ id: schema.producerShipmentInvoices.id }).from(schema.producerShipmentInvoices)
     .where(and(eq(schema.producerShipmentInvoices.batchId, batchId), eq(schema.producerShipmentInvoices.invoiceId, invoiceId))).limit(1);
   if (!link) return fail("Pesanan tidak ada di batch ini.", 404);
-  const [order] = await getProducerOrdersByIds(tenantDb, access.producer.id, [invoiceId]);
+  const [order] = await getProducerOrdersByIds(tenantDb, producerId, [invoiceId]);
   if (!order) return fail("Pesanan tidak ditemukan.", 404);
   if (order.isMixed || order.deliveryMethod === "pickup") return fail("Pesanan ini tidak dikirim oleh produsen.", 409); // lapis kedua; isBatchable sudah menjaga di aksi batch
 
@@ -127,12 +150,12 @@ export async function POST(req: NextRequest) {
   if (webp) {
     const now = new Date();
     const uuid = randomUUID();
-    newKey = `akun/${access.producer.memberId}/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${uuid}_resi.webp`;
+    newKey = `akun/${ownerMemberId}/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${uuid}_resi.webp`;
     try {
       await ensureBucket(tenantSlug);
       await uploadFile(tenantSlug, newKey, webp, "image/webp");
       const [m] = await publicDb.insert(memberMedia).values({
-        memberId: access.producer.memberId, sourceTenantSlug: tenantSlug,
+        memberId: ownerMemberId, sourceTenantSlug: tenantSlug,
         filename: `${uuid}_resi.webp`, originalName: `resi-${order.invoiceNumber}.webp`, // nama dibuat server, bukan nama file klien
         mimeType: "image/webp", size: webp.length, path: newKey, variants: null,
         processingStatus: "done", purpose: "resi",
@@ -177,7 +200,7 @@ export async function POST(req: NextRequest) {
     // Edit dengan foto baru → hapus foto lama (file + baris Media Library). Gagal hapus hanya di-log.
     if (mode === "edit" && newKey) {
       if (cur?.path) await deleteFile(tenantSlug, cur.path).catch((e) => console.error("[produsen-resi] hapus foto lama gagal:", cur.path, e));
-      if (cur?.mediaId) await publicDb.delete(memberMedia).where(and(eq(memberMedia.id, cur.mediaId), eq(memberMedia.memberId, access.producer.memberId)))
+      if (cur?.mediaId) await publicDb.delete(memberMedia).where(and(eq(memberMedia.id, cur.mediaId), eq(memberMedia.memberId, ownerMemberId)))
         .catch((e) => console.error("[produsen-resi] hapus baris media lama gagal:", cur.mediaId, e));
     }
 
@@ -200,6 +223,7 @@ export async function POST(req: NextRequest) {
       revalidatePath(`${base}/pengiriman`);
       revalidatePath(`${base}/pengiriman/${batchId}`);
       revalidatePath(`${base}/pesanan`);
+      if (adminOk) revalidatePath(`/app/${tenantSlug}/toko/pesanan/invoice/${invoiceId}`); // halaman detail admin (§ 23)
     } catch (e) { console.error("[produsen-resi] revalidate:", e); }
     return NextResponse.json({ ok: true });
   } catch (e) {

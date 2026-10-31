@@ -10,6 +10,7 @@ import { isValidUuid } from "@/lib/is-uuid";
 import { publicUrl } from "@/lib/minio";
 import { displayPhone } from "@/lib/phone";
 import { OrderStatusBadge } from "@/components/producer/order-status-badge";
+import { OrderDetailActions } from "@/components/orders/order-detail-actions";
 
 const fmt = (d: Date) => new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(d);
 
@@ -40,12 +41,26 @@ export default async function ProducerOrderDetailPage({ params }: { params: Prom
         {order.isMixed && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">Campuran</span>}
       </div>
 
+      <OrderDetailActions
+        slug={slug} invoiceId={order.invoiceId} status={order.status}
+        batch={order.batch ? { id: order.batch.id, name: order.batch.name } : null}
+        trackingNumber={order.trackingNumber}
+        proofUrl={order.trackingProofPath ? publicUrl(access.tenant.slug, order.trackingProofPath) : null}
+        canChangePhoto={!order.shippedAt || Date.now() - order.shippedAt.getTime() <= 30 * 86_400_000}
+        canPrint={order.deliveryMethod !== "pickup" && !order.isMixed}
+        printReason={order.deliveryMethod === "pickup" ? "Ambil sendiri — tidak dikirim kurir" : "Pesanan campuran — ditangani admin"}
+        canResi
+      />
+
       <dl className="divide-y divide-border rounded-lg border border-border bg-card px-4">
         <Row label="Tanggal pesan">{fmt(order.createdAt)}</Row>
         <Row label="Pemesan">{order.customerName}</Row>
         <Row label="No. HP">{order.customerPhone ? displayPhone(order.customerPhone) : "—"}</Row>
         <Row label="Alamat tujuan">{order.checkoutAddress || "—"}</Row>
         <Row label="Kurir">{order.courierLabel}</Row>
+        <Row label="Batch">{order.batch
+          ? <Link href={`/app/${slug}/portal-produsen/pengiriman/${order.batch.id}`} className="font-mono text-primary hover:underline">{order.batch.name}</Link>
+          : "Belum masuk batch"}</Row>
         <Row label="No. resi">
           {order.trackingNumber ?? "—"}
           {order.trackingProofPath && <a href={publicUrl(access.tenant.slug, order.trackingProofPath)} target="_blank" rel="noopener noreferrer" className="ml-3 text-primary hover:underline">Lihat foto resi</a>}
