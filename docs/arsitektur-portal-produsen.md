@@ -361,5 +361,10 @@ Bagian ini ada supaya definisi tidak lagi disalahpahami. Bila bertentangan denga
 | S3 | Tabel batch + form buat batch (invoice → Diproses) + edit isi batch |
 | S4 | Input resi + unggah foto resi → Dikirim; batch selesai |
 
-### 19.6 Pertanyaan terbuka (menunggu user)
-(a) Invoice campuran: boleh masuk batch? (b) Pemicu `processing → packed` selama mesin printing belum ada. (c) Boleh mengeluarkan invoice dari batch, dan sampai tahap apa.
+### 19.6 Keputusan user (2026-11-01) — menggantikan pertanyaan terbuka
+(a) **Invoice campuran** (item produsen lain / produk tenant sendiri): tetap tampil di Pesanan dengan penanda, tetapi TIDAK bisa masuk batch (hanya invoice murni milik produsen ini). Admin yang menangani.
+(b) **Diproses → Dikemas**: tombol manual sementara "Tandai Dikemas" (per invoice/batch); kelak digantikan mesin printing.
+(c) **Mengeluarkan invoice dari batch**: boleh selama BELUM ada resi (status Diproses atau Dikemas); status kembali ke Menunggu (pengecualian atas aturan "maju satu langkah" — ini aksi koreksi khusus). Setelah resi diisi (Dikirim) terkunci. Menambah invoice ke batch boleh sampai batch selesai. Batch sendiri tidak bisa dihapus.
+
+### 19.7 Status eksekusi
+- [x] **S1 — SELESAI KODE 2026-11-01** (`tsc` bersih; belum dites browser): `components/producer/producer-sidebar.tsx` (sidebar desktop + drawer HP, 4 menu tetap, tampilan sama sidebar admin), `layout.tsx` ditulis ulang (sidebar + header + menu pengguna), root portal → `/dashboard`, halaman placeholder `dashboard` / `pesanan` / `pengiriman` (Produk tetap). Security review: semua page (6) memanggil `getProducerAccess` sendiri; tidak ada `"use server"`; props ke komponen client hanya `slug`, nama tenant, nama produsen sendiri. Tidak ada query/aksi baru.

@@ -3,12 +3,11 @@
 // Guard di sini hanya untuk shell — SETIAP page tetap memanggil getProducerAccess sendiri (layout, page, dan
 // generateMetadata dirender paralel; guard layout tidak melindungi page). Portal TIDAK punya Server Action.
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import type { Metadata } from "next";
-import { Package } from "lucide-react";
 import { getCurrentSession } from "@/lib/tenant";
 import { getProducerAccess } from "@/lib/producer-access.server";
 import { UserMenu } from "@/components/dashboard/user-menu";
+import { ProducerSidebar, ProducerMobileSidebar } from "@/components/producer/producer-sidebar";
 
 export const metadata: Metadata = { title: "Portal Produsen", robots: { index: false, follow: false } };
 
@@ -28,24 +27,23 @@ export default async function ProducerPortalLayout({
   // Bukan /dashboard-redirect: halaman itu bisa mengarahkan balik ke sini → loop. /no-tenant-access aman (di luar /app/*).
   if (!access) redirect("/no-tenant-access");
 
-  const base = `/app/${slug}/portal-produsen`;
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{access.tenant.name}</p>
-            <p className="truncate text-xs text-muted-foreground">Portal Produsen · {access.producer.displayName}</p>
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* Sidebar desktop — hidden di mobile */}
+      <div className="hidden md:flex">
+        <ProducerSidebar slug={slug} orgName={access.tenant.name} producerName={access.producer.displayName} />
+      </div>
+
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-4 md:px-6">
+          <ProducerMobileSidebar slug={slug} orgName={access.tenant.name} producerName={access.producer.displayName} />
+          <span className="truncate text-sm font-semibold md:hidden">{access.tenant.name}</span>
+          <div className="ml-auto">
+            <UserMenu name={session.user.name} email={session.user.email} role="Produsen" />
           </div>
-          <UserMenu name={session.user.name} email={session.user.email} role="Produsen" />
-        </div>
-        <nav className="mx-auto flex max-w-6xl gap-1 px-4 pb-2">
-          <Link href={`${base}/produk`} className="inline-flex items-center gap-2 rounded-md bg-muted px-3 py-1.5 text-sm font-medium">
-            <Package className="h-4 w-4" /> Produk
-          </Link>
-        </nav>
-      </header>
-      <main className="mx-auto max-w-6xl p-4 md:p-6">{children}</main>
+        </header>
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+      </div>
     </div>
   );
 }
