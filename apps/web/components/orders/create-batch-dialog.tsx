@@ -18,8 +18,8 @@ export type BatchConfig = {
   today: string;           // YYYY-MM-DD (WIB)
 };
 
-export function CreateBatchDialog({ open, onClose, slug, cfg, invoiceIds, skipped, onDone }: {
-  open: boolean; onClose: () => void; slug: string; cfg: BatchConfig; invoiceIds: string[]; skipped: number; onDone: () => void;
+export function CreateBatchDialog({ open, onClose, slug, cfg, shipmentIds, skipped, onDone }: {
+  open: boolean; onClose: () => void; slug: string; cfg: BatchConfig; shipmentIds: string[]; skipped: number; onDone: () => void;
 }) {
   const router = useRouter();
   const [name, setName] = useState(cfg.suggestedName);
@@ -31,7 +31,7 @@ export function CreateBatchDialog({ open, onClose, slug, cfg, invoiceIds, skippe
   async function submit() {
     setBusy(true); setError(null);
     try {
-      const input = { name, shippingDate: date, invoiceIds };
+      const input = { name, shippingDate: date, shipmentIds };
       const res = cfg.mode === "admin" && cfg.producerId
         ? await createBatchAsAdminAction(slug, cfg.producerId, input)
         : await createBatchAction(slug, input);
@@ -55,7 +55,7 @@ export function CreateBatchDialog({ open, onClose, slug, cfg, invoiceIds, skippe
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><PackagePlus className="h-5 w-5" /> Buat Batch Pengiriman</DialogTitle>
           <DialogDescription>
-            {invoiceIds.length} pesanan akan dimasukkan ke satu batch dan berstatus <b>Diproses</b>. Batch tidak bisa dihapus.
+            {shipmentIds.length} pesanan akan dimasukkan ke satu batch dan berstatus <b>Diproses</b>. Batch tidak bisa dihapus.
           </DialogDescription>
         </DialogHeader>
 
@@ -85,9 +85,9 @@ export function CreateBatchDialog({ open, onClose, slug, cfg, invoiceIds, skippe
             </label>
             {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
             <div className="flex gap-2">
-              <button type="button" onClick={submit} disabled={busy || !name.trim() || !date || invoiceIds.length === 0}
+              <button type="button" onClick={submit} disabled={busy || !name.trim() || !date || shipmentIds.length === 0}
                 className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">
-                {busy && <Loader2 className="h-4 w-4 animate-spin" />} Buat Batch ({invoiceIds.length})
+                {busy && <Loader2 className="h-4 w-4 animate-spin" />} Buat Batch ({shipmentIds.length})
               </button>
               <button type="button" onClick={close} disabled={busy} className="h-9 rounded-md border border-border px-3 text-sm hover:bg-muted">Batal</button>
             </div>

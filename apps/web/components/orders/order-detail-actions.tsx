@@ -9,8 +9,8 @@ import { Truck } from "lucide-react";
 import { PrintLabelsButton } from "@/components/orders/print-label-dialog";
 import { ResiForm } from "@/components/producer/batch-detail-actions";
 
-export function OrderDetailActions({ slug, invoiceId, status, batch, trackingNumber, proofUrl, canChangePhoto, canPrint, printReason, canResi }: {
-  slug: string; invoiceId: string; status: string | null;
+export function OrderDetailActions({ slug, lineId, status, batch, trackingNumber, proofUrl, canChangePhoto, canPrint, printReason, canResi }: {
+  slug: string; lineId: string; status: string | null; // lineId = id PENGIRIMAN
   batch: { id: string; name: string } | null;
   trackingNumber: string | null; proofUrl: string | null; canChangePhoto: boolean;
   canPrint: boolean; printReason?: string;
@@ -22,7 +22,7 @@ export function OrderDetailActions({ slug, invoiceId, status, batch, trackingNum
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <PrintLabelsButton slug={slug} invoiceIds={[invoiceId]} label="Cetak Label" disabled={!canPrint} title={canPrint ? "Cetak label" : printReason} />
+        <PrintLabelsButton slug={slug} shipmentIds={[lineId]} label="Cetak Label" disabled={!canPrint} title={canPrint ? "Cetak label" : printReason} />
         {resiMode && !open && (
           <button type="button" onClick={() => setOpen(true)}
             className={resiMode === "create"
@@ -33,7 +33,7 @@ export function OrderDetailActions({ slug, invoiceId, status, batch, trackingNum
         )}
       </div>
       {resiMode && open && batch && (
-        <ResiForm slug={slug} batchId={batch.id} invoiceId={invoiceId} edit={resiMode === "edit"} initialResi={trackingNumber ?? ""}
+        <ResiForm slug={slug} batchId={batch.id} lineId={lineId} edit={resiMode === "edit"} initialResi={trackingNumber ?? ""}
           canChangePhoto={canChangePhoto} onClose={() => setOpen(false)} />
       )}
       {resiMode === "edit" && proofUrl && (

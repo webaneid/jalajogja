@@ -67,11 +67,11 @@ export async function POST(req: NextRequest) {
   try { form = await req.formData(); } catch { return fail("Data tidak valid.", 400); }
 
   const batchId = String(form.get("batchId") ?? "");
-  const invoiceId = String(form.get("invoiceId") ?? "");
+  const lineId = String(form.get("lineId") ?? ""); // id PENGIRIMAN (ADR-0005), bukan id invoice
   const resiInput = String(form.get("trackingNumber") ?? "").trim();
   const fileRaw = form.get("file");
   const file = fileRaw instanceof File && fileRaw.size > 0 ? fileRaw : null;
-  if (!isValidUuid(batchId) || !isValidUuid(invoiceId)) return fail("Data tidak valid.", 400);
+  if (!isValidUuid(batchId) || !isValidUuid(lineId)) return fail("Data tidak valid.", 400);
   if (resiInput && !RESI_RE.test(resiInput)) return fail("Nomor resi 3–40 karakter (huruf, angka, titik, strip, garis miring).", 400);
   if (file && file.size > MAX_SIZE) return fail("Ukuran foto maksimal 8 MB.", 400);
 
@@ -96,10 +96,11 @@ export async function POST(req: NextRequest) {
   }
   if (!ownerMemberId) return fail("Produsen ini tidak memiliki akun anggota — resi tidak bisa diisi.", 409);
   const [link] = await db.select({ id: schema.producerShipmentInvoices.id }).from(schema.producerShipmentInvoices)
-    .where(and(eq(schema.producerShipmentInvoices.batchId, batchId), eq(schema.producerShipmentInvoices.invoiceId, invoiceId))).limit(1);
+    .where(and(eq(schema.producerShipmentInvoices.batchId, batchId), eq(schema.producerShipmentInvoices.shippingLineId, lineId))).limit(1);
   if (!link) return fail("Pesanan tidak ada di batch ini.", 404);
-  const [order] = await getProducerOrdersByIds(tenantDb, producerId, [invoiceId]);
+  const [order] = await getProducerOrdersByIds(tenantDb, producerId, [lineId]);
   if (!order) return fail("Pesanan tidak ditemukan.", 404);
+  const invoiceId = order.invoiceId;
   if (order.isMixed || order.deliveryMethod === "pickup") return fail("Pesanan ini tidak dikirim oleh produsen.", 409); // lapis kedua; isBatchable sudah menjaga di aksi batch
 
   const mode = order.status === "packed" ? "create" : order.status === "shipped" ? "edit" : null;
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest) {
     path: schema.invoiceShippingLines.trackingProofPath, mediaId: schema.invoiceShippingLines.trackingProofMediaId,
     resi: schema.invoiceShippingLines.trackingNumber, shippedAt: schema.invoiceShippingLines.shippedAt, updatedAt: schema.invoiceShippingLines.updatedAt,
   }).from(schema.invoiceShippingLines)
-    .where(and(eq(schema.invoiceShippingLines.invoiceId, invoiceId), eq(schema.invoiceShippingLines.sellerType, "tenant"))).limit(1);
+    .where(and(eq(schema.invoiceShippingLines.id, lineId), eq(schema.invoiceShippingLines.sellerType, "tenant"))).limit(1);
 
   if (mode === "create") {
     if (!resiInput) return fail("Nomor resi wajib diisi.", 400);
@@ -174,6 +175,7 @@ export async function POST(req: NextRequest) {
     const paidOnly = inArray(L.invoiceId,
       db.select({ id: schema.invoices.id }).from(schema.invoices)
         .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.status, "paid"))));
+    const thisLine = eq(L.id, lineId); // compare-and-set per PENGIRIMAN (bukan per invoice)
     const set: Partial<typeof L.$inferInsert> = { updatedAt: new Date() };
     if (resiInput) set.trackingNumber = resiInput;
     if (newKey && newMediaId) { set.trackingProofPath = newKey; set.trackingProofMediaId = newMediaId; }
@@ -182,13 +184,13 @@ export async function POST(req: NextRequest) {
     if (mode === "create") {
       set.status = "shipped"; set.shippedAt = new Date();
       upd = await db.update(L).set(set)
-        .where(and(eq(L.invoiceId, invoiceId), eq(L.sellerType, "tenant"), eq(L.status, "packed"), paidOnly))
+        .where(and(thisLine, eq(L.sellerType, "tenant"), eq(L.status, "packed"), paidOnly))
         .returning({ courier: L.courier });
     } else {
       // Ganti foto: CAS juga menjaga bahwa media yang dirujuk masih yang kita baca (cegah dua edit saling menghapus)
       const sameProof = cur?.mediaId ? eq(L.trackingProofMediaId, cur.mediaId) : isNull(L.trackingProofMediaId);
       upd = await db.update(L).set(set)
-        .where(and(eq(L.invoiceId, invoiceId), eq(L.sellerType, "tenant"), eq(L.status, "shipped"), paidOnly, newKey ? sameProof : undefined))
+        .where(and(thisLine, eq(L.sellerType, "tenant"), eq(L.status, "shipped"), paidOnly, newKey ? sameProof : undefined))
         .returning({ courier: L.courier });
     }
     if (upd.length === 0) {

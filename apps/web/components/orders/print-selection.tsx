@@ -29,18 +29,18 @@ export function PrintProvider({ slug, batch, batchableIds = [], children }: {
   return (
     <C.Provider value={ctx}>
       {children}
-      <PrintLabelDialog open={dialogIds !== null} onClose={() => setDialogIds(null)} slug={slug} invoiceIds={dialogIds ?? []} onDone={ctx.clear} />
+      <PrintLabelDialog open={dialogIds !== null} onClose={() => setDialogIds(null)} slug={slug} shipmentIds={dialogIds ?? []} onDone={ctx.clear} />
       {batch && batchOpen && (
-        <CreateBatchDialog open onClose={() => setBatchOpen(false)} slug={slug} cfg={batch} invoiceIds={batchIds}
+        <CreateBatchDialog open onClose={() => setBatchOpen(false)} slug={slug} cfg={batch} shipmentIds={batchIds}
           skipped={selected.size - batchIds.length} onDone={ctx.clear} />
       )}
     </C.Provider>
   );
 }
 
-export function RowCheckbox({ invoiceId, disabled }: { invoiceId: string; disabled?: boolean }) {
+export function RowCheckbox({ shipmentId, disabled }: { shipmentId: string; disabled?: boolean }) {
   const { selected, toggle } = useSel();
-  return <input type="checkbox" aria-label="Pilih untuk cetak" disabled={disabled} checked={selected.has(invoiceId)} onChange={() => toggle(invoiceId)}
+  return <input type="checkbox" aria-label="Pilih untuk cetak" disabled={disabled} checked={selected.has(shipmentId)} onChange={() => toggle(shipmentId)}
     className="h-4 w-4 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40" />;
 }
 
@@ -50,11 +50,11 @@ export function HeaderCheckbox({ ids }: { ids: string[] }) {
   return <input type="checkbox" aria-label="Pilih semua" disabled={ids.length === 0} checked={all} onChange={() => setMany(ids, !all)} className="h-4 w-4 cursor-pointer disabled:opacity-40" />;
 }
 
-export function RowPrintButton({ invoiceId, disabledReason }: { invoiceId: string; disabledReason?: string }) {
+export function RowPrintButton({ shipmentId, disabledReason }: { shipmentId: string; disabledReason?: string }) {
   const { openFor } = useSel();
   const off = !!disabledReason;
   return (
-    <button type="button" disabled={off} onClick={() => openFor([invoiceId])} title={off ? disabledReason : "Cetak label"} aria-label={off ? disabledReason : "Cetak label"}
+    <button type="button" disabled={off} onClick={() => openFor([shipmentId])} title={off ? disabledReason : "Cetak label"} aria-label={off ? disabledReason : "Cetak label"}
       className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent">
       <Printer className="h-4 w-4" />
     </button>

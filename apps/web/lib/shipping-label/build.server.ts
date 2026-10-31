@@ -4,7 +4,7 @@
 //  - scope "admin": invoice lunas dengan baris pengiriman penjual tenant bermetode kurir.
 // Mengembalikan error (bukan sebagian hasil) bila ada invoice tak layak — cetak masal tidak diam-diam melewatkan pesanan.
 import "server-only";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getSettings, type TenantDb } from "@jalajogja/db";
 import { getProducerOrdersByIds } from "@/lib/producer-orders.server";
 import { resolveInternalProducer, resolveProducers } from "@/lib/producer.server";
@@ -18,7 +18,7 @@ export type LabelScope = { kind: "admin" } | { kind: "producer"; producerId: str
 type TenantRef = { id: string; name: string; tenantType: string | null; slug: string };
 
 export type BuildResult =
-  | { ok: true; labels: LabelData[]; invoiceIds: string[] }
+  | { ok: true; labels: LabelData[]; shipmentIds: string[] }
   | { ok: false; error: string };
 
 const rupiah = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
@@ -29,43 +29,45 @@ const courierLabel = (code: string | null) => RAJAONGKIR_COURIER_OPTIONS.find((c
 export async function buildLabelData(
   tenantClient: TenantDb,
   tenant: TenantRef,
-  invoiceIds: string[],
+  shipmentIds: string[],
   scope: LabelScope,
 ): Promise<BuildResult> {
   const { db, schema } = tenantClient;
   const L = schema.invoiceShippingLines;
 
-  // 1) Invoice lunas yang diminta
-  const invoices = await db.select({
-    id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber,
+  // 1) Pengiriman (baris penjual tenant) dari invoice LUNAS yang diminta — satuan label = satu pengiriman (ADR-0005)
+  const lines = await db.select({
+    line: L, invoiceNumber: schema.invoices.invoiceNumber,
     customerName: schema.invoices.customerName, customerPhone: schema.invoices.customerPhone,
     shippingAddress: schema.invoices.shippingAddress, shippingCityName: schema.invoices.shippingCityName, notes: schema.invoices.notes,
-  }).from(schema.invoices).where(and(inArray(schema.invoices.id, invoiceIds), eq(schema.invoices.status, "paid")));
-  if (invoices.length !== invoiceIds.length) return { ok: false, error: "Sebagian pesanan tidak ditemukan atau tidak bisa dicetak." };
+  }).from(L).innerJoin(schema.invoices, eq(schema.invoices.id, L.invoiceId))
+    .where(and(inArray(L.id, shipmentIds), eq(L.sellerType, "tenant"), eq(schema.invoices.status, "paid")));
+  if (lines.length !== shipmentIds.length) return { ok: false, error: "Sebagian pesanan tidak ditemukan atau tidak bisa dicetak." };
 
   // 2) Kelayakan per scope
   if (scope.kind === "producer") {
-    const rows = await getProducerOrdersByIds(tenantClient, scope.producerId, invoiceIds);
-    if (rows.length !== invoiceIds.length) return { ok: false, error: "Sebagian pesanan tidak ditemukan atau tidak bisa dicetak." };
-    // Layak dicetak: bukan campuran, bukan ambil-sendiri (status apa pun — cetak ulang boleh; isBatchable terlalu ketat karena menuntut Menunggu)
-    if (rows.some((r) => r.isMixed || r.deliveryMethod === "pickup" || r.items.length === 0)) {
-      return { ok: false, error: "Sebagian pesanan tidak dikirim oleh produsen (campuran / ambil sendiri) dan tidak bisa dicetak." };
+    // Kepemilikan: producer_id pengiriman = produsen sesi (loader); cetak ulang boleh di status apa pun, ambil-sendiri tidak
+    const rows = await getProducerOrdersByIds(tenantClient, scope.producerId, shipmentIds);
+    if (rows.length !== shipmentIds.length) return { ok: false, error: "Sebagian pesanan tidak ditemukan atau tidak bisa dicetak." };
+    if (rows.some((r) => r.deliveryMethod === "pickup" || r.items.length === 0)) {
+      return { ok: false, error: "Sebagian pesanan tidak dikirim oleh produsen (ambil sendiri) dan tidak bisa dicetak." };
     }
   }
-
-  // 3) Baris pengiriman penjual tenant (kurir, layanan, berat, COD)
-  const lines = await db.select().from(L).where(and(inArray(L.invoiceId, invoiceIds), eq(L.sellerType, "tenant")));
-  const lineOf = new Map<string, (typeof lines)[number]>();
-  for (const l of lines) if (!lineOf.has(l.invoiceId)) lineOf.set(l.invoiceId, l);
-  for (const id of invoiceIds) {
-    const l = lineOf.get(id);
-    if (!l || l.deliveryMethod !== "courier") return { ok: false, error: "Sebagian pesanan tidak memakai pengiriman kurir (ambil sendiri / tanpa pengiriman)." };
+  for (const { line } of lines) {
+    if (line.deliveryMethod !== "courier") return { ok: false, error: "Sebagian pesanan tidak memakai pengiriman kurir (ambil sendiri / tanpa pengiriman)." };
   }
+  const invoiceIds = [...new Set(lines.map((x) => x.line.invoiceId))];
+  const lineById = new Map(lines.map((x) => [x.line.id, x]));
+  // Jumlah baris tenant per invoice: baris tanpa produsen pada invoice BERBARIS-TUNGGAL = pengiriman lama/bersama (semua item tenant)
+  const tenantLineCounts = await db.select({ invoiceId: L.invoiceId, n: sql<number>`count(*)::int` }).from(L)
+    .where(and(inArray(L.invoiceId, invoiceIds), eq(L.sellerType, "tenant"))).groupBy(L.invoiceId);
+  const lineCountOf = new Map(tenantLineCounts.map((x) => [x.invoiceId, x.n]));
 
   // 4) Item produk penjual tenant + varian + produk induk (untuk menentukan pengirim)
   const items = await db.select({
     invoiceId: schema.invoiceItems.invoiceId, itemId: schema.invoiceItems.itemId, name: schema.invoiceItems.name,
     quantity: schema.invoiceItems.quantity, total: schema.invoiceItems.total, sortOrder: schema.invoiceItems.sortOrder,
+    producerId: schema.invoiceItems.producerId,
   }).from(schema.invoiceItems)
     .where(and(inArray(schema.invoiceItems.invoiceId, invoiceIds), eq(schema.invoiceItems.itemType, "product"), eq(schema.invoiceItems.sellerType, "tenant")));
   const itemIds = [...new Set(items.map((i) => i.itemId).filter((x): x is string => !!x))];
@@ -111,16 +113,16 @@ export async function buildLabelData(
   }
 
   // 6) Batch, logo, zona waktu, nama tenant
-  const batchRows = await db.select({ invoiceId: schema.producerShipmentInvoices.invoiceId, name: schema.producerShipmentBatches.name })
+  const batchRows = await db.select({ lineId: schema.producerShipmentInvoices.shippingLineId, name: schema.producerShipmentBatches.name })
     .from(schema.producerShipmentInvoices)
     .innerJoin(schema.producerShipmentBatches, eq(schema.producerShipmentBatches.id, schema.producerShipmentInvoices.batchId))
-    .where(inArray(schema.producerShipmentInvoices.invoiceId, invoiceIds));
-  const batchOf = new Map(batchRows.map((b) => [b.invoiceId, b.name]));
+    .where(inArray(schema.producerShipmentInvoices.shippingLineId, shipmentIds));
+  const batchOf = new Map(batchRows.filter((b) => b.lineId).map((b) => [b.lineId as string, b.name]));
 
   const [general, toko, tz] = await Promise.all([getSettings(tenantClient, "general"), getSettings(tenantClient, "toko"), getTenantTimezone(tenantClient)]);
   const tenantName = (general["site_name"] as string | undefined)?.trim() || tenant.name;
   const courierLogoUrls = (toko["courier_logos"] as Record<string, string> | undefined) ?? {};
-  const usedCouriers = [...new Set(lines.map((l) => l.courier).filter((c): c is string => !!c))];
+  const usedCouriers = [...new Set(lines.map((x) => x.line.courier).filter((c): c is string => !!c))];
   const [tenantLogo, ...courierLogos] = await Promise.all([
     imageToDataUri(general["logo_url"] as string | undefined),
     ...usedCouriers.map((c) => imageToDataUri(courierLogoUrls[c])),
@@ -130,15 +132,23 @@ export async function buildLabelData(
   const createdAtLabel = formatInTz(new Date(), tz, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })
     .replace(", ", " ").replace(/(\d{2})\.(\d{2})$/, "$1:$2");
 
-  // 7) Rakit label sesuai urutan permintaan
+  // 7) Rakit label sesuai urutan permintaan — satu label per PENGIRIMAN
   const labels: LabelData[] = [];
-  for (const id of invoiceIds) {
-    const inv = invoices.find((i) => i.id === id)!;
-    const line = lineOf.get(id)!;
-    const its = items.filter((i) => i.invoiceId === id).sort((a, b) => a.sortOrder - b.sortOrder);
-    const producerIds = new Set(its.map((i) => producerOfProduct.get(varOf.get(i.itemId ?? "")?.productId ?? i.itemId ?? "") ?? null));
-    const only = producerIds.size === 1 ? [...producerIds][0] : null;
-    const sender = only ? await producerSender(only) : await tenantSender();
+  for (const id of shipmentIds) {
+    const { line, invoiceNumber, customerName, customerPhone, shippingAddress, shippingCityName, notes } = lineById.get(id)!;
+    // Item pengiriman ini: produk tenant invoice dengan produsen yang sama dengan pengiriman (snapshot). Pengiriman tanpa produsen pada
+    // invoice berbaris-tunggal = pengiriman lama/bersama → semua item tenant invoice itu.
+    const shared = !line.producerId && (lineCountOf.get(line.invoiceId) ?? 1) <= 1;
+    const its = items
+      .filter((i) => i.invoiceId === line.invoiceId && (shared || i.producerId === (line.producerId ?? null)))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    // Pengirim: produsen pengiriman; pengiriman lama/bersama → produsen tunggal pemilik semua item (bila ada), selain itu tenant
+    let senderProducer: string | null = line.producerId ?? null;
+    if (!senderProducer && shared) {
+      const ps = new Set(its.map((i) => i.producerId ?? producerOfProduct.get(varOf.get(i.itemId ?? "")?.productId ?? i.itemId ?? "") ?? null)); // snapshot item dulu, produk saat ini sebagai cadangan
+      senderProducer = ps.size === 1 ? [...ps][0] : null;
+    }
+    const sender = senderProducer ? await producerSender(senderProducer) : await tenantSender();
 
     const isCod = line.paymentMethod === "cod" && !line.codConfirmedAt;
     const codTotal = its.reduce((a, i) => a + num(i.total), 0) + num(line.cost);
@@ -147,43 +157,39 @@ export async function buildLabelData(
       tenantName, tenantLogo,
       courierName: courierLabel(line.courier), courierLogo: (line.courier && courierLogoOf.get(line.courier)) || null,
       service: line.service ?? "", weightLabel: weightLabel(line.weightGram),
-      invoiceNumber: inv.invoiceNumber,
+      invoiceNumber,
       sender,
       receiver: {
-        name: inv.customerName,
-        phone: inv.customerPhone ? displayPhone(inv.customerPhone) : "—",
-        address: [inv.shippingAddress, inv.shippingCityName].filter((p): p is string => !!p?.trim()).join(", ") || "—",
+        name: customerName,
+        phone: customerPhone ? displayPhone(customerPhone) : "—",
+        address: [shippingAddress, shippingCityName].filter((p): p is string => !!p?.trim()).join(", ") || "—",
       },
       isCod, codAmountLabel: isCod ? rupiah(codTotal) : null,
       items: its.map((i) => {
         const combo = varOf.get(i.itemId ?? "")?.combo as Record<string, string> | undefined;
         return { name: i.name, variant: combo ? Object.entries(combo).map(([k, v]) => `${k}: ${v}`).join(", ") : "", qty: i.quantity };
       }),
-      note: inv.notes ?? null,
+      note: notes ?? null,
       batchName: batchOf.get(id) ?? null,
       createdAtLabel,
     });
   }
-  return { ok: true, labels, invoiceIds };
+  return { ok: true, labels, shipmentIds };
 }
 
 /**
- * Setelah PDF berhasil dibuat: pesanan berstatus Diproses → Dikemas (mencetak label = tahap mengemas; keputusan user 2026-11-01).
- * Satu langkah saja, compare-and-set + cek lunas di UPDATE yang sama; status lain tidak berubah (cetak ulang aman).
- * Mengembalikan jumlah baris yang berubah.
+ * Setelah PDF berhasil dibuat: pengiriman berstatus Diproses → Dikemas (mencetak label = tahap mengemas; keputusan user 2026-11-01).
+ * Satu langkah saja, compare-and-set per id pengiriman + cek lunas di UPDATE yang sama; status lain tidak berubah (cetak ulang aman).
+ * Mengembalikan jumlah pengiriman yang berubah.
  */
-export async function markPackedAfterPrint(tenantClient: TenantDb, invoiceIds: string[]): Promise<number> {
+export async function markPackedAfterPrint(tenantClient: TenantDb, shipmentIds: string[]): Promise<number> {
   const { db, schema } = tenantClient;
   const L = schema.invoiceShippingLines;
-  let changed = 0;
-  for (const invoiceId of invoiceIds) {
-    const upd = await db.update(L).set({ status: "packed", updatedAt: new Date() })
-      .where(and(
-        eq(L.invoiceId, invoiceId), eq(L.sellerType, "tenant"), eq(L.status, "processing"),
-        inArray(L.invoiceId, db.select({ id: schema.invoices.id }).from(schema.invoices).where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.status, "paid")))),
-      ))
-      .returning({ id: L.id });
-    changed += upd.length;
-  }
-  return changed;
+  const upd = await db.update(L).set({ status: "packed", updatedAt: new Date() })
+    .where(and(
+      inArray(L.id, shipmentIds), eq(L.sellerType, "tenant"), eq(L.status, "processing"),
+      inArray(L.invoiceId, db.select({ id: schema.invoices.id }).from(schema.invoices).where(eq(schema.invoices.status, "paid"))),
+    ))
+    .returning({ id: L.id });
+  return upd.length;
 }

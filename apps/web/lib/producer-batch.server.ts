@@ -55,43 +55,39 @@ export function notifyProcessing(slug: string, tenantDb: TenantDb, rows: { invoi
 type Tdb = TenantDb;
 
 /**
- * Maju pending → processing untuk invoice-invoice ini DI DALAM transaksi; batalkan semuanya bila ada yang gagal.
+ * Maju pending → processing untuk PENGIRIMAN-pengiriman ini (id = invoice_shipping_lines.id) DI DALAM transaksi; batalkan semuanya bila ada yang gagal.
  * Syarat invoice LUNAS ikut dicek di dalam UPDATE yang sama (bukan hanya snapshot sebelum transaksi — cegah TOCTOU).
- * Mengembalikan id invoice yang BELUM pernah diberi notifikasi "Diproses" (penanda processing_notified_at) —
+ * Mengembalikan id pengiriman yang BELUM pernah diberi notifikasi "Diproses" (penanda processing_notified_at per baris) —
  * supaya siklus Keluarkan → Masukkan lagi tidak mengirim pesan berulang ke pelanggan.
  */
-export async function toProcessing(tx: Parameters<Parameters<Tdb["db"]["transaction"]>[0]>[0], schema: Tdb["schema"], invoiceIds: string[]): Promise<string[]> {
+export async function toProcessing(tx: Parameters<Parameters<Tdb["db"]["transaction"]>[0]>[0], schema: Tdb["schema"], lineIds: string[]): Promise<string[]> {
+  const L = schema.invoiceShippingLines;
   const toNotify: string[] = [];
-  for (const invoiceId of invoiceIds) {
-    const upd = await tx.update(schema.invoiceShippingLines)
+  for (const lineId of lineIds) {
+    const upd = await tx.update(L)
       .set({ status: "processing", updatedAt: new Date() })
       .where(and(
-        eq(schema.invoiceShippingLines.invoiceId, invoiceId),
-        eq(schema.invoiceShippingLines.sellerType, "tenant"),
-        eq(schema.invoiceShippingLines.status, "pending"),
-        inArray(schema.invoiceShippingLines.invoiceId,
-          tx.select({ id: schema.invoices.id }).from(schema.invoices)
-            .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.status, "paid")))),
+        eq(L.id, lineId),
+        eq(L.sellerType, "tenant"),
+        eq(L.status, "pending"),
+        inArray(L.invoiceId, tx.select({ id: schema.invoices.id }).from(schema.invoices).where(eq(schema.invoices.status, "paid"))),
       ))
-      .returning({ id: schema.invoiceShippingLines.id });
+      .returning({ id: L.id });
     if (upd.length === 0) throw new Error("STATUS_BERUBAH");
-    const first = await tx.update(schema.invoiceShippingLines)
+    const first = await tx.update(L)
       .set({ processingNotifiedAt: new Date() })
-      .where(and(
-        eq(schema.invoiceShippingLines.invoiceId, invoiceId),
-        eq(schema.invoiceShippingLines.sellerType, "tenant"),
-        isNull(schema.invoiceShippingLines.processingNotifiedAt),
-      ))
-      .returning({ id: schema.invoiceShippingLines.id });
-    if (first.length > 0) toNotify.push(invoiceId);
+      .where(and(eq(L.id, lineId), isNull(L.processingNotifiedAt)))
+      .returning({ id: L.id });
+    if (first.length > 0) toNotify.push(lineId);
   }
   return toNotify;
 }
 
 
-export type BatchInput = { name: string; shippingDate: string; invoiceIds: string[] };
+/** shipmentIds = id PENGIRIMAN (invoice_shipping_lines.id), bukan id invoice (ADR-0005). */
+export type BatchInput = { name: string; shippingDate: string; shipmentIds: string[] };
 
-/** Validasi input batch (nama, tanggal pengiriman, daftar invoice) → nilai bersih atau pesan error. */
+/** Validasi input batch (nama, tanggal pengiriman, daftar pengiriman) → nilai bersih atau pesan error. */
 export function validateBatchInput(input: BatchInput): { ok: true; name: string; date: string; ids: string[] } | { ok: false; error: string } {
   const name = String(input?.name ?? "").trim();
   if (!NAME_RE.test(name)) return { ok: false, error: "Nama batch 1–40 karakter (huruf, angka, titik, strip, garis bawah)." };
@@ -100,7 +96,7 @@ export function validateBatchInput(input: BatchInput): { ok: true; name: string;
   if (!parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) return { ok: false, error: "Tanggal pengiriman tidak valid." };
   const dayMs = 86_400_000;
   if (parsed.getTime() < Date.now() - 31 * dayMs || parsed.getTime() > Date.now() + 366 * dayMs) return { ok: false, error: "Tanggal pengiriman di luar rentang (30 hari lalu s/d 1 tahun ke depan)." };
-  const ids = cleanIds(input?.invoiceIds);
+  const ids = cleanIds(input?.shipmentIds);
   if (!ids) return { ok: false, error: `Pilih 1–${MAX_INVOICES} pesanan.` };
   return { ok: true, name, date, ids };
 }
@@ -118,17 +114,18 @@ export async function createBatchCore(
 
   const orders = await getProducerOrdersByIds(tenantDb, producerId, v.ids);
   if (orders.length !== v.ids.length) return { success: false, error: "Sebagian pesanan tidak ditemukan atau belum lunas." };
-  if (!orders.every(isBatchable)) return { success: false, error: "Sebagian pesanan tidak bisa dimasukkan ke batch (campuran, ambil sendiri, atau sudah diproses)." };
+  if (!orders.every(isBatchable)) return { success: false, error: "Sebagian pesanan tidak bisa dimasukkan ke batch (ambil sendiri atau sudah diproses)." };
+  const invoiceOf = new Map(orders.map((o) => [o.lineId, o.invoiceId]));
 
   try {
     const { batchId, toNotify } = await db.transaction(async (tx) => {
       const [b] = await tx.insert(schema.producerShipmentBatches)
         .values({ producerId, name: v.name, shippingDate: v.date })
         .returning({ id: schema.producerShipmentBatches.id });
-      await tx.insert(schema.producerShipmentInvoices).values(v.ids.map((invoiceId) => ({ batchId: b.id, invoiceId })));
+      await tx.insert(schema.producerShipmentInvoices).values(v.ids.map((lineId) => ({ batchId: b.id, invoiceId: invoiceOf.get(lineId)!, shippingLineId: lineId })));
       return { batchId: b.id, toNotify: await toProcessing(tx, schema, v.ids) };
     });
-    notifyProcessing(tenantSlug, tenantDb, orders.filter((o) => toNotify.includes(o.invoiceId)));
+    notifyProcessing(tenantSlug, tenantDb, orders.filter((o) => toNotify.includes(o.lineId)));
     return { success: true, data: { batchId, name: v.name, count: v.ids.length } };
   } catch (e) {
     if (isUniqueViolation(e)) return { success: false, error: "Nama batch sudah dipakai, atau ada pesanan yang sudah masuk batch lain." };

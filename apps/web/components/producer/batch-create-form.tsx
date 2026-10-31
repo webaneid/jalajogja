@@ -18,7 +18,7 @@ export function BatchCreateForm({ slug, suggestedName, today, orders }: {
   const submit = () => {
     setError(null);
     start(async () => {
-      const res = await createBatchAction(slug, { name, shippingDate: date, invoiceIds: [...selected] });
+      const res = await createBatchAction(slug, { name, shippingDate: date, shipmentIds: [...selected] });
       if (!res.success) { setError(res.error); return; }
       router.push(`/app/${slug}/portal-produsen/pengiriman/${res.data.batchId}`);
     });

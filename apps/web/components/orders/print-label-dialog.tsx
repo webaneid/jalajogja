@@ -32,8 +32,8 @@ function Glyph({ spec }: { spec: FormatSpec }) {
   );
 }
 
-export function PrintLabelDialog({ open, onClose, slug, invoiceIds, onDone }: {
-  open: boolean; onClose: () => void; slug: string; invoiceIds: string[]; onDone?: () => void;
+export function PrintLabelDialog({ open, onClose, slug, shipmentIds, onDone }: {
+  open: boolean; onClose: () => void; slug: string; shipmentIds: string[]; onDone?: () => void;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<LabelFormat | null>(null);
@@ -47,7 +47,7 @@ export function PrintLabelDialog({ open, onClose, slug, invoiceIds, onDone }: {
     if (win) win.document.write("<p style=\"font-family:system-ui,sans-serif;padding:24px;color:#475569\">Membuat label…</p>");
     try {
       const res = await fetch(`/api/labels?tenant=${encodeURIComponent(slug)}`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ format, invoiceIds }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ format, shipmentIds }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -91,7 +91,7 @@ export function PrintLabelDialog({ open, onClose, slug, invoiceIds, onDone }: {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Printer className="h-5 w-5" /> Print Format</DialogTitle>
           <DialogDescription>
-            {invoiceIds.length} label akan dibuat sebagai PDF. Pesanan berstatus <b>Diproses</b> otomatis menjadi <b>Dikemas</b>.
+            {shipmentIds.length} label akan dibuat sebagai PDF. Pesanan berstatus <b>Diproses</b> otomatis menjadi <b>Dikemas</b>.
           </DialogDescription>
         </DialogHeader>
         {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -111,20 +111,20 @@ export function PrintLabelDialog({ open, onClose, slug, invoiceIds, onDone }: {
 }
 
 /** Tombol mandiri (punya popup sendiri) — untuk halaman batch, halaman fulfillment admin, dan baris tabel sederhana. */
-export function PrintLabelsButton({ slug, invoiceIds, label, iconOnly = false, disabled = false, title }: {
-  slug: string; invoiceIds: string[]; label?: string; iconOnly?: boolean; disabled?: boolean; title?: string;
+export function PrintLabelsButton({ slug, shipmentIds, label, iconOnly = false, disabled = false, title }: {
+  slug: string; shipmentIds: string[]; label?: string; iconOnly?: boolean; disabled?: boolean; title?: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" disabled={disabled || invoiceIds.length === 0} onClick={() => setOpen(true)}
+      <button type="button" disabled={disabled || shipmentIds.length === 0} onClick={() => setOpen(true)}
         title={title ?? label ?? "Cetak label"} aria-label={title ?? label ?? "Cetak label"}
         className={iconOnly
           ? "inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
           : "inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-sm font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"}>
         <Printer className="h-4 w-4" />{!iconOnly && (label ?? "Cetak Label")}
       </button>
-      <PrintLabelDialog open={open} onClose={() => setOpen(false)} slug={slug} invoiceIds={invoiceIds} />
+      <PrintLabelDialog open={open} onClose={() => setOpen(false)} slug={slug} shipmentIds={shipmentIds} />
     </>
   );
 }

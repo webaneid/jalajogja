@@ -37,7 +37,7 @@ export default async function BatchDetailPage({ params }: { params: Promise<{ te
           </p>
         </div>
         <div className="flex flex-wrap items-start gap-2">
-          <PrintLabelsButton slug={slug} invoiceIds={rows.map((o) => o.invoiceId)} label="Cetak Label Batch" />
+          <PrintLabelsButton slug={slug} shipmentIds={rows.map((o) => o.lineId)} label="Cetak Label Batch" />
           <BatchPackAll slug={slug} batchId={batch.id} processingCount={batch.byStatus.processing ?? 0} />
         </div>
       </div>
@@ -57,14 +57,14 @@ export default async function BatchDetailPage({ params }: { params: Promise<{ te
           </thead>
           <tbody className="divide-y divide-border">
             {rows.map((o) => (
-              <tr key={o.invoiceId} className="align-top">
+              <tr key={o.lineId} className="align-top">
                 <td className="px-3 py-2"><Link href={`${base}/pesanan/${o.invoiceId}`} className="font-mono text-xs hover:underline">{o.invoiceNumber}</Link></td>
                 <td className="px-3 py-2"><div className="font-medium">{o.customerName}</div><div className="text-xs text-muted-foreground">{o.customerPhone ? displayPhone(o.customerPhone) : "—"}</div></td>
                 <td className="px-3 py-2"><ul className="space-y-0.5">{o.items.map((it, i) => <li key={i}>{it.name}{it.variantLabel && <span className="block text-xs text-muted-foreground">{it.variantLabel}</span>}</li>)}</ul></td>
                 <td className="px-3 py-2 text-right tabular-nums">{o.totalQty}</td>
                 <td className="whitespace-nowrap px-3 py-2">{o.courierLabel}</td>
                 <td className="px-3 py-2"><OrderStatusBadge status={o.status} /></td>
-                <td className="px-3 py-2"><BatchRowActions slug={slug} batchId={batch.id} invoiceId={o.invoiceId} status={o.status} trackingNumber={o.trackingNumber} proofUrl={o.trackingProofPath ? publicUrl(access.tenant.slug, o.trackingProofPath) : null} canChangePhoto={!o.shippedAt || Date.now() - o.shippedAt.getTime() <= 30 * 86_400_000} /></td>
+                <td className="px-3 py-2"><BatchRowActions slug={slug} batchId={batch.id} lineId={o.lineId} status={o.status} trackingNumber={o.trackingNumber} proofUrl={o.trackingProofPath ? publicUrl(access.tenant.slug, o.trackingProofPath) : null} canChangePhoto={!o.shippedAt || Date.now() - o.shippedAt.getTime() <= 30 * 86_400_000} /></td>
               </tr>
             ))}
           </tbody>
@@ -73,7 +73,7 @@ export default async function BatchDetailPage({ params }: { params: Promise<{ te
 
       {!batch.finished && (
         <BatchAddOrders slug={slug} batchId={batch.id}
-          orders={addable.map((o) => ({ invoiceId: o.invoiceId, invoiceNumber: o.invoiceNumber, customerName: o.customerName, summary: o.items.map((i) => i.name).join(", "), qty: o.totalQty }))} />
+          orders={addable.map((o) => ({ lineId: o.lineId, invoiceNumber: o.invoiceNumber, customerName: o.customerName, summary: o.items.map((i) => i.name).join(", "), qty: o.totalQty }))} />
       )}
       <p className="text-xs text-muted-foreground">Alur status: Diproses → Dikemas → (isi nomor resi + foto resi) → Dikirim. Foto resi tersimpan di Foto Saya dan dihapus otomatis 30 hari setelah tanggal kirim (nomor resi tetap).</p>
     </div>

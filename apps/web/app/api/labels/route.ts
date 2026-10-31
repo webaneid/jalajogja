@@ -1,5 +1,5 @@
 // Cetak label pengiriman → PDF. Doc: docs/arsitektur-portal-produsen.md § 21.
-// POST /api/labels?tenant={slug}   body: JSON { format, invoiceIds[] } ATAU form (format, invoiceIds = JSON/koma) — form dipakai
+// POST /api/labels?tenant={slug}   body: JSON { format, shipmentIds[] (id PENGIRIMAN) } ATAU form (format, shipmentIds = JSON/koma) — form dipakai
 // tombol cetak yang membuka tab baru. Dua jalur akses (per slug hanya satu yang berlaku):
 //   - admin tenant: getTenantAccess + minimal baca modul toko (mengubah status ke Dikemas hanya bila akses PENUH toko)
 //   - produsen: getProducerAccess (hanya pesanannya sendiri; kelayakan diperiksa ulang per invoice di buildLabelData)
@@ -39,12 +39,12 @@ export async function POST(req: NextRequest) {
   let canPack = false;
 
   const admin = await getTenantAccess(slug);
-  if (admin) {
-    if (!canAccess(admin.tenantUser, "toko", "read")) return fail("Akses ditolak.", 403);
+  // Jalur admin hanya bila punya akses baca toko; selain itu coba jalur produsen (pengurus tanpa akses toko yang juga produsen) — audit F3 L5
+  if (admin && canAccess(admin.tenantUser, "toko", "read")) {
     scope = { kind: "admin" };
-    tenant = { id: admin.tenant.id, name: admin.tenant.name, tenantType: admin.tenant.tenantType, slug: admin.tenant.slug };
-    userKey = `a:${admin.tenantUser.id}`;
-    canPack = hasFullAccess(admin.tenantUser, "toko");
+    tenant = { id: admin!.tenant.id, name: admin!.tenant.name, tenantType: admin!.tenant.tenantType, slug: admin!.tenant.slug };
+    userKey = `a:${admin!.tenantUser.id}`;
+    canPack = hasFullAccess(admin!.tenantUser, "toko");
   } else {
     const prod = await getProducerAccess(slug);
     if (!prod) return fail("Akses ditolak.", 403);
@@ -64,12 +64,12 @@ export async function POST(req: NextRequest) {
   let format: unknown; let rawIds: unknown;
   try {
     if ((req.headers.get("content-type") ?? "").includes("application/json")) {
-      const b = await req.json() as { format?: unknown; invoiceIds?: unknown };
-      format = b.format; rawIds = b.invoiceIds;
+      const b = await req.json() as { format?: unknown; shipmentIds?: unknown };
+      format = b.format; rawIds = b.shipmentIds;
     } else {
       const f = await req.formData();
       format = f.get("format");
-      const v = String(f.get("invoiceIds") ?? "");
+      const v = String(f.get("shipmentIds") ?? "");
       try { rawIds = v.trim().startsWith("[") ? JSON.parse(v) : v.split(",").map((s) => s.trim()).filter(Boolean); } catch { rawIds = null; }
     }
   } catch { return fail("Data tidak valid.", 400); }
@@ -77,14 +77,14 @@ export async function POST(req: NextRequest) {
   if (!isLabelFormat(format)) return fail("Format cetak tidak dikenal.", 400);
   if (!Array.isArray(rawIds)) return fail("Pilih pesanan yang akan dicetak.", 400);
   if (rawIds.length > MAX_INVOICES) return fail(`Pilih 1–${MAX_INVOICES} pesanan.`, 400); // sebelum map(String) — tak memproses array raksasa
-  const invoiceIds = [...new Set(rawIds.map((x) => String(x)))];
-  if (invoiceIds.length === 0 || invoiceIds.length > MAX_INVOICES) return fail(`Pilih 1–${MAX_INVOICES} pesanan.`, 400);
-  if (!invoiceIds.every(isValidUuid)) return fail("Data tidak valid.", 400);
+  const shipmentIds = [...new Set(rawIds.map((x) => String(x)))];
+  if (shipmentIds.length === 0 || shipmentIds.length > MAX_INVOICES) return fail(`Pilih 1–${MAX_INVOICES} pesanan.`, 400);
+  if (!shipmentIds.every(isValidUuid)) return fail("Data tidak valid.", 400);
 
   const tenantClient = createTenantDb(tenant.slug);
   let built;
   try {
-    built = await buildLabelData(tenantClient, tenant, invoiceIds, scope);
+    built = await buildLabelData(tenantClient, tenant, shipmentIds, scope);
   } catch (e) {
     console.error("[labels] buildLabelData:", e);
     return fail("Gagal menyiapkan data label.", 500);
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
   // Mencetak = mengemas: Diproses → Dikemas (hanya yang berstatus Diproses; gagal tidak membatalkan PDF)
   if (canPack) {
     try {
-      const changed = await markPackedAfterPrint(tenantClient, invoiceIds);
+      const changed = await markPackedAfterPrint(tenantClient, shipmentIds);
       if (changed > 0) {
         for (const path of [`/app/${slug}/portal-produsen/pengiriman`, `/app/${slug}/portal-produsen/pesanan`, `/app/${slug}/toko/pesanan`]) revalidatePath(path);
       }

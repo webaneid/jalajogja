@@ -1,13 +1,16 @@
-// Pesanan untuk Portal Produsen (menu "Pesanan") — SATU baris = SATU invoice LUNAS yang memuat produk milik produsen
-// dari SESI. Doc: docs/arsitektur-portal-produsen.md § 19.
+// Pesanan untuk Portal Produsen & tab "Pesanan Masuk" — SATU baris = SATU PENGIRIMAN (baris invoice_shipping_lines penjual tenant)
+// dari invoice LUNAS. ADR-0005 (pengiriman per produsen), docs/arsitektur-portal-produsen.md § 19 & 24.
 //
-// Aturan keamanan (fail-closed):
-//  - producerId HARUS dari getProducerAccess() (sesi), bukan dari URL/body.
-//  - Hanya invoice status "paid". Hanya item produk milik produsen ini yang DITAMPILKAN; item lain di invoice yang sama
-//    tidak pernah dikembalikan — hanya ditandai `isMixed` (invoice campuran: tidak bisa masuk batch, keputusan user 2026-11-01).
-//  - Tidak ada data uang yang dikembalikan (tidak diminta di menu Pesanan).
+// Kepemilikan (fail-closed):
+//  - lingkup "producer": pengiriman dengan `invoice_shipping_lines.producer_id` = produsen dari SESI (getProducerAccess, bukan URL/body);
+//    item pengiriman = item produk tenant invoice itu dengan `invoice_items.producer_id` yang sama (snapshot checkout).
+//    Pesanan lama yang ambigu (satu baris bersama beberapa produsen → producer_id NULL) TIDAK tampil di sini — ditangani admin.
+//  - lingkup "product" (tab produk): pengiriman milik produsen pemilik produk itu (atau baris toko bila produk internal) yang memuat produk tsb.
+//    Pemanggil WAJIB sudah membuktikan akses ke produk (fungsi ini tidak memeriksa sendiri).
+//  - Hanya invoice status "paid" (kecuali requirePaid:false untuk operasi koreksi).
+//  - Tidak ada data uang yang dikembalikan oleh daftar (hanya detail yang memuat harga).
 import "server-only";
-import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { TenantDb, ShippingStatus } from "@jalajogja/db";
 import { escapeLike } from "@/lib/escape-like";
 import { formatShippingMethod } from "@/lib/format-shipping-method";
@@ -17,99 +20,25 @@ const num = (v: unknown) => { const n = parseFloat(String(v ?? "")); return Numb
 export type ProducerOrderItem = { name: string; variantLabel: string; quantity: number };
 
 export type ProducerOrderRow = {
+  lineId:        string;                // KUNCI: id pengiriman (invoice_shipping_lines.id) — dipakai semua aksi (batch/label/resi)
   invoiceId:     string;
   invoiceNumber: string;
   createdAt:     Date;
   customerName:  string;
   customerPhone: string | null;
-  items:         ProducerOrderItem[];   // HANYA item milik produsen ini
+  items:         ProducerOrderItem[];   // HANYA item milik pengiriman/produsen ini
   totalQty:      number;
   courierLabel:  string;
-  status:        ShippingStatus | null; // status pengiriman (invoice_shipping_lines.status), null = tak ada baris
+  status:        ShippingStatus | null; // status pengiriman (satu sumber dengan admin & pelanggan)
   deliveryMethod: string | null;        // 'courier' | 'pickup' (ambil sendiri tidak dikirim kurir → tak bisa di batch)
   trackingNumber: string | null;        // resi (diisi saat Dikirim)
   trackingProofPath: string | null;     // path foto resi di bucket tenant (URL dibentuk di halaman)
   shippedAt:     Date | null;           // tanggal kirim (dasar masa simpan foto resi 30 hari)
-  isMixed:       boolean;               // ada item selain milik produsen ini di invoice yang sama
+  /** Selalu false di lingkup produsen (pengiriman per produsen; ADR-0005). Dipertahankan agar komponen tabel lama tetap kompatibel. */
+  isMixed:       boolean;
 };
 
 export type InvoiceBatchRef = { id: string; name: string; producerId: string };
-
-export type ProducerOrderDetail = ProducerOrderRow & {
-  checkoutAddress: string;
-  batch: InvoiceBatchRef | null;     // batch pengiriman yang memuat invoice ini (null = belum masuk batch)
-  notes: string | null;
-  /** Angka tingkat invoice (hanya dipakai utuh bila invoice TIDAK campuran; selain itu halaman menghitung dari item miliknya). */
-  invoiceAmounts: { subtotal: number; shipping: number; discount: number; total: number; paid: number };
-  /** Item MILIK produsen ini saja (dengan harga) — tampilan detail sama dengan admin. images = gambar produk (simple) untuk foto. */
-  itemsDetail: { id: string; name: string; description: string | null; itemId: string | null; unitPrice: number; quantity: number; total: number; images: unknown }[];
-  /** Baris pengiriman penjual tenant (mentah; dipetakan ke kartu fulfillment di halaman). */
-  shippingRows: { id: string; sellerType: string; sellerName: string; courier: string | null; service: string | null; etd: string | null; cost: string; trackingNumber: string | null; trackingProofPath: string | null; shippedAt: Date | null; status: string }[];
-};
-
-/** id produk + id variasi milik produsen (invoice_items.itemId = id produk untuk simple, id variasi untuk variable). */
-async function producerItemIds(tenantClient: TenantDb, producerId: string) {
-  const { db, schema } = tenantClient;
-  const products = await db.select({ id: schema.products.id }).from(schema.products)
-    .where(and(eq(schema.products.producerId, producerId), isNull(schema.products.mitraId)));
-  const productIds = products.map((p) => p.id);
-  if (productIds.length === 0) return { ids: new Set<string>(), variationCombo: new Map<string, Record<string, string>>() };
-  const variations = await db.select({ id: schema.productVariations.id, combo: schema.productVariations.attributeCombo })
-    .from(schema.productVariations).where(inArray(schema.productVariations.productId, productIds));
-  const variationCombo = new Map(variations.map((v) => [v.id, (v.combo ?? {}) as Record<string, string>]));
-  return { ids: new Set<string>([...productIds, ...variations.map((v) => v.id)]), variationCombo };
-}
-
-async function buildRows(
-  tenantClient: TenantDb,
-  invoices: { id: string; invoiceNumber: string; createdAt: Date; customerName: string; customerPhone: string | null }[],
-  owned: Awaited<ReturnType<typeof producerItemIds>>,
-): Promise<ProducerOrderRow[]> {
-  if (invoices.length === 0) return [];
-  const { db, schema } = tenantClient;
-  const invoiceIds = invoices.map((i) => i.id);
-
-  const [allItems, lines] = await Promise.all([
-    db.select({
-      invoiceId: schema.invoiceItems.invoiceId, itemType: schema.invoiceItems.itemType, itemId: schema.invoiceItems.itemId,
-      name: schema.invoiceItems.name, quantity: schema.invoiceItems.quantity, sortOrder: schema.invoiceItems.sortOrder,
-    }).from(schema.invoiceItems).where(inArray(schema.invoiceItems.invoiceId, invoiceIds)),
-    db.select({
-      invoiceId: schema.invoiceShippingLines.invoiceId, sellerType: schema.invoiceShippingLines.sellerType,
-      deliveryMethod: schema.invoiceShippingLines.deliveryMethod, courier: schema.invoiceShippingLines.courier,
-      service: schema.invoiceShippingLines.service, paymentMethod: schema.invoiceShippingLines.paymentMethod,
-      status: schema.invoiceShippingLines.status, createdAt: schema.invoiceShippingLines.createdAt,
-      trackingNumber: schema.invoiceShippingLines.trackingNumber, trackingProofPath: schema.invoiceShippingLines.trackingProofPath, shippedAt: schema.invoiceShippingLines.shippedAt,
-    }).from(schema.invoiceShippingLines).where(inArray(schema.invoiceShippingLines.invoiceId, invoiceIds))
-      .orderBy(schema.invoiceShippingLines.createdAt),
-  ]);
-
-  return invoices.map((inv) => {
-    const its = allItems.filter((i) => i.invoiceId === inv.id).sort((a, b) => a.sortOrder - b.sortOrder);
-    const mine = its.filter((i) => i.itemType === "product" && i.itemId && owned.ids.has(i.itemId));
-    const line = lines.find((l) => l.invoiceId === inv.id && l.sellerType === "tenant") ?? lines.find((l) => l.invoiceId === inv.id);
-    const items = mine.map((i) => {
-      const combo = i.itemId ? owned.variationCombo.get(i.itemId) : undefined;
-      return {
-        name: i.name,
-        variantLabel: combo ? Object.entries(combo).map(([k, v]) => `${k}: ${v}`).join(", ") : "",
-        quantity: i.quantity,
-      };
-    });
-    return {
-      invoiceId: inv.id, invoiceNumber: inv.invoiceNumber, createdAt: inv.createdAt,
-      customerName: inv.customerName, customerPhone: inv.customerPhone,
-      items, totalQty: items.reduce((a, i) => a + i.quantity, 0),
-      courierLabel: formatShippingMethod(line),
-      status: (line?.status ?? null) as ShippingStatus | null,
-      deliveryMethod: line?.deliveryMethod ?? null,
-      trackingNumber: line?.trackingNumber ?? null,
-      trackingProofPath: line?.trackingProofPath ?? null,
-      shippedAt: line?.shippedAt ?? null,
-      isMixed: mine.length !== its.length,
-    };
-  });
-}
 
 export const ORDER_STATUS_FILTERS = ["pending", "processing", "packed", "shipped", "delivered"] as const;
 export type OrderStatusFilter = typeof ORDER_STATUS_FILTERS[number];
@@ -119,196 +48,189 @@ export const parseStatusFilter = (v: unknown): OrderStatusFilter | null =>
 export type StatusCounts = Record<OrderStatusFilter, number> & { all: number };
 const EMPTY_COUNTS: StatusCounts = { all: 0, pending: 0, processing: 0, packed: 0, shipped: 0, delivered: 0 };
 
-async function listByOwned(
+// ─── Lingkup & pembentuk baris ─────────────────────────────────────────────────────────────────────────
+
+type Scope =
+  | { kind: "producer"; producerId: string }
+  | { kind: "product"; productId: string; producerId: string | null; itemIds: Set<string> };
+
+type LineRecord = {
+  lineId: string; invoiceId: string; invoiceNumber: string; createdAt: Date; customerName: string; customerPhone: string | null;
+  lineProducerId: string | null; deliveryMethod: string; courier: string | null; service: string | null; paymentMethod: string;
+  status: string; trackingNumber: string | null; trackingProofPath: string | null; shippedAt: Date | null;
+};
+
+function lineSelect(schema: TenantDb["schema"]) {
+  const L = schema.invoiceShippingLines, I = schema.invoices;
+  return {
+    lineId: L.id, invoiceId: I.id, invoiceNumber: I.invoiceNumber, createdAt: I.createdAt,
+    customerName: I.customerName, customerPhone: I.customerPhone,
+    lineProducerId: L.producerId, deliveryMethod: L.deliveryMethod, courier: L.courier, service: L.service, paymentMethod: L.paymentMethod,
+    status: L.status, trackingNumber: L.trackingNumber, trackingProofPath: L.trackingProofPath, shippedAt: L.shippedAt,
+  };
+}
+
+/** Item produk penjual tenant untuk tiap pengiriman + label varian. */
+async function buildRows(tenantClient: TenantDb, lines: LineRecord[], scope: Scope): Promise<ProducerOrderRow[]> {
+  if (lines.length === 0) return [];
+  const { db, schema } = tenantClient;
+  const II = schema.invoiceItems;
+  const invoiceIds = [...new Set(lines.map((l) => l.invoiceId))];
+
+  const items = await db.select({
+    invoiceId: II.invoiceId, itemId: II.itemId, producerId: II.producerId, name: II.name, quantity: II.quantity, sortOrder: II.sortOrder,
+  }).from(II).where(and(inArray(II.invoiceId, invoiceIds), eq(II.itemType, "product"), eq(II.sellerType, "tenant")));
+
+  const varIds = [...new Set(items.map((i) => i.itemId).filter((x): x is string => !!x))];
+  const variations = varIds.length
+    ? await db.select({ id: schema.productVariations.id, combo: schema.productVariations.attributeCombo })
+        .from(schema.productVariations).where(inArray(schema.productVariations.id, varIds))
+    : [];
+  const comboOf = new Map(variations.map((v) => [v.id, (v.combo ?? {}) as Record<string, string>]));
+
+  return lines.map((l) => {
+    const mine = items
+      .filter((i) => i.invoiceId === l.invoiceId && (scope.kind === "producer" ? i.producerId === l.lineProducerId : !!i.itemId && scope.itemIds.has(i.itemId) && (l.lineProducerId === null || i.producerId === l.lineProducerId)))
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((i) => {
+        const combo = i.itemId ? comboOf.get(i.itemId) : undefined;
+        return {
+          name: i.name,
+          variantLabel: combo ? Object.entries(combo).map(([k, v]) => `${k}: ${v}`).join(", ") : "",
+          quantity: i.quantity,
+        };
+      });
+    return {
+      lineId: l.lineId, invoiceId: l.invoiceId, invoiceNumber: l.invoiceNumber, createdAt: l.createdAt,
+      customerName: l.customerName, customerPhone: l.customerPhone,
+      items: mine, totalQty: mine.reduce((a, i) => a + i.quantity, 0),
+      courierLabel: formatShippingMethod({ deliveryMethod: l.deliveryMethod, courier: l.courier, service: l.service, paymentMethod: l.paymentMethod }),
+      status: l.status as ShippingStatus,
+      deliveryMethod: l.deliveryMethod,
+      trackingNumber: l.trackingNumber, trackingProofPath: l.trackingProofPath, shippedAt: l.shippedAt,
+      isMixed: false,
+    };
+  });
+}
+
+/** Predikat dasar: pengiriman tenant + invoice lunas + kepemilikan lingkup. */
+function baseWhere(tenantClient: TenantDb, scope: Scope, requirePaid = true): SQL | undefined {
+  const { db, schema } = tenantClient;
+  const L = schema.invoiceShippingLines, I = schema.invoices, II = schema.invoiceItems;
+  const paid = requirePaid ? eq(I.status, "paid") : undefined;
+  if (scope.kind === "producer") return and(eq(L.sellerType, "tenant"), eq(L.producerId, scope.producerId), paid);
+  const containing = db.select({ id: II.invoiceId }).from(II)
+    .where(and(eq(II.itemType, "product"), eq(II.sellerType, "tenant"), inArray(II.itemId, [...scope.itemIds])));
+  return and(
+    eq(L.sellerType, "tenant"),
+    scope.producerId ? eq(L.producerId, scope.producerId) : isNull(L.producerId),
+    paid,
+    inArray(L.invoiceId, containing),
+  );
+}
+
+async function listByScope(
   tenantClient: TenantDb,
-  owned: Awaited<ReturnType<typeof producerItemIds>>,
+  scope: Scope,
   opts: { q?: string; page: number; pageSize: number; status?: OrderStatusFilter | null },
 ): Promise<{ rows: ProducerOrderRow[]; total: number; statusCounts: StatusCounts }> {
   const { db, schema } = tenantClient;
-  if (owned.ids.size === 0) return { rows: [], total: 0, statusCounts: { ...EMPTY_COUNTS } };
-
-  // Invoice yang memuat item-item ini (subquery — tanpa menarik semua id ke memori)
-  const mineInvoiceIds = db.select({ id: schema.invoiceItems.invoiceId }).from(schema.invoiceItems)
-    .where(and(eq(schema.invoiceItems.itemType, "product"), inArray(schema.invoiceItems.itemId, [...owned.ids])));
-
-  const L = schema.invoiceShippingLines;
-  // Filter status pengiriman = status baris pengiriman penjual tenant (satu sumber dengan admin & pelanggan)
-  const withStatus = opts.status
-    ? inArray(schema.invoices.id, db.select({ id: L.invoiceId }).from(L).where(and(eq(L.sellerType, "tenant"), eq(L.status, opts.status))))
-    : undefined;
+  const L = schema.invoiceShippingLines, I = schema.invoices;
+  const base = baseWhere(tenantClient, scope);
 
   const q = (opts.q ?? "").trim().slice(0, 80);
   const where = and(
-    eq(schema.invoices.status, "paid"),
-    inArray(schema.invoices.id, mineInvoiceIds),
-    withStatus,
-    q ? or(
-      ilike(schema.invoices.invoiceNumber, `%${escapeLike(q)}%`),
-      ilike(schema.invoices.customerName, `%${escapeLike(q)}%`),
-    ) : undefined,
+    base,
+    opts.status ? eq(L.status, opts.status) : undefined,
+    q ? or(ilike(I.invoiceNumber, `%${escapeLike(q)}%`), ilike(I.customerName, `%${escapeLike(q)}%`)) : undefined,
   );
 
-  const [invoices, [{ total }], countRows, allRow] = await Promise.all([
-    db.select({
-      id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber, createdAt: schema.invoices.createdAt,
-      customerName: schema.invoices.customerName, customerPhone: schema.invoices.customerPhone,
-    }).from(schema.invoices).where(where).orderBy(desc(schema.invoices.createdAt))
-      .limit(opts.pageSize).offset((opts.page - 1) * opts.pageSize),
-    db.select({ total: sql<number>`count(*)::int` }).from(schema.invoices).where(where),
-    // Jumlah per status untuk chip filter — himpunan pesanan lunas yang sama, MENGABAIKAN pencarian & filter (angka stabil)
-    db.select({ status: L.status, n: sql<number>`count(distinct ${L.invoiceId})::int` }).from(L)
-      .innerJoin(schema.invoices, eq(schema.invoices.id, L.invoiceId))
-      .where(and(eq(schema.invoices.status, "paid"), eq(L.sellerType, "tenant"), inArray(L.invoiceId, mineInvoiceIds)))
-      .groupBy(L.status),
-    // "Semua" dihitung terpisah (bukan jumlah chip) agar invoice dengan >1 baris pengiriman tenant tidak terhitung ganda
-    db.select({ n: sql<number>`count(*)::int` }).from(schema.invoices)
-      .where(and(eq(schema.invoices.status, "paid"), inArray(schema.invoices.id, mineInvoiceIds))),
+  const [lines, [{ total }], countRows, allRow] = await Promise.all([
+    db.select(lineSelect(schema)).from(L).innerJoin(I, eq(I.id, L.invoiceId)).where(where)
+      .orderBy(desc(I.createdAt), L.createdAt).limit(opts.pageSize).offset((opts.page - 1) * opts.pageSize),
+    db.select({ total: sql<number>`count(*)::int` }).from(L).innerJoin(I, eq(I.id, L.invoiceId)).where(where),
+    // Jumlah per status untuk chip filter — himpunan pengiriman lunas yang sama, MENGABAIKAN pencarian & filter (angka stabil)
+    db.select({ status: L.status, n: sql<number>`count(*)::int` }).from(L).innerJoin(I, eq(I.id, L.invoiceId)).where(base).groupBy(L.status),
+    db.select({ n: sql<number>`count(*)::int` }).from(L).innerJoin(I, eq(I.id, L.invoiceId)).where(base),
   ]);
 
   const statusCounts: StatusCounts = { ...EMPTY_COUNTS, all: Number(allRow[0]?.n ?? 0) };
   for (const r of countRows) {
     if ((ORDER_STATUS_FILTERS as readonly string[]).includes(r.status)) statusCounts[r.status as OrderStatusFilter] = r.n;
   }
-  return { rows: await buildRows(tenantClient, invoices, owned), total: Number(total), statusCounts };
+  return { rows: await buildRows(tenantClient, lines, scope), total: Number(total), statusCounts };
 }
 
-/** Menu Pesanan: semua produk milik produsen (producerId WAJIB dari sesi). */
+/** Menu Pesanan: semua pengiriman milik produsen (producerId WAJIB dari sesi). */
 export async function listProducerOrders(
   tenantClient: TenantDb,
   producerId: string,
   opts: { q?: string; page: number; pageSize: number; status?: OrderStatusFilter | null },
 ): Promise<{ rows: ProducerOrderRow[]; total: number; statusCounts: StatusCounts }> {
-  return listByOwned(tenantClient, await producerItemIds(tenantClient, producerId), opts);
+  return listByScope(tenantClient, { kind: "producer", producerId }, opts);
 }
 
 /**
- * Tab "Pesanan Masuk" di halaman produk tunggal: pesanan lunas yang memuat SATU produk (+ variasinya).
- * Tampilan sama dengan menu Pesanan. productId WAJIB sudah terbukti boleh diakses pemanggil (admin: getTenantAccess +
- * loadProductDetail; produsen: loadProductDetail dengan ownerProducerId) — fungsi ini TIDAK memeriksa kepemilikan sendiri.
- * Item yang tampil hanya milik produk ini; `isMixed` di sini berarti "invoice juga memuat barang lain" (tab tidak menampilkannya).
+ * Tab "Pesanan Masuk" di halaman produk tunggal: pengiriman lunas milik produsen pemilik produk (atau baris toko bila produk internal)
+ * yang memuat SATU produk (+ variasinya); item yang tampil hanya produk itu. productId WAJIB sudah terbukti boleh diakses pemanggil
+ * (admin: getTenantAccess + loadProductDetail; produsen: loadProductDetail dengan ownerProducerId) — fungsi ini TIDAK memeriksa sendiri.
  */
 export async function listProductOrders(
   tenantClient: TenantDb,
   productId: string,
   opts: { q?: string; page: number; pageSize: number; status?: OrderStatusFilter | null },
 ): Promise<{ rows: ProducerOrderRow[]; total: number; statusCounts: StatusCounts }> {
-  const { db, schema } = tenantClient;
-  const variations = await db.select({ id: schema.productVariations.id, combo: schema.productVariations.attributeCombo })
-    .from(schema.productVariations).where(eq(schema.productVariations.productId, productId));
-  const owned = {
-    ids: new Set<string>([productId, ...variations.map((v) => v.id)]),
-    variationCombo: new Map(variations.map((v) => [v.id, (v.combo ?? {}) as Record<string, string>])),
-  };
-  return listByOwned(tenantClient, owned, opts);
+  const scope = await productScope(tenantClient, productId);
+  if (!scope) return { rows: [], total: 0, statusCounts: { ...EMPTY_COUNTS } };
+  return listByScope(tenantClient, scope, opts);
 }
 
-/** Satu invoice — null bila tidak lunas ATAU tidak memuat item produsen ini (kepemilikan dibuktikan di sini). */
-export async function getProducerOrder(
-  tenantClient: TenantDb,
-  producerId: string,
-  invoiceId: string,
-): Promise<ProducerOrderDetail | null> {
+async function productScope(tenantClient: TenantDb, productId: string): Promise<Scope | null> {
   const { db, schema } = tenantClient;
-  const owned = await producerItemIds(tenantClient, producerId);
-  if (owned.ids.size === 0) return null;
-
-  const [inv] = await db.select({
-    id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber, createdAt: schema.invoices.createdAt,
-    customerName: schema.invoices.customerName, customerPhone: schema.invoices.customerPhone,
-    shippingAddress: schema.invoices.shippingAddress, shippingCityName: schema.invoices.shippingCityName,
-    notes: schema.invoices.notes, subtotal: schema.invoices.subtotal, shippingTotal: schema.invoices.shippingTotal,
-    discount: schema.invoices.discount, total: schema.invoices.total, paidAmount: schema.invoices.paidAmount,
-  }).from(schema.invoices)
-    .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.status, "paid")))
-    .limit(1);
-  if (!inv) return null;
-
-  const [row] = await buildRows(tenantClient, [inv], owned);
-  if (!row || row.items.length === 0) return null; // bukan invoice milik produsen ini
-
-  // Kepemilikan terbukti → muat item MILIK produsen (dengan harga), gambar produk, dan baris pengiriman tenant
-  const ownedIds = [...owned.ids];
-  const [itemRows, shippingRows] = await Promise.all([
-    db.select({
-      id: schema.invoiceItems.id, name: schema.invoiceItems.name, description: schema.invoiceItems.description, itemId: schema.invoiceItems.itemId,
-      unitPrice: schema.invoiceItems.unitPrice, quantity: schema.invoiceItems.quantity, total: schema.invoiceItems.total,
-    }).from(schema.invoiceItems)
-      .where(and(eq(schema.invoiceItems.invoiceId, inv.id), eq(schema.invoiceItems.itemType, "product"), inArray(schema.invoiceItems.itemId, ownedIds)))
-      .orderBy(schema.invoiceItems.sortOrder),
-    db.select().from(schema.invoiceShippingLines)
-      .where(and(eq(schema.invoiceShippingLines.invoiceId, inv.id), eq(schema.invoiceShippingLines.sellerType, "tenant")))
-      .orderBy(schema.invoiceShippingLines.createdAt),
-  ]);
-  const productIds = [...new Set(itemRows.map((i) => i.itemId).filter((x): x is string => !!x))];
-  const imgs = productIds.length
-    ? await db.select({ id: schema.products.id, images: schema.products.images }).from(schema.products).where(inArray(schema.products.id, productIds))
-    : [];
-  const imgOf = new Map(imgs.map((p) => [p.id, p.images]));
-
-  return {
-    ...row,
-    checkoutAddress: [inv.shippingAddress, inv.shippingCityName].filter((p): p is string => !!p?.trim()).join(", "),
-    batch: await getInvoiceBatch(tenantClient, inv.id),
-    notes: inv.notes ?? null,
-    invoiceAmounts: { subtotal: num(inv.subtotal), shipping: num(inv.shippingTotal), discount: num(inv.discount), total: num(inv.total), paid: num(inv.paidAmount) },
-    itemsDetail: itemRows.map((i) => ({
-      id: i.id, name: i.name, description: i.description, itemId: i.itemId,
-      unitPrice: num(i.unitPrice), quantity: i.quantity, total: num(i.total), images: i.itemId ? imgOf.get(i.itemId) : undefined,
-    })),
-    shippingRows: shippingRows.map((l) => ({
-      id: l.id, sellerType: l.sellerType, sellerName: l.sellerName, courier: l.courier, service: l.service, etd: l.etd,
-      cost: String(l.cost), trackingNumber: l.trackingNumber, trackingProofPath: l.trackingProofPath, shippedAt: l.shippedAt, status: l.status,
-    })),
-  };
+  const [p] = await db.select({ producerId: schema.products.producerId, mitraId: schema.products.mitraId })
+    .from(schema.products).where(eq(schema.products.id, productId)).limit(1);
+  if (!p || p.mitraId) return null; // produk mitra tak punya pengiriman tenant
+  const variations = await db.select({ id: schema.productVariations.id }).from(schema.productVariations)
+    .where(eq(schema.productVariations.productId, productId));
+  return { kind: "product", productId, producerId: p.producerId ?? null, itemIds: new Set<string>([productId, ...variations.map((v) => v.id)]) };
 }
 
-/** Batch yang memuat invoice ini (satu invoice paling banyak satu batch). TIDAK memeriksa siapa pemanggilnya — pemanggil sudah mengotorisasi. */
-export async function getInvoiceBatch(tenantClient: TenantDb, invoiceId: string): Promise<InvoiceBatchRef | null> {
-  const { db, schema } = tenantClient;
-  const [b] = await db.select({
-    id: schema.producerShipmentBatches.id, name: schema.producerShipmentBatches.name, producerId: schema.producerShipmentBatches.producerId,
-  }).from(schema.producerShipmentInvoices)
-    .innerJoin(schema.producerShipmentBatches, eq(schema.producerShipmentBatches.id, schema.producerShipmentInvoices.batchId))
-    .where(eq(schema.producerShipmentInvoices.invoiceId, invoiceId)).limit(1);
-  return b ?? null;
-}
+// ─── Batch ─────────────────────────────────────────────────────────────────────────────────────────────
 
-// ─── Batch pengiriman (S3) ──────────────────────────────────────────────────────────────────────────────
-
-/** Layak masuk batch: tidak campuran, status Menunggu, dikirim kurir (bukan ambil sendiri), ada item produsen. */
+/** Layak masuk batch: status Menunggu, dikirim kurir (bukan ambil-sendiri), ada item. (Kepemilikan sudah dijamin pemuat.) */
 export function isBatchable(o: ProducerOrderRow): boolean {
   return o.items.length > 0 && !o.isMixed && o.status === "pending" && o.deliveryMethod !== "pickup";
 }
 
-/** Invoice-invoice tertentu — hanya yang LUNAS dan memuat item produsen ini (id lain diabaikan diam-diam → pemanggil cek jumlah). */
-export async function getProducerOrdersByIds(tenantClient: TenantDb, producerId: string, invoiceIds: string[], opts: { requirePaid?: boolean } = {}): Promise<ProducerOrderRow[]> {
-  if (invoiceIds.length === 0) return [];
+/**
+ * Pengiriman-pengiriman tertentu milik produsen — hanya yang lunas (kecuali requirePaid:false untuk koreksi). id yang bukan milik
+ * produsen / bukan pengiriman tenant / invoice belum lunas DIABAIKAN diam-diam → pemanggil membandingkan jumlah hasil dengan jumlah id.
+ */
+export async function getProducerOrdersByIds(
+  tenantClient: TenantDb,
+  producerId: string,
+  lineIds: string[],
+  opts: { requirePaid?: boolean } = {},
+): Promise<ProducerOrderRow[]> {
+  if (lineIds.length === 0) return [];
   const { db, schema } = tenantClient;
-  const owned = await producerItemIds(tenantClient, producerId);
-  if (owned.ids.size === 0) return [];
-  const invs = await db.select({
-    id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber, createdAt: schema.invoices.createdAt,
-    customerName: schema.invoices.customerName, customerPhone: schema.invoices.customerPhone,
-  }).from(schema.invoices)
-    .where(and(inArray(schema.invoices.id, invoiceIds), opts.requirePaid === false ? undefined : eq(schema.invoices.status, "paid")));
-  return (await buildRows(tenantClient, invs, owned)).filter((r) => r.items.length > 0);
+  const L = schema.invoiceShippingLines, I = schema.invoices;
+  const scope: Scope = { kind: "producer", producerId };
+  const lines = await db.select(lineSelect(schema)).from(L).innerJoin(I, eq(I.id, L.invoiceId))
+    .where(and(baseWhere(tenantClient, scope, opts.requirePaid !== false), inArray(L.id, lineIds)));
+  return (await buildRows(tenantClient, lines, scope)).filter((r) => r.items.length > 0);
 }
 
-/** Pesanan yang bisa dipilih untuk batch baru: lunas, milik produsen, belum di batch mana pun, layak (isBatchable). */
+/** Pengiriman yang bisa dipilih untuk batch baru: lunas, milik produsen, belum di batch mana pun, layak (isBatchable). */
 export async function listBatchableOrders(tenantClient: TenantDb, producerId: string): Promise<ProducerOrderRow[]> {
   const { db, schema } = tenantClient;
-  const owned = await producerItemIds(tenantClient, producerId);
-  if (owned.ids.size === 0) return [];
-  const mine = db.select({ id: schema.invoiceItems.invoiceId }).from(schema.invoiceItems)
-    .where(and(eq(schema.invoiceItems.itemType, "product"), inArray(schema.invoiceItems.itemId, [...owned.ids])));
-  const batched = db.select({ id: schema.producerShipmentInvoices.invoiceId }).from(schema.producerShipmentInvoices);
-  const invs = await db.select({
-    id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber, createdAt: schema.invoices.createdAt,
-    customerName: schema.invoices.customerName, customerPhone: schema.invoices.customerPhone,
-  }).from(schema.invoices)
-    .where(and(eq(schema.invoices.status, "paid"), inArray(schema.invoices.id, mine), sql`${schema.invoices.id} NOT IN (${batched})`))
-    .orderBy(desc(schema.invoices.createdAt)).limit(100); // = MAX_INVOICES aksi batch
-  return (await buildRows(tenantClient, invs, owned)).filter(isBatchable);
+  const L = schema.invoiceShippingLines, I = schema.invoices, PSI = schema.producerShipmentInvoices;
+  const scope: Scope = { kind: "producer", producerId };
+  const batched = db.select({ id: PSI.shippingLineId }).from(PSI).where(isNotNull(PSI.shippingLineId));
+  const lines = await db.select(lineSelect(schema)).from(L).innerJoin(I, eq(I.id, L.invoiceId))
+    .where(and(baseWhere(tenantClient, scope), eq(L.status, "pending"), eq(L.deliveryMethod, "courier"), sql`${L.id} NOT IN (${batched})`))
+    .orderBy(desc(I.createdAt)).limit(100); // = MAX_INVOICES aksi batch
+  return (await buildRows(tenantClient, lines, scope)).filter(isBatchable);
 }
 
 export type ProducerBatchSummary = {
@@ -319,16 +241,17 @@ export type ProducerBatchSummary = {
 async function summarize(tenantClient: TenantDb, batches: { id: string; name: string; shippingDate: string; createdAt: Date }[]): Promise<ProducerBatchSummary[]> {
   if (batches.length === 0) return [];
   const { db, schema } = tenantClient;
-  const links = await db.select({ batchId: schema.producerShipmentInvoices.batchId, invoiceId: schema.producerShipmentInvoices.invoiceId })
-    .from(schema.producerShipmentInvoices).where(inArray(schema.producerShipmentInvoices.batchId, batches.map((b) => b.id)));
-  const invIds = links.map((l) => l.invoiceId);
-  const lines = invIds.length ? await db.select({ invoiceId: schema.invoiceShippingLines.invoiceId, status: schema.invoiceShippingLines.status, sellerType: schema.invoiceShippingLines.sellerType })
-    .from(schema.invoiceShippingLines).where(and(inArray(schema.invoiceShippingLines.invoiceId, invIds), eq(schema.invoiceShippingLines.sellerType, "tenant"))) : [];
+  const PSI = schema.producerShipmentInvoices, L = schema.invoiceShippingLines;
+  const links = await db.select({ batchId: PSI.batchId, lineId: PSI.shippingLineId }).from(PSI)
+    .where(and(inArray(PSI.batchId, batches.map((b) => b.id)), isNotNull(PSI.shippingLineId)));
+  const lineIds = links.map((l) => l.lineId!).filter(Boolean);
+  const lines = lineIds.length ? await db.select({ id: L.id, status: L.status }).from(L).where(inArray(L.id, lineIds)) : [];
+  const statusOf = new Map(lines.map((l) => [l.id, l.status]));
   return batches.map((b) => {
-    const ids = links.filter((l) => l.batchId === b.id).map((l) => l.invoiceId);
+    const ids = links.filter((l) => l.batchId === b.id).map((l) => l.lineId!);
     const byStatus: Partial<Record<ShippingStatus, number>> = {};
     for (const id of ids) {
-      const st = (lines.find((l) => l.invoiceId === id)?.status ?? "pending") as ShippingStatus;
+      const st = (statusOf.get(id) ?? "pending") as ShippingStatus;
       byStatus[st] = (byStatus[st] ?? 0) + 1;
     }
     const done = (byStatus.shipped ?? 0) + (byStatus.delivered ?? 0);
@@ -347,7 +270,7 @@ export async function listProducerBatches(tenantClient: TenantDb, producerId: st
   return summarize(tenantClient, batches);
 }
 
-/** Satu batch milik produsen ini (null bila bukan miliknya) + pesanan di dalamnya. */
+/** Satu batch milik produsen ini (null bila bukan miliknya) + pengiriman di dalamnya. */
 export async function getProducerBatch(tenantClient: TenantDb, producerId: string, batchId: string) {
   const { db, schema } = tenantClient;
   const [b] = await db.select({
@@ -358,15 +281,25 @@ export async function getProducerBatch(tenantClient: TenantDb, producerId: strin
     .limit(1);
   if (!b) return null;
   const [summary] = await summarize(tenantClient, [b]);
-  const links = await db.select({ invoiceId: schema.producerShipmentInvoices.invoiceId })
-    .from(schema.producerShipmentInvoices).where(eq(schema.producerShipmentInvoices.batchId, b.id));
-  const owned = await producerItemIds(tenantClient, producerId);
-  const invs = links.length ? await db.select({
-    id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber, createdAt: schema.invoices.createdAt,
-    customerName: schema.invoices.customerName, customerPhone: schema.invoices.customerPhone,
-  }).from(schema.invoices).where(inArray(schema.invoices.id, links.map((l) => l.invoiceId))).orderBy(desc(schema.invoices.createdAt)) : [];
-  const rows = await buildRows(tenantClient, invs, owned);
+  const links = await db.select({ lineId: schema.producerShipmentInvoices.shippingLineId }).from(schema.producerShipmentInvoices)
+    .where(and(eq(schema.producerShipmentInvoices.batchId, b.id), isNotNull(schema.producerShipmentInvoices.shippingLineId)));
+  const rows = await getProducerOrdersByIds(tenantClient, producerId, links.map((l) => l.lineId!), { requirePaid: false });
   return { batch: summary, rows };
+}
+
+/** Batch yang memuat tiap pengiriman (satu pengiriman paling banyak satu batch). TIDAK memeriksa pemanggil — pemanggil sudah mengotorisasi. */
+export async function getLineBatches(tenantClient: TenantDb, lineIds: string[]): Promise<Map<string, InvoiceBatchRef>> {
+  const out = new Map<string, InvoiceBatchRef>();
+  if (lineIds.length === 0) return out;
+  const { db, schema } = tenantClient;
+  const rows = await db.select({
+    lineId: schema.producerShipmentInvoices.shippingLineId, id: schema.producerShipmentBatches.id,
+    name: schema.producerShipmentBatches.name, producerId: schema.producerShipmentBatches.producerId,
+  }).from(schema.producerShipmentInvoices)
+    .innerJoin(schema.producerShipmentBatches, eq(schema.producerShipmentBatches.id, schema.producerShipmentInvoices.batchId))
+    .where(inArray(schema.producerShipmentInvoices.shippingLineId, lineIds));
+  for (const r of rows) if (r.lineId) out.set(r.lineId, { id: r.id, name: r.name, producerId: r.producerId });
+  return out;
 }
 
 /** Nama bawaan batch: DDMMYYYY (tanggal hari ini, WIB) + urutan 4 digit berikutnya untuk produsen ini. */
@@ -383,4 +316,83 @@ export async function suggestBatchName(tenantClient: TenantDb, producerId: strin
     if (m) max = Math.max(max, parseInt(m[1], 10));
   }
   return `${prefix}${String(max + 1).padStart(4, "0")}`;
+}
+
+// ─── Detail satu invoice untuk produsen ────────────────────────────────────────────────────────────────
+
+export type ProducerOrderDetail = {
+  invoiceId: string; invoiceNumber: string; createdAt: Date; customerName: string; customerPhone: string | null;
+  checkoutAddress: string; notes: string | null;
+  /** Pengiriman milik produsen ini di invoice tsb (≥1), terurut. */
+  rows: ProducerOrderRow[];
+  /** Batch tiap pengiriman (kunci = lineId). */
+  batches: Map<string, InvoiceBatchRef>;
+  /** Angka tingkat invoice — dipakai UTUH hanya bila `singleProducer` (invoice hanya berisi barang & pengiriman produsen ini). */
+  invoiceAmounts: { subtotal: number; shipping: number; discount: number; total: number; paid: number };
+  singleProducer: boolean;
+  /** Item MILIK produsen ini (dengan harga) — tampilan detail sama dengan admin. images = gambar produk (simple) untuk foto. */
+  itemsDetail: { id: string; name: string; description: string | null; itemId: string | null; unitPrice: number; quantity: number; total: number; images: unknown }[];
+  /** Baris pengiriman produsen ini (mentah; dipetakan ke kartu fulfillment di halaman). */
+  shippingRows: { id: string; sellerType: string; sellerName: string; courier: string | null; service: string | null; etd: string | null; cost: string; trackingNumber: string | null; trackingProofPath: string | null; shippedAt: Date | null; status: string }[];
+};
+
+export async function getProducerOrder(
+  tenantClient: TenantDb,
+  producerId: string,
+  invoiceId: string,
+): Promise<ProducerOrderDetail | null> {
+  const { db, schema } = tenantClient;
+  const L = schema.invoiceShippingLines, I = schema.invoices, II = schema.invoiceItems;
+  const scope: Scope = { kind: "producer", producerId };
+
+  // Pengiriman milik produsen di invoice ini (bukti kepemilikan: producer_id baris = sesi) — lunas
+  const lines = await db.select(lineSelect(schema)).from(L).innerJoin(I, eq(I.id, L.invoiceId))
+    .where(and(baseWhere(tenantClient, scope), eq(I.id, invoiceId))).orderBy(L.createdAt);
+  if (lines.length === 0) return null;
+  const rows = (await buildRows(tenantClient, lines, scope)).filter((r) => r.items.length > 0);
+  if (rows.length === 0) return null;
+
+  const [inv] = await db.select({
+    shippingAddress: I.shippingAddress, shippingCityName: I.shippingCityName, notes: I.notes,
+    subtotal: I.subtotal, shippingTotal: I.shippingTotal, discount: I.discount, total: I.total, paidAmount: I.paidAmount,
+  }).from(I).where(eq(I.id, invoiceId)).limit(1);
+
+  // Kepemilikan terbukti → muat item MILIK produsen (dengan harga), gambar produk, baris pengiriman, dan hitung "invoice hanya milik produsen ini?"
+  const [itemRows, shippingRows, [{ allItems }], [{ allLines }]] = await Promise.all([
+    db.select({
+      id: II.id, name: II.name, description: II.description, itemId: II.itemId,
+      unitPrice: II.unitPrice, quantity: II.quantity, total: II.total,
+    }).from(II)
+      .where(and(eq(II.invoiceId, invoiceId), eq(II.itemType, "product"), eq(II.sellerType, "tenant"), eq(II.producerId, producerId)))
+      .orderBy(II.sortOrder),
+    db.select().from(L).where(and(eq(L.invoiceId, invoiceId), eq(L.sellerType, "tenant"), eq(L.producerId, producerId))).orderBy(L.createdAt),
+    db.select({ allItems: sql<number>`count(*)::int` }).from(II).where(eq(II.invoiceId, invoiceId)),
+    db.select({ allLines: sql<number>`count(*)::int` }).from(L).where(eq(L.invoiceId, invoiceId)),
+  ]);
+  const productIds = [...new Set(itemRows.map((i) => i.itemId).filter((x): x is string => !!x))];
+  const imgs = productIds.length
+    ? await db.select({ id: schema.products.id, images: schema.products.images }).from(schema.products).where(inArray(schema.products.id, productIds))
+    : [];
+  const imgOf = new Map(imgs.map((p) => [p.id, p.images]));
+
+  const first = lines[0];
+  return {
+    invoiceId, invoiceNumber: first.invoiceNumber, createdAt: first.createdAt, customerName: first.customerName, customerPhone: first.customerPhone,
+    checkoutAddress: [inv?.shippingAddress, inv?.shippingCityName].filter((p): p is string => !!p?.trim()).join(", "),
+    notes: inv?.notes ?? null,
+    rows,
+    batches: await getLineBatches(tenantClient, rows.map((r) => r.lineId)),
+    invoiceAmounts: {
+      subtotal: num(inv?.subtotal), shipping: num(inv?.shippingTotal), discount: num(inv?.discount), total: num(inv?.total), paid: num(inv?.paidAmount),
+    },
+    singleProducer: Number(allItems) === itemRows.length && Number(allLines) === shippingRows.length,
+    itemsDetail: itemRows.map((i) => ({
+      id: i.id, name: i.name, description: i.description, itemId: i.itemId,
+      unitPrice: num(i.unitPrice), quantity: i.quantity, total: num(i.total), images: i.itemId ? imgOf.get(i.itemId) : undefined,
+    })),
+    shippingRows: shippingRows.map((l) => ({
+      id: l.id, sellerType: l.sellerType, sellerName: l.sellerName, courier: l.courier, service: l.service, etd: l.etd,
+      cost: String(l.cost), trackingNumber: l.trackingNumber, trackingProofPath: l.trackingProofPath, shippedAt: l.shippedAt, status: l.status,
+    })),
+  };
 }

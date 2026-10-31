@@ -1493,10 +1493,10 @@ export async function createTenantSchemaInDb(
         invoice_id UUID        NOT NULL REFERENCES "${s}".invoices(id) ON DELETE RESTRICT,
         -- Pengiriman (baris invoice_shipping_lines) yang masuk batch; menggantikan invoice_id sebagai kunci (ADR-0005, dipakai penuh F3)
         shipping_line_id UUID  REFERENCES "${s}".invoice_shipping_lines(id) ON DELETE RESTRICT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        CONSTRAINT producer_shipment_invoices_invoice_uniq UNIQUE (invoice_id)
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_shipment_invoices_invoice_idx ON "${s}".producer_shipment_invoices(invoice_id)`));
     await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producer_shipment_invoices_line_uniq ON "${s}".producer_shipment_invoices(shipping_line_id) WHERE shipping_line_id IS NOT NULL`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_items_producer ON "${s}".invoice_items(producer_id) WHERE producer_id IS NOT NULL`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_shipping_producer ON "${s}".invoice_shipping_lines(producer_id) WHERE producer_id IS NOT NULL`));

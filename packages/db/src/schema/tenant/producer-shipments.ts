@@ -24,13 +24,13 @@ export function createProducerShipmentInvoicesTable(s: ReturnType<typeof pgSchem
   return s.table("producer_shipment_invoices", {
     id:        uuid("id").primaryKey().defaultRandom(),
     batchId:   uuid("batch_id").notNull(),     // FK → producer_shipment_batches.id RESTRICT via DDL
-    invoiceId: uuid("invoice_id").notNull(),   // FK → invoices.id via DDL; UNIQUE = satu invoice paling banyak satu batch (dilepas di F3)
-    // Pengiriman yang masuk batch (ADR-0005); UNIQUE parsial. Nullable selama transisi — kode lama belum mengisinya (F3).
+    invoiceId: uuid("invoice_id").notNull(),   // FK → invoices.id via DDL; BUKAN unik (satu invoice bisa punya beberapa pengiriman di batch berbeda — ADR-0005)
+    // Pengiriman yang masuk batch (ADR-0005); UNIQUE parsial = satu pengiriman paling banyak satu batch. Nullable di DB demi kode lama; kode F3 selalu mengisi.
     shippingLineId: uuid("shipping_line_id"),  // FK → invoice_shipping_lines.id RESTRICT via DDL
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   }, (t) => ({
     batchIdx:    index("producer_shipment_invoices_batch_idx").on(t.batchId),
-    invoiceUniq: unique("producer_shipment_invoices_invoice_uniq").on(t.invoiceId),
+    invoiceIdx:  index("producer_shipment_invoices_invoice_idx").on(t.invoiceId),
     lineUniq:    uniqueIndex("producer_shipment_invoices_line_uniq").on(t.shippingLineId).where(sql`${t.shippingLineId} IS NOT NULL`),
   }));
 }

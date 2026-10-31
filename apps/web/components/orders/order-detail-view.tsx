@@ -18,8 +18,10 @@ export type OrderDetailVM = {
   invoiceNumber: string;
   customerName: string;
   createdAt: Date;
-  /** Bilah aksi (OrderDetailActions) — null bila tak ada. */
+  /** Bilah aksi di header (mis. cetak/resi untuk invoice berpengiriman tunggal, atau "Cetak semua label") — null bila tak ada. */
   actions: React.ReactNode;
+  /** Aksi per PENGIRIMAN (kunci = id baris pengiriman), ditampilkan di bawah kartunya — dipakai bila invoice punya >1 pengiriman (ADR-0005). */
+  lineActions?: Record<string, React.ReactNode>;
   /** Baris kartu Info Pelanggan (nilai boleh elemen React, mis. tautan). */
   info: [label: string, value: React.ReactNode][];
   items: OrderDetailItem[];
@@ -143,7 +145,10 @@ export function OrderDetailView({ vm }: { vm: OrderDetailVM }) {
         <div className="space-y-4">
           <h2 className="font-semibold text-sm">Pengiriman &amp; Fulfillment</h2>
           {vm.lines.map((line) => (
-            <FulfillmentCard key={line.id} slug={vm.slug} line={line} invoicePaid={vm.invoicePaid} readOnly={vm.readOnlyFulfillment} />
+            <div key={line.id} className="space-y-2">
+              <FulfillmentCard slug={vm.slug} line={line} invoicePaid={vm.invoicePaid} readOnly={vm.readOnlyFulfillment} />
+              {vm.lineActions?.[line.id] && <div className="px-1">{vm.lineActions[line.id]}</div>}
+            </div>
           ))}
         </div>
       )}

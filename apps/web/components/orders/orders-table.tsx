@@ -29,9 +29,9 @@ export function OrdersTable({ rows, viewHref, showMixed, emptyText, print, batch
     : o.deliveryMethod === "pickup" ? "Ambil sendiri — tidak dikirim kurir"
     : print?.blockMixed && o.isMixed ? "Pesanan campuran — ditangani admin"
     : null;
-  const printable = rows.filter((o) => !reasonOf(o)).map((o) => o.invoiceId);
+  const printable = rows.filter((o) => !reasonOf(o)).map((o) => o.lineId);
   // Layak batch: lunas (sudah pasti), berstatus Menunggu, kurir; server memeriksa ulang (termasuk campuran/kepemilikan)
-  const batchable = rows.filter((o) => !reasonOf(o) && o.status === "pending" && o.deliveryMethod === "courier").map((o) => o.invoiceId);
+  const batchable = rows.filter((o) => !reasonOf(o) && o.status === "pending" && o.deliveryMethod === "courier").map((o) => o.lineId);
 
   const table = (
     <div className="overflow-x-auto rounded-lg border border-border bg-card">
@@ -54,8 +54,8 @@ export function OrdersTable({ rows, viewHref, showMixed, emptyText, print, batch
             <tr><td colSpan={print ? 9 : 8} className="px-3 py-10 text-center text-muted-foreground">{emptyText}</td></tr>
           )}
           {rows.map((o) => (
-            <tr key={o.invoiceId} className="align-top">
-              {print && <td className="px-3 py-2"><RowCheckbox invoiceId={o.invoiceId} disabled={!!reasonOf(o)} /></td>}
+            <tr key={o.lineId} className="align-top">
+              {print && <td className="px-3 py-2"><RowCheckbox shipmentId={o.lineId} disabled={!!reasonOf(o)} /></td>}
               <td className="whitespace-nowrap px-3 py-2">{fmtDate(o.createdAt)}</td>
               <td className="px-3 py-2">
                 <span className="font-mono text-xs">{o.invoiceNumber}</span>
@@ -87,7 +87,7 @@ export function OrdersTable({ rows, viewHref, showMixed, emptyText, print, batch
                     <Eye className="h-4 w-4" />
                   </Link>
                   {print
-                    ? <RowPrintButton invoiceId={o.invoiceId} disabledReason={reasonOf(o) ?? undefined} />
+                    ? <RowPrintButton shipmentId={o.lineId} disabledReason={reasonOf(o) ?? undefined} />
                     : <span className="inline-flex h-8 w-8" />}
                 </div>
               </td>

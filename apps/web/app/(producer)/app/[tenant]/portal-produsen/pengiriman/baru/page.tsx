@@ -23,7 +23,7 @@ export default async function NewBatchPage({ params }: { params: Promise<{ tenan
       <Link href={`/app/${slug}/portal-produsen/pengiriman`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"><ArrowLeft className="h-4 w-4" /> Kembali ke Pengiriman</Link>
       <h1 className="text-xl font-semibold">Buat Batch Pengiriman</h1>
       <BatchCreateForm slug={slug} suggestedName={suggestedName} today={today}
-        orders={orders.map((o) => ({ invoiceId: o.invoiceId, invoiceNumber: o.invoiceNumber, customerName: o.customerName, summary: o.items.map((i) => i.name).join(", "), qty: o.totalQty }))} />
+        orders={orders.map((o) => ({ lineId: o.lineId, invoiceNumber: o.invoiceNumber, customerName: o.customerName, summary: o.items.map((i) => i.name).join(", "), qty: o.totalQty }))} />
     </div>
   );
 }

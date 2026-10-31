@@ -122,6 +122,15 @@ export default async function PesananPage({
       ])
     : [[], []];
 
+  // Pengiriman (kurir) tiap invoice di halaman ini — cetak label per PENGIRIMAN (ADR-0005; satu invoice bisa punya beberapa)
+  const courierLines = rowIds.length
+    ? await db.select({ id: schema.invoiceShippingLines.id, invoiceId: schema.invoiceShippingLines.invoiceId })
+        .from(schema.invoiceShippingLines)
+        .where(and(inArray(schema.invoiceShippingLines.invoiceId, rowIds), eq(schema.invoiceShippingLines.sellerType, "tenant"), eq(schema.invoiceShippingLines.deliveryMethod, "courier")))
+    : [];
+  const lineIdsOf = new Map<string, string[]>();
+  for (const l of courierLines) lineIdsOf.set(l.invoiceId, [...(lineIdsOf.get(l.invoiceId) ?? []), l.id]);
+
   const productAmountMap  = new Map(productSums.map((r) => [r.invoiceId, parseFloat(r.sum)]));
   const shippingAmountMap = new Map(shippingSums.map((r) => [r.invoiceId, parseFloat(r.sum)]));
 
@@ -234,8 +243,8 @@ export default async function PesananPage({
                       </span>
                     </td>
                     <td className="px-2 py-3 text-right">
-                      <PrintLabelsButton slug={slug} invoiceIds={[row.id]} iconOnly disabled={row.status !== "paid"}
-                        title={row.status === "paid" ? "Cetak label" : "Label hanya untuk pesanan yang sudah lunas"} />
+                      <PrintLabelsButton slug={slug} shipmentIds={lineIdsOf.get(row.id) ?? []} iconOnly disabled={row.status !== "paid" || !(lineIdsOf.get(row.id)?.length)}
+                        title={row.status !== "paid" ? "Label hanya untuk pesanan yang sudah lunas" : (lineIdsOf.get(row.id)?.length ? "Cetak label" : "Tidak ada pengiriman kurir")} />
                     </td>
                   </tr>
                 );

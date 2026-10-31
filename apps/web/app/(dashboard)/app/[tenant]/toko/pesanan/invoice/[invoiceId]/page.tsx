@@ -6,7 +6,8 @@ import { OrderDetailView, type OrderDetailVM } from "@/components/orders/order-d
 import { mapTenantLines, firstProductImage } from "@/lib/order-detail.server";
 import { displayPhone } from "@/lib/phone";
 import { OrderDetailActions } from "@/components/orders/order-detail-actions";
-import { getInvoiceBatch } from "@/lib/producer-orders.server";
+import { getLineBatches } from "@/lib/producer-orders.server";
+import { PrintLabelsButton } from "@/components/orders/print-label-dialog";
 import { hasFullAccess } from "@/lib/permissions";
 import { isValidUuid } from "@/lib/is-uuid";
 
@@ -103,9 +104,26 @@ export default async function FulfillmentPage({
   // Baris pengiriman penjual tenant → kartu fulfillment
   const tenantLines = mapTenantLines(shippingRows, slug);
 
-  // Batch pengiriman (bila pesanan ada di batch produsen) — menentukan apakah aksi Input/Ubah Resi tampil
-  const batchRef = await getInvoiceBatch(createTenantDb(slug), invoiceId);
-  const mainLine = tenantLines[0];
+  // Batch pengiriman per PENGIRIMAN (ADR-0005) — menentukan apakah aksi Input/Ubah Resi tampil di tiap kartu
+  const lineBatches = await getLineBatches(createTenantDb(slug), tenantLines.map((l) => l.id));
+  const rawLine = new Map(shippingRows.map((r) => [r.id, r]));
+  const canResi = hasFullAccess(access.tenantUser, "toko");
+  const lineAction = (l: (typeof tenantLines)[number]) => {
+    const b = lineBatches.get(l.id);
+    return (
+      <OrderDetailActions
+        slug={slug} lineId={l.id} status={l.status}
+        batch={b ? { id: b.id, name: b.name } : null}
+        trackingNumber={l.trackingNumber} proofUrl={l.trackingProofUrl ?? null}
+        canChangePhoto={!l.shippedAt || Date.now() - new Date(l.shippedAt).getTime() <= 30 * 86_400_000}
+        canPrint={rawLine.get(l.id)?.deliveryMethod === "courier"}
+        printReason="Ambil sendiri — tidak dikirim kurir"
+        canResi={canResi}
+      />
+    );
+  };
+  const multi = tenantLines.length > 1;
+  const batchNames = [...new Set(tenantLines.map((l) => lineBatches.get(l.id)?.name).filter((x): x is string => !!x))];
 
   // Tampilan SAMA PERSIS dengan halaman detail produsen (komponen bersama OrderDetailView, § 23.4)
   const vm: OrderDetailVM = {
@@ -113,22 +131,18 @@ export default async function FulfillmentPage({
     backHref: `/app/${slug}/toko/pesanan`, backLabel: "Pesanan",
     statusBadge: invStatus,
     invoiceNumber: inv.invoiceNumber, customerName: inv.customerName, createdAt: inv.createdAt,
-    actions: inv.status === "paid" ? (
-      <OrderDetailActions
-        slug={slug} invoiceId={invoiceId} status={mainLine?.status ?? null}
-        batch={batchRef ? { id: batchRef.id, name: batchRef.name } : null}
-        trackingNumber={mainLine?.trackingNumber ?? null} proofUrl={mainLine?.trackingProofUrl ?? null}
-        canChangePhoto={!mainLine?.shippedAt || Date.now() - new Date(mainLine.shippedAt).getTime() <= 30 * 86_400_000}
-        canPrint
-        canResi={hasFullAccess(access.tenantUser, "toko")}
-      />
-    ) : null,
+    // Satu pengiriman → aksi di header (tampilan seperti sebelumnya); beberapa pengiriman → "Cetak semua label" di header + aksi per kartu
+    actions: inv.status !== "paid" || tenantLines.length === 0 ? null
+      : multi
+        ? <PrintLabelsButton slug={slug} shipmentIds={tenantLines.filter((l) => rawLine.get(l.id)?.deliveryMethod === "courier").map((l) => l.id)} label="Cetak Semua Label" />
+        : lineAction(tenantLines[0]),
+    lineActions: inv.status === "paid" && multi ? Object.fromEntries(tenantLines.map((l) => [l.id, lineAction(l)])) : undefined,
     info: [
       ["Telepon",       displayPhone(inv.customerPhone)],
       ["Email",         inv.customerEmail ?? "—"],
       ["Alamat Kirim",  [inv.shippingAddress, inv.shippingCityName].filter(Boolean).join(", ") || "—"],
       ...(inv.notes ? [["Catatan", inv.notes] as [string, string]] : []),
-      ...(batchRef ? [["Batch Pengiriman", batchRef.name] as [string, string]] : []),
+      ...(batchNames.length ? [["Batch Pengiriman", batchNames.join(", ")] as [string, string]] : []),
     ],
     items: items.map((item) => ({
       id: item.id, name: item.name, description: item.description,
