@@ -1,8 +1,24 @@
-# Arsitektur Portal Produsen — produsen login, lihat produknya sendiri (baca-saja)
+# Arsitektur Portal Produsen — produsen login, kelola pengiriman produknya
 
-> **Status: RENCANA (2026-10-31), belum ada kode.** Keputusan user sudah dikunci di § 9. Eksekusi dimulai setelah perbaikan audit (`arsitektur-produsen.md` § 15).
-> Terkait: `docs/arsitektur-produsen.md` (data produsen, admin-only; § 15 = perbaikan hasil audit yang
-> dikerjakan SEBELUM portal), `docs/arsitektur-role-user.md` (pengurus), `docs/arsitektur-akun.md` (3 level akses).
+> **PETA STATUS (diperbarui 2026-11-01) — BACA INI DULU.** Dokumen ini panjang dan tumbuh bertahap; bagian awal (§ 1–17) adalah rencana/riwayat awal yang SEBAGIAN SUDAH DIGANTIKAN. Yang berlaku sekarang:
+> **definisi fitur § 18** (produsen = gudang tenant; status bukan role; tampilan admin = produsen memakai komponen yang sama) + bagian di bawah.
+>
+> | Bagian | Isi | Status |
+> |---|---|---|
+> | § 1–17 | Rencana awal portal baca-saja, audit, login multi-konteks, tab produk bersama | DEPLOYED (riwayat; sebagian digantikan § 18+) |
+> | § 18 | **Definisi fitur terkunci** (produsen = gudang; status bukan role; "sama persis" = komponen yang sama) | berlaku |
+> | § 19 | Sidebar + Pesanan + Pengiriman (batch) + Input/Ubah Resi + foto resi di Media Library anggota + hapus otomatis 30 hari (S1–S4b) | DEPLOYED (diuji user sampai pembuatan batch) |
+> | § 20 | Profil produsen + Gudang Pengiriman (RajaOngkir) → kota asal ongkir (migration 0080) | DEPLOYED, belum dikonfirmasi user |
+> | § 21 | Cetak Label PDF (7 format, Inter, Code128, Logo Kurir di Pengaturan Toko; cetak = Dikemas otomatis) (L1–L3b) | DEPLOYED, belum dikonfirmasi user |
+> | § 22 | Buat Batch masal (produsen + admin atas nama produsen) + filter status (B1–B3) | DEPLOYED, belum dikonfirmasi user |
+> | § 23 | Detail pesanan admin = produsen (`OrderDetailView`), aksi Cetak Label + Input/Ubah Resi | DEPLOYED (sampai koreksi § 23.4), belum dikonfirmasi user |
+> | § 24 | **Pengiriman per produsen (ADR-0005)** — F1 skema (migration 0081) DEPLOYED; **F2 checkout + F3 portal per pengiriman (migration 0082) SUDAH DI-PUSH, BELUM DEPLOY**; F4–F5 sisa | lihat § 24.8 |
+>
+> **Langkah berikutnya (urut):** deploy F2+F3 (langkah di CLAUDE.md "Status Project (terkini)" dan § 24.8) → uji skenario multi-produsen di `forbis` → F4 (verifikasi mendalam label/resi/fulfillment) → F5 (laporan produk, ekspor pembeli, notifikasi PJ) →
+> keputusan terbuka (lihat CLAUDE.md). Aturan kerja: dokumen dulu → kode → tsc+build → audit `security-auditor` → commit; push hanya bila diminta.
+>
+> Terkait: `docs/decisions/adr-0005-pengiriman-per-produsen.md`, `docs/arsitektur-produsen.md` (data produsen admin-only; § 15 audit), `docs/arsitektur-fulfillment.md` (5 tahap status pengiriman),
+> `docs/arsitektur-role-user.md`, `docs/arsitektur-akun.md`, `docs/arsitektur-medialibrary.md` (Media Library anggota), `docs/lessons-learned.md` (2026-11-01: Date di sql mentah; return error di transaksi COMMIT).
 
 ## 1. Tujuan & batas (permintaan user 2026-10-31)
 
@@ -639,3 +655,17 @@ A+B produsen sama → 1 paket · A(P1)+B(P2) gudang beda kota → 2 · A(P1)+B(P
 - **Audit `security-auditor` (0 Critical, 0 High, 0 Medium, 5 Low, 6 Info) — semua Low diperbaiki:** (L1) `markPackedAction` kini memeriksa `producer_id` pengiriman + invoice lunas di UPDATE (bukan hanya lewat tautan batch); 0082 hanya menautkan bila produsen pengiriman = produsen batch; (L3) tab produk tak menampilkan item produsen lain pada baris pengiriman; (L4) pengirim label pengiriman lama memakai snapshot produsen item dulu; (L5) `/api/labels`: pengurus tanpa akses baca toko kini jatuh ke jalur produsen (selaras route resi). (L2) tautan lama bertanda `shipping_line_id` NULL pada invoice berbaris-tenant ganda tak di-backfill — cek `SELECT count(*) FROM tenant_X.producer_shipment_invoices WHERE shipping_line_id IS NULL` pasca deploy.
 - **Keputusan/batas yang diketahui:** pesanan lama AMBIGU (satu baris bersama beberapa produsen) tidak tampil di portal produsen (admin menanganinya); pengelompokan item→pengiriman untuk satu produsen dengan dua kota asal di satu invoice (langka) menampilkan semua item produsen itu pada kedua pengiriman; backfill F1 memakai produsen produk SAAT INI (produk yang pernah pindah produsen bisa menempel ke produsen terkini) — sampling data VPS disarankan.
 - Uji manual setelah deploy: (1) checkout keranjang A(P1)+B(P2) → invoice dengan DUA baris pengiriman ber-`producer_id`; (2) P1 membuka Pesanan → hanya pengirimannya; membuat batch, cetak label, input resi; P2 sama untuk pengiriman miliknya (invoice yang sama); (3) halaman detail admin: dua kartu pengiriman, aksi per kartu, "Cetak Semua Label"; (4) invoice lama satu-produsen tetap tampil & bisa diproses; (5) pesanan lama ambigu tidak tampil di portal tapi tampil di admin.
+
+### 24.9 Verifikasi hasil migration 0081 di VPS (BELUM dikonfirmasi user, 2026-11-01) & daftar deploy F2+F3
+Hasil jalan 0081 di VPS: `forbis` pengiriman terisi 269 / tautan batch 1; `visikita` pengiriman terisi 147; tenant lain 0 ("item terisi 0" hanya menghitung produk TANPA variasi — langkah variasi tidak dihitung). Angka sebesar itu berarti ada produk berprodusen di `forbis`/`visikita`. Cek (ganti nama schema; ulangi per tenant):
+```sql
+-- 1) pengiriman terisi per produsen
+SELECT producer_id, count(*) FROM tenant_forbis.invoice_shipping_lines WHERE producer_id IS NOT NULL GROUP BY 1;
+-- 2) HARUS 0 baris: pengiriman yang barangnya milik produsen lain
+SELECT l.id FROM tenant_forbis.invoice_shipping_lines l
+JOIN tenant_forbis.invoice_items ii ON ii.invoice_id=l.invoice_id AND ii.item_type='product' AND ii.seller_type='tenant'
+WHERE l.producer_id IS NOT NULL AND ii.producer_id IS DISTINCT FROM l.producer_id LIMIT 5;
+-- 3) setelah 0082: tautan batch tanpa pengiriman (idealnya 0)
+SELECT count(*) FROM tenant_forbis.producer_shipment_invoices WHERE shipping_line_id IS NULL;
+```
+Urutan deploy F2+F3: `git pull` → migration `0082` → `bun install && bun run build && pm2 restart jalajogja && pm2 flush jalajogja` → `0082` ulang → uji § 24.8.
