@@ -195,5 +195,5 @@ export function renderLabelsHtml(labels: LabelData[], format: LabelFormat): stri
     const slice = labels.slice(i, i + perPage);
     pages.push(`<section class="page">${slice.map((l) => `<article class="lb ${spec.layout}">${body(l)}</article>`).join("")}</section>`);
   }
-  return `<!doctype html><html lang="id"><head><meta charset="utf-8"><title>Label Pengiriman</title><style>${css(spec)}</style></head><body>${pages.join("")}</body></html>`;
+  return `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"><title>Label Pengiriman</title><style>${css(spec)}</style></head><body>${pages.join("")}</body></html>`;
 }
