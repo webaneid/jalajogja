@@ -4,6 +4,7 @@
 // Doc: docs/arsitektur-portal-produsen.md § 21.
 import bwipjs from "bwip-js/node";
 import { FORMAT_SPECS, type FormatSpec } from "./formats";
+import { INTER_FONTS } from "./fonts-data";
 import type { LabelData, LabelFormat } from "./types";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -104,10 +105,15 @@ function mini(l: LabelData): string {
 const VARIANT: Record<FormatSpec["layout"], (l: LabelData) => string> = { wide, tall, compact, mini };
 
 // ── CSS ─────────────────────────────────────────────────────────────────────────────────────────────────
+// Inter disematkan (bukan font tenant): label butuh keterbacaan di 5–9 pt + metrik tetap agar pemotongan baris & tata letak
+// konsisten untuk semua tenant. Font tenant dibuat untuk situs web (bisa dekoratif/lebih lebar) dan butuh jaringan.
+const FONT_FACE = INTER_FONTS.map((f) => `@font-face { font-family: "Inter"; font-weight: ${f.weight}; font-style: normal; src: url(data:font/woff2;base64,${f.data}) format("woff2"); }`).join("\n");
+
 const css = (spec: FormatSpec) => `
+${FONT_FACE}
 @page { size: ${spec.page.w}mm ${spec.page.h}mm; margin: 0; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { font-family: "Inter", "Helvetica Neue", Arial, "Liberation Sans", sans-serif; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+html, body { font-family: "Inter", Arial, "Liberation Sans", sans-serif; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .page { width: ${spec.page.w}mm; height: ${spec.page.h}mm; padding: ${spec.margin}mm; break-after: page; overflow: hidden;
   display: grid; grid-template-columns: repeat(${spec.cols}, ${spec.label.w}mm); grid-auto-rows: ${spec.label.h}mm; gap: ${spec.gap}mm; align-content: start; justify-content: start; }
 .page:last-child { break-after: auto; }
@@ -151,6 +157,7 @@ b { font-weight: 700; }
 .party.small .pb { padding: 1mm 1.6mm; }
 .party.small .pt { font-size: 0.9em; text-align: left; letter-spacing: 0.06em; margin-bottom: 0.4mm; }
 .party.small .ad { -webkit-line-clamp: 2; font-size: 0.92em; }
+.tall .party.small .ad { -webkit-line-clamp: 3; }
 .compact .party .pt, .mini .pt { display: none; }
 .compact .party.big .pb::before { content: "PENERIMA"; font-weight: 800; letter-spacing: 0.08em; font-size: 0.86em; }
 .compact .party.small .pb::before { content: "PENGIRIM"; font-weight: 800; letter-spacing: 0.08em; font-size: 0.8em; color: #333; }
