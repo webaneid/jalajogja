@@ -1303,6 +1303,8 @@ export async function createTenantSchemaInDb(
         seller_type TEXT           NOT NULL DEFAULT 'tenant'
                                    CHECK (seller_type IN ('tenant','mitra')),
         seller_id   UUID,
+        -- Produsen pemilik barang (SNAPSHOT saat checkout; NULL = barang toko/internal, atau bukan produk). ADR-0005
+        producer_id UUID           REFERENCES "${s}".producers(id) ON DELETE RESTRICT,
         -- Diskon/voucher (per baris — TIDAK PERNAH memotong invoice secara keseluruhan)
         discount_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
         voucher_id      UUID          REFERENCES "${s}".vouchers(id) ON DELETE SET NULL,
@@ -1435,6 +1437,8 @@ export async function createTenantSchemaInDb(
         seller_type      TEXT           NOT NULL
                                         CHECK (seller_type IN ('tenant','mitra')),
         seller_id        UUID,
+        -- Produsen yang MENGIRIM paket ini (satu pengiriman per produsen; NULL = toko/internal atau pengiriman lama). ADR-0005
+        producer_id      UUID           REFERENCES "${s}".producers(id) ON DELETE RESTRICT,
         seller_name      TEXT           NOT NULL,
         origin_city_id   INTEGER,
         origin_city_name TEXT,
@@ -1487,10 +1491,15 @@ export async function createTenantSchemaInDb(
         id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
         batch_id   UUID        NOT NULL REFERENCES "${s}".producer_shipment_batches(id) ON DELETE RESTRICT,
         invoice_id UUID        NOT NULL REFERENCES "${s}".invoices(id) ON DELETE RESTRICT,
+        -- Pengiriman (baris invoice_shipping_lines) yang masuk batch; menggantikan invoice_id sebagai kunci (ADR-0005, dipakai penuh F3)
+        shipping_line_id UUID  REFERENCES "${s}".invoice_shipping_lines(id) ON DELETE RESTRICT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         CONSTRAINT producer_shipment_invoices_invoice_uniq UNIQUE (invoice_id)
       )
     `));
+    await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producer_shipment_invoices_line_uniq ON "${s}".producer_shipment_invoices(shipping_line_id) WHERE shipping_line_id IS NOT NULL`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_items_producer ON "${s}".invoice_items(producer_id) WHERE producer_id IS NOT NULL`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_shipping_producer ON "${s}".invoice_shipping_lines(producer_id) WHERE producer_id IS NOT NULL`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_shipment_invoices_batch_idx ON "${s}".producer_shipment_invoices(batch_id)`));
 
     // ── Gudang pengiriman produsen (format RajaOngkir, docs/arsitektur-portal-produsen.md § 20) ──

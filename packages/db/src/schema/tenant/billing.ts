@@ -165,6 +165,8 @@ export function createInvoiceItemsTable(s: ReturnType<typeof pgSchema>) {
     // Seller info (untuk grouping per penjual di ongkir)
     sellerType: text("seller_type", { enum: ["tenant", "mitra"] as const }).notNull().default("tenant"),
     sellerId:   uuid("seller_id"),          // null jika tenant, mitra.id jika mitra
+    // Produsen pemilik barang — SNAPSHOT saat checkout (ADR-0005). NULL = barang toko/internal atau bukan produk.
+    producerId: uuid("producer_id"),        // FK → producers.id RESTRICT via DDL
     // Diskon/voucher per baris — TIDAK PERNAH memotong invoice secara keseluruhan, lihat
     // docs/arsitektur-voucher.md. total = (unitPrice*quantity) - discountAmount, di-clamp >= 0.
     discountAmount: numeric("discount_amount", { precision: 15, scale: 2 }).notNull().default("0"),
@@ -319,6 +321,8 @@ export function createInvoiceShippingLinesTable(s: ReturnType<typeof pgSchema>) 
     invoiceId:       uuid("invoice_id").notNull(),       // FK → invoices.id CASCADE
     sellerType:      text("seller_type", { enum: ["tenant", "mitra"] as const }).notNull(),
     sellerId:        uuid("seller_id"),                  // null jika tenant
+    // Produsen yang MENGIRIM paket ini (satu pengiriman per produsen, ADR-0005). NULL = toko/internal atau pengiriman lama.
+    producerId:      uuid("producer_id"),                // FK → producers.id RESTRICT via DDL
     sellerName:      text("seller_name").notNull(),      // snapshot
     // Kolom courier/* nullable — hanya terisi saat deliveryMethod="courier".
     originCityId:    integer("origin_city_id"),
