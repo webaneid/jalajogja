@@ -5,17 +5,20 @@ import Link from "next/link";
 import { Eye } from "lucide-react";
 import { displayPhone } from "@/lib/phone";
 import { OrderStatusBadge } from "@/components/producer/order-status-badge";
+import type { BatchConfig } from "@/components/orders/create-batch-dialog";
 import { PrintProvider, RowCheckbox, HeaderCheckbox, RowPrintButton, BulkPrintBar } from "@/components/orders/print-selection";
 import type { ProducerOrderRow } from "@/lib/producer-orders.server";
 
 const fmtDate = (d: Date) => new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeZone: "Asia/Jakarta" }).format(d);
 
-export function OrdersTable({ rows, viewHref, showMixed, emptyText, print }: {
+export function OrdersTable({ rows, viewHref, showMixed, emptyText, print, batch }: {
   rows: ProducerOrderRow[];
   viewHref: (invoiceId: string) => string;
   /** Aktifkan cetak label (satuan + masal). blockMixed: invoice campuran tidak bisa dicetak (menu Pesanan produsen);
    *  di tab produk "campuran" relatif ke satu produk, jadi kelayakan diputuskan server (pesan tampil di popup). */
   print?: { slug: string; blockMixed: boolean };
+  /** Aktifkan tindakan masal "Buat Batch" (butuh `print`). Hanya baris berstatus Menunggu + kurir yang dihitung layak. */
+  batch?: BatchConfig;
   /** true di menu Pesanan portal (penanda invoice campuran); false di tab produk (arti "campuran" di sana membingungkan). */
   showMixed: boolean;
   emptyText: string;
@@ -27,6 +30,8 @@ export function OrdersTable({ rows, viewHref, showMixed, emptyText, print }: {
     : print?.blockMixed && o.isMixed ? "Pesanan campuran — ditangani admin"
     : null;
   const printable = rows.filter((o) => !reasonOf(o)).map((o) => o.invoiceId);
+  // Layak batch: lunas (sudah pasti), berstatus Menunggu, kurir; server memeriksa ulang (termasuk campuran/kepemilikan)
+  const batchable = rows.filter((o) => !reasonOf(o) && o.status === "pending" && o.deliveryMethod === "courier").map((o) => o.invoiceId);
 
   const table = (
     <div className="overflow-x-auto rounded-lg border border-border bg-card">
@@ -94,7 +99,7 @@ export function OrdersTable({ rows, viewHref, showMixed, emptyText, print }: {
   );
 
   return print ? (
-    <PrintProvider slug={print.slug}>
+    <PrintProvider slug={print.slug} batch={batch} batchableIds={batchable}>
       <div className="space-y-2">
         <BulkPrintBar />
         {table}

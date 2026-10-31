@@ -9,7 +9,8 @@ import { getProducerAccess } from "@/lib/producer-access.server";
 import { isValidUuid } from "@/lib/is-uuid";
 import { loadProductDetail } from "@/lib/product-detail.server";
 import { resolveProductBuyers } from "@/lib/product-buyers.server";
-import { listProductOrders, parseStatusFilter } from "@/lib/producer-orders.server";
+import { listProductOrders, parseStatusFilter, suggestBatchName } from "@/lib/producer-orders.server";
+import { todayWib } from "@/lib/producer-batch.server";
 import { ProductDetailHeader } from "@/components/toko/product-detail/product-detail-header";
 import { ProductDetailTabNav, productTabs, resolveActiveTab } from "@/components/toko/product-detail/product-detail-tabs";
 import { TabRingkasan } from "@/components/toko/product-detail/tab-ringkasan";
@@ -55,6 +56,7 @@ export default async function ProducerProductDetailPage({
   const query = (q ?? "").trim().slice(0, 80);
   const statusFilter = parseStatusFilter(status);
   const emptyCounts = { all: 0, pending: 0, processing: 0, packed: 0, shipped: 0, delivered: 0 };
+  const suggestedName = active === "pesanan" ? await suggestBatchName(tenantClient, access.producer.id) : "";
   const { rows: orderRows, total: orderTotal, statusCounts } = active === "pesanan"
     ? await listProductOrders(tenantClient, detail.id, { q: query, page: pageNum, pageSize: 20, status: statusFilter })
     : { rows: [], total: 0, statusCounts: emptyCounts };
@@ -68,7 +70,7 @@ export default async function ProducerProductDetailPage({
       {active === "ringkasan" && <TabRingkasan counts={counts} />}
       {active === "pesanan" && (
         <TabPesanan slug={slug} productId={detail.id} rows={orderRows} total={orderTotal} page={pageNum} pageSize={20} q={query}
-          basePath={basePath} viewHref={(oid) => `/app/${slug}/portal-produsen/pesanan/${oid}`} canExport={false} print={{ slug, blockMixed: false }} status={statusFilter} statusCounts={statusCounts} />
+          basePath={basePath} viewHref={(oid) => `/app/${slug}/portal-produsen/pesanan/${oid}`} canExport={false} print={{ slug, blockMixed: false }} batch={{ mode: "producer", suggestedName, today: todayWib() }} status={statusFilter} statusCounts={statusCounts} />
       )}
       {active === "detail" && <TabDetail product={detail} tenantSlug={access.tenant.slug} showCost />}
     </div>

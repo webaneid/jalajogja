@@ -6,15 +6,17 @@ import Link from "next/link";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrdersTable } from "@/components/orders/orders-table";
+import type { BatchConfig } from "@/components/orders/create-batch-dialog";
 import { StatusFilter } from "@/components/orders/status-filter";
 import type { ProducerOrderRow, OrderStatusFilter, StatusCounts } from "@/lib/producer-orders.server";
 
-export function TabPesanan({ slug, productId, rows, total, page, pageSize, q, basePath, viewHref, canExport, print, status, statusCounts }: {
+export function TabPesanan({ slug, productId, rows, total, page, pageSize, q, basePath, viewHref, canExport, print, batch, status, statusCounts }: {
   slug: string; productId: string; rows: ProducerOrderRow[]; total: number; page: number; pageSize: number; q: string;
   basePath: string;                       // /app/{slug}/toko/produk/{id} atau /app/{slug}/portal-produsen/produk/{id}
   viewHref: (invoiceId: string) => string;
   canExport: boolean;
   print?: { slug: string; blockMixed: boolean }; // cetak label (satuan + masal)
+  batch?: BatchConfig;                            // tindakan masal Buat Batch (portal produsen / admin atas nama produsen)
   status: OrderStatusFilter | null;               // filter status pengiriman aktif
   statusCounts: StatusCounts;
 }) {
@@ -62,7 +64,7 @@ export function TabPesanan({ slug, productId, rows, total, page, pageSize, q, ba
 
       <StatusFilter active={status} counts={statusCounts} hrefFor={(st) => href(1, st)} />
 
-      <OrdersTable rows={rows} showMixed={false} print={print} viewHref={viewHref}
+      <OrdersTable rows={rows} showMixed={false} print={print} batch={batch} viewHref={viewHref}
         emptyText={q || status ? "Tidak ada pesanan yang cocok." : "Belum ada pesanan lunas untuk produk ini."} />
 
       {totalPages > 1 && (

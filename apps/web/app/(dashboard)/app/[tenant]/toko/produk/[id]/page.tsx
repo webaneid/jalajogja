@@ -8,7 +8,8 @@ import { eq } from "drizzle-orm";
 import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { resolveProductBuyers } from "@/lib/product-buyers.server";
-import { listProductOrders, parseStatusFilter } from "@/lib/producer-orders.server";
+import { listProductOrders, parseStatusFilter, suggestBatchName } from "@/lib/producer-orders.server";
+import { todayWib } from "@/lib/producer-batch.server";
 import { loadProductDetail } from "@/lib/product-detail.server";
 import { resolveProducers, resolveInternalProducer } from "@/lib/producer.server";
 import { buildProductReport, buildProductConclusion } from "@/lib/product-report";
@@ -65,9 +66,14 @@ export default async function ProdukDetailPage({
     const query = (q ?? "").trim().slice(0, 80);
     const statusFilter = parseStatusFilter(status);
     const { rows: orderRows, total, statusCounts } = await listProductOrders(tenantClient, productId, { q: query, page: pageNum, pageSize: 20, status: statusFilter });
+    // Buat Batch masal atas nama produsen pemilik produk — hanya akses PENUH toko & produk yang punya produsen (produk internal tak punya batch)
+    const batchProducerId = canSeeReport ? buyers.product.producerId : null;
+    const batchCfg = batchProducerId
+      ? { mode: "admin" as const, producerId: batchProducerId, suggestedName: await suggestBatchName(tenantClient, batchProducerId), today: todayWib() }
+      : undefined;
     pesananTab = (
       <TabPesanan slug={slug} productId={productId} rows={orderRows} total={total} page={pageNum} pageSize={20} q={query}
-        basePath={`/app/${slug}/toko/produk/${productId}`} viewHref={(id) => `/app/${slug}/toko/pesanan/invoice/${id}`} canExport print={{ slug, blockMixed: false }} status={statusFilter} statusCounts={statusCounts} />
+        basePath={`/app/${slug}/toko/produk/${productId}`} viewHref={(id) => `/app/${slug}/toko/pesanan/invoice/${id}`} canExport print={{ slug, blockMixed: false }} batch={batchCfg} status={statusFilter} statusCounts={statusCounts} />
     );
   }
 

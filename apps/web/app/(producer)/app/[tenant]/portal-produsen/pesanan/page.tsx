@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createTenantDb } from "@jalajogja/db";
 import { getProducerAccess } from "@/lib/producer-access.server";
-import { listProducerOrders, parseStatusFilter, type OrderStatusFilter } from "@/lib/producer-orders.server";
+import { listProducerOrders, parseStatusFilter, suggestBatchName, type OrderStatusFilter } from "@/lib/producer-orders.server";
+import { todayWib } from "@/lib/producer-batch.server";
 import { StatusFilter } from "@/components/orders/status-filter";
 import { OrdersTable } from "@/components/orders/orders-table";
 
@@ -25,9 +26,11 @@ export default async function ProducerOrdersPage({
   const currentPage = Math.min(10_000, Math.max(1, parseInt(page ?? "1") || 1));
   const query = (q ?? "").trim().slice(0, 80);
   const statusFilter = parseStatusFilter(status);
-  const { rows, total, statusCounts } = await listProducerOrders(createTenantDb(access.tenant.slug), access.producer.id, {
-    q: query, page: currentPage, pageSize: PAGE_SIZE, status: statusFilter,
-  });
+  const tenantClient = createTenantDb(access.tenant.slug);
+  const [{ rows, total, statusCounts }, suggestedName] = await Promise.all([
+    listProducerOrders(tenantClient, access.producer.id, { q: query, page: currentPage, pageSize: PAGE_SIZE, status: statusFilter }),
+    suggestBatchName(tenantClient, access.producer.id),
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const base = `/app/${slug}/portal-produsen/pesanan`;
@@ -56,7 +59,7 @@ export default async function ProducerOrdersPage({
 
       <StatusFilter active={statusFilter} counts={statusCounts} hrefFor={(st) => href(1, st)} />
 
-      <OrdersTable rows={rows} showMixed print={{ slug, blockMixed: true }} viewHref={(id) => `${base}/${id}`}
+      <OrdersTable rows={rows} showMixed print={{ slug, blockMixed: true }} batch={{ mode: "producer", suggestedName, today: todayWib() }} viewHref={(id) => `${base}/${id}`}
         emptyText={query ? "Tidak ada pesanan yang cocok." : "Belum ada pesanan lunas."} />
 
       {totalPages > 1 && (
