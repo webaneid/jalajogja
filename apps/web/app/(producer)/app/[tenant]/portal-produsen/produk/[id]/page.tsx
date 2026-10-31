@@ -66,7 +66,7 @@ export default async function ProducerProductDetailPage({
       {active === "ringkasan" && <TabRingkasan counts={counts} />}
       {active === "pesanan" && (
         <TabPesanan slug={slug} productId={detail.id} rows={orderRows} total={orderTotal} page={pageNum} pageSize={20} q={query}
-          basePath={basePath} viewHref={(oid) => `/app/${slug}/portal-produsen/pesanan/${oid}`} canExport={false} />
+          basePath={basePath} viewHref={(oid) => `/app/${slug}/portal-produsen/pesanan/${oid}`} canExport={false} print={{ slug, blockMixed: false }} />
       )}
       {active === "detail" && <TabDetail product={detail} tenantSlug={access.tenant.slug} showCost />}
     </div>

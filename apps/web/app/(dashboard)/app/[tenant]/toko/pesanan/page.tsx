@@ -1,3 +1,4 @@
+import { PrintLabelsButton } from "@/components/orders/print-label-dialog";
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
@@ -194,12 +195,13 @@ export default async function PesananPage({
               <th className="px-4 py-3 text-left font-medium hidden md:table-cell">Tanggal</th>
               <th className="px-4 py-3 text-right font-medium">Total Produk</th>
               <th className="px-4 py-3 text-center font-medium">Status</th>
+              <th className="px-2 py-3 text-right font-medium">Label</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
                   {q || status ? "Tidak ada pesanan yang cocok." : "Belum ada pesanan."}
                 </td>
               </tr>
@@ -230,6 +232,10 @@ export default async function PesananPage({
                       <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>
                         {st.label}
                       </span>
+                    </td>
+                    <td className="px-2 py-3 text-right">
+                      <PrintLabelsButton slug={slug} invoiceIds={[row.id]} iconOnly disabled={row.status !== "paid"}
+                        title={row.status === "paid" ? "Cetak label" : "Label hanya untuk pesanan yang sudah lunas"} />
                     </td>
                   </tr>
                 );

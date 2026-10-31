@@ -66,7 +66,7 @@ export default async function ProdukDetailPage({
     const { rows: orderRows, total } = await listProductOrders(tenantClient, productId, { q: query, page: pageNum, pageSize: 20 });
     pesananTab = (
       <TabPesanan slug={slug} productId={productId} rows={orderRows} total={total} page={pageNum} pageSize={20} q={query}
-        basePath={`/app/${slug}/toko/produk/${productId}`} viewHref={(id) => `/app/${slug}/toko/pesanan/invoice/${id}`} canExport />
+        basePath={`/app/${slug}/toko/produk/${productId}`} viewHref={(id) => `/app/${slug}/toko/pesanan/invoice/${id}`} canExport print={{ slug, blockMixed: false }} />
     );
   }
 

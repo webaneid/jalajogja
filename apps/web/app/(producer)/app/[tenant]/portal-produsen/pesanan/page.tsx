@@ -50,7 +50,7 @@ export default async function ProducerOrdersPage({
         {query && <Link href={base} className="text-sm text-muted-foreground hover:underline">Reset</Link>}
       </form>
 
-      <OrdersTable rows={rows} showMixed viewHref={(id) => `${base}/${id}`}
+      <OrdersTable rows={rows} showMixed print={{ slug, blockMixed: true }} viewHref={(id) => `${base}/${id}`}
         emptyText={query ? "Tidak ada pesanan yang cocok." : "Belum ada pesanan lunas."} />
 
       {totalPages > 1 && (

@@ -8,6 +8,7 @@ import { FulfillmentCard } from "@/components/toko/fulfillment-client";
 import type { FulfillmentShippingLine } from "@/components/toko/fulfillment-client";
 import { displayPhone } from "@/lib/phone";
 import { publicUrl } from "@/lib/minio";
+import { PrintLabelsButton } from "@/components/orders/print-label-dialog";
 
 function fmt(n: number | string) {
   const v = typeof n === "string" ? parseFloat(n) : n;
@@ -156,6 +157,9 @@ export default async function FulfillmentPage({
         <p className="font-mono text-xs text-muted-foreground">{inv.invoiceNumber}</p>
         <h1 className="text-xl font-semibold mt-1">{inv.customerName}</h1>
         <p className="text-sm text-muted-foreground">{fmtDate(inv.createdAt)}</p>
+        {inv.status === "paid" && (
+          <div className="mt-3"><PrintLabelsButton slug={slug} invoiceIds={[invoiceId]} label="Cetak Label" /></div>
+        )}
       </div>
 
       {/* Info pelanggan */}

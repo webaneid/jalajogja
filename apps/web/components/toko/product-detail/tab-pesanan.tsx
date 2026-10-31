@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button";
 import { OrdersTable } from "@/components/orders/orders-table";
 import type { ProducerOrderRow } from "@/lib/producer-orders.server";
 
-export function TabPesanan({ slug, productId, rows, total, page, pageSize, q, basePath, viewHref, canExport }: {
+export function TabPesanan({ slug, productId, rows, total, page, pageSize, q, basePath, viewHref, canExport, print }: {
   slug: string; productId: string; rows: ProducerOrderRow[]; total: number; page: number; pageSize: number; q: string;
   basePath: string;                       // /app/{slug}/toko/produk/{id} atau /app/{slug}/portal-produsen/produk/{id}
   viewHref: (invoiceId: string) => string;
   canExport: boolean;
+  print?: { slug: string; blockMixed: boolean }; // cetak label (satuan + masal)
 }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const href = (p: number) => {
@@ -54,7 +55,7 @@ export function TabPesanan({ slug, productId, rows, total, page, pageSize, q, ba
         {q && <Link href={`${basePath}?tab=pesanan`} className="text-sm text-muted-foreground hover:underline">Reset</Link>}
       </form>
 
-      <OrdersTable rows={rows} showMixed={false} viewHref={viewHref}
+      <OrdersTable rows={rows} showMixed={false} print={print} viewHref={viewHref}
         emptyText={q ? "Tidak ada pesanan yang cocok." : "Belum ada pesanan lunas untuk produk ini."} />
 
       {totalPages > 1 && (

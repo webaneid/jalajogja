@@ -9,6 +9,7 @@ import { publicUrl } from "@/lib/minio";
 import { displayPhone } from "@/lib/phone";
 import { OrderStatusBadge } from "@/components/producer/order-status-badge";
 import { BatchAddOrders, BatchPackAll, BatchRowActions } from "@/components/producer/batch-detail-actions";
+import { PrintLabelsButton } from "@/components/orders/print-label-dialog";
 
 const fmtDate = (iso: string) => new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
 
@@ -35,7 +36,10 @@ export default async function BatchDetailPage({ params }: { params: Promise<{ te
             Dikirim {fmtDate(batch.shippingDate)} · {batch.total} pesanan{batch.finished ? " · Selesai" : ""}
           </p>
         </div>
-        <BatchPackAll slug={slug} batchId={batch.id} processingCount={batch.byStatus.processing ?? 0} />
+        <div className="flex flex-wrap items-start gap-2">
+          <PrintLabelsButton slug={slug} invoiceIds={rows.map((o) => o.invoiceId)} label="Cetak Label Batch" />
+          <BatchPackAll slug={slug} batchId={batch.id} processingCount={batch.byStatus.processing ?? 0} />
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
