@@ -12,6 +12,8 @@ import type { TenantDb, ShippingStatus } from "@jalajogja/db";
 import { escapeLike } from "@/lib/escape-like";
 import { formatShippingMethod } from "@/lib/format-shipping-method";
 
+const num = (v: unknown) => { const n = parseFloat(String(v ?? "")); return Number.isFinite(n) ? n : 0; };
+
 export type ProducerOrderItem = { name: string; variantLabel: string; quantity: number };
 
 export type ProducerOrderRow = {
@@ -36,6 +38,13 @@ export type InvoiceBatchRef = { id: string; name: string; producerId: string };
 export type ProducerOrderDetail = ProducerOrderRow & {
   checkoutAddress: string;
   batch: InvoiceBatchRef | null;     // batch pengiriman yang memuat invoice ini (null = belum masuk batch)
+  notes: string | null;
+  /** Angka tingkat invoice (hanya dipakai utuh bila invoice TIDAK campuran; selain itu halaman menghitung dari item miliknya). */
+  invoiceAmounts: { subtotal: number; shipping: number; discount: number; total: number; paid: number };
+  /** Item MILIK produsen ini saja (dengan harga) — tampilan detail sama dengan admin. images = gambar produk (simple) untuk foto. */
+  itemsDetail: { id: string; name: string; description: string | null; itemId: string | null; unitPrice: number; quantity: number; total: number; images: unknown }[];
+  /** Baris pengiriman penjual tenant (mentah; dipetakan ke kartu fulfillment di halaman). */
+  shippingRows: { id: string; sellerType: string; sellerName: string; courier: string | null; service: string | null; etd: string | null; cost: string; trackingNumber: string | null; trackingProofPath: string | null; shippedAt: Date | null; status: string }[];
 };
 
 /** id produk + id variasi milik produsen (invoice_items.itemId = id produk untuk simple, id variasi untuk variable). */
@@ -207,6 +216,8 @@ export async function getProducerOrder(
     id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber, createdAt: schema.invoices.createdAt,
     customerName: schema.invoices.customerName, customerPhone: schema.invoices.customerPhone,
     shippingAddress: schema.invoices.shippingAddress, shippingCityName: schema.invoices.shippingCityName,
+    notes: schema.invoices.notes, subtotal: schema.invoices.subtotal, shippingTotal: schema.invoices.shippingTotal,
+    discount: schema.invoices.discount, total: schema.invoices.total, paidAmount: schema.invoices.paidAmount,
   }).from(schema.invoices)
     .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.status, "paid")))
     .limit(1);
@@ -215,10 +226,39 @@ export async function getProducerOrder(
   const [row] = await buildRows(tenantClient, [inv], owned);
   if (!row || row.items.length === 0) return null; // bukan invoice milik produsen ini
 
+  // Kepemilikan terbukti → muat item MILIK produsen (dengan harga), gambar produk, dan baris pengiriman tenant
+  const ownedIds = [...owned.ids];
+  const [itemRows, shippingRows] = await Promise.all([
+    db.select({
+      id: schema.invoiceItems.id, name: schema.invoiceItems.name, description: schema.invoiceItems.description, itemId: schema.invoiceItems.itemId,
+      unitPrice: schema.invoiceItems.unitPrice, quantity: schema.invoiceItems.quantity, total: schema.invoiceItems.total,
+    }).from(schema.invoiceItems)
+      .where(and(eq(schema.invoiceItems.invoiceId, inv.id), eq(schema.invoiceItems.itemType, "product"), inArray(schema.invoiceItems.itemId, ownedIds)))
+      .orderBy(schema.invoiceItems.sortOrder),
+    db.select().from(schema.invoiceShippingLines)
+      .where(and(eq(schema.invoiceShippingLines.invoiceId, inv.id), eq(schema.invoiceShippingLines.sellerType, "tenant")))
+      .orderBy(schema.invoiceShippingLines.createdAt),
+  ]);
+  const productIds = [...new Set(itemRows.map((i) => i.itemId).filter((x): x is string => !!x))];
+  const imgs = productIds.length
+    ? await db.select({ id: schema.products.id, images: schema.products.images }).from(schema.products).where(inArray(schema.products.id, productIds))
+    : [];
+  const imgOf = new Map(imgs.map((p) => [p.id, p.images]));
+
   return {
     ...row,
     checkoutAddress: [inv.shippingAddress, inv.shippingCityName].filter((p): p is string => !!p?.trim()).join(", "),
     batch: await getInvoiceBatch(tenantClient, inv.id),
+    notes: inv.notes ?? null,
+    invoiceAmounts: { subtotal: num(inv.subtotal), shipping: num(inv.shippingTotal), discount: num(inv.discount), total: num(inv.total), paid: num(inv.paidAmount) },
+    itemsDetail: itemRows.map((i) => ({
+      id: i.id, name: i.name, description: i.description, itemId: i.itemId,
+      unitPrice: num(i.unitPrice), quantity: i.quantity, total: num(i.total), images: i.itemId ? imgOf.get(i.itemId) : undefined,
+    })),
+    shippingRows: shippingRows.map((l) => ({
+      id: l.id, sellerType: l.sellerType, sellerName: l.sellerName, courier: l.courier, service: l.service, etd: l.etd,
+      cost: String(l.cost), trackingNumber: l.trackingNumber, trackingProofPath: l.trackingProofPath, shippedAt: l.shippedAt, status: l.status,
+    })),
   };
 }
 

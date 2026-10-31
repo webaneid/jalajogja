@@ -2,30 +2,13 @@ import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq, desc, inArray } from "drizzle-orm";
-import Link from "next/link";
-import { ChevronLeft, ExternalLink, Package } from "lucide-react";
-import { FulfillmentCard } from "@/components/toko/fulfillment-client";
-import type { FulfillmentShippingLine } from "@/components/toko/fulfillment-client";
+import { OrderDetailView, type OrderDetailVM } from "@/components/orders/order-detail-view";
+import { mapTenantLines, firstProductImage } from "@/lib/order-detail.server";
 import { displayPhone } from "@/lib/phone";
-import { publicUrl } from "@/lib/minio";
 import { OrderDetailActions } from "@/components/orders/order-detail-actions";
 import { getInvoiceBatch } from "@/lib/producer-orders.server";
 import { hasFullAccess } from "@/lib/permissions";
 import { isValidUuid } from "@/lib/is-uuid";
-
-function fmt(n: number | string) {
-  const v = typeof n === "string" ? parseFloat(n) : n;
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency", currency: "IDR", maximumFractionDigits: 0,
-  }).format(v || 0);
-}
-
-function fmtDate(d: Date | string) {
-  return new Date(d).toLocaleDateString("id-ID", {
-    day: "2-digit", month: "long", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
 
 const INV_STATUS: Record<string, { label: string; cls: string }> = {
   pending:              { label: "Menunggu Bayar",    cls: "bg-yellow-100 text-yellow-700" },
@@ -117,189 +100,48 @@ export default async function FulfillmentPage({
   const invoicePaid = inv.status === "paid";
   const invStatus   = INV_STATUS[inv.status] ?? { label: inv.status, cls: "bg-zinc-100 text-zinc-500" };
 
-  // Tenant shipping lines → fulfillment cards
-  const tenantLines: FulfillmentShippingLine[] = shippingRows
-    .filter(sl => sl.sellerType === "tenant")
-    .map(sl => ({
-      id:             sl.id,
-      sellerType:     sl.sellerType as "tenant" | "mitra",
-      sellerName:     sl.sellerName,
-      courier:        sl.courier,
-      service:        sl.service,
-      etd:            sl.etd ?? null,
-      cost:           parseFloat(String(sl.cost)),
-      trackingNumber: sl.trackingNumber ?? null,
-      trackingProofUrl: sl.trackingProofPath ? publicUrl(slug, sl.trackingProofPath) : null,
-      shippedAt:      sl.shippedAt?.toISOString() ?? null,
-      status:         sl.status as FulfillmentShippingLine["status"],
-    }));
+  // Baris pengiriman penjual tenant → kartu fulfillment
+  const tenantLines = mapTenantLines(shippingRows, slug);
 
   // Batch pengiriman (bila pesanan ada di batch produsen) — menentukan apakah aksi Input/Ubah Resi tampil
   const batchRef = await getInvoiceBatch(createTenantDb(slug), invoiceId);
   const mainLine = tenantLines[0];
 
-  function getThumb(images: unknown): string | null {
-    if (!Array.isArray(images) || images.length === 0) return null;
-    const img = images[0] as { variants?: Record<string, string>; url?: string };
-    return img.variants?.square ?? img.url ?? null;
-  }
+  // Tampilan SAMA PERSIS dengan halaman detail produsen (komponen bersama OrderDetailView, § 23.4)
+  const vm: OrderDetailVM = {
+    slug,
+    backHref: `/app/${slug}/toko/pesanan`, backLabel: "Pesanan",
+    statusBadge: invStatus,
+    invoiceNumber: inv.invoiceNumber, customerName: inv.customerName, createdAt: inv.createdAt,
+    actions: inv.status === "paid" ? (
+      <OrderDetailActions
+        slug={slug} invoiceId={invoiceId} status={mainLine?.status ?? null}
+        batch={batchRef ? { id: batchRef.id, name: batchRef.name } : null}
+        trackingNumber={mainLine?.trackingNumber ?? null} proofUrl={mainLine?.trackingProofUrl ?? null}
+        canChangePhoto={!mainLine?.shippedAt || Date.now() - new Date(mainLine.shippedAt).getTime() <= 30 * 86_400_000}
+        canPrint
+        canResi={hasFullAccess(access.tenantUser, "toko")}
+      />
+    ) : null,
+    info: [
+      ["Telepon",       displayPhone(inv.customerPhone)],
+      ["Email",         inv.customerEmail ?? "—"],
+      ["Alamat Kirim",  [inv.shippingAddress, inv.shippingCityName].filter(Boolean).join(", ") || "—"],
+      ...(inv.notes ? [["Catatan", inv.notes] as [string, string]] : []),
+      ...(batchRef ? [["Batch Pengiriman", batchRef.name] as [string, string]] : []),
+    ],
+    items: items.map((item) => ({
+      id: item.id, name: item.name, description: item.description,
+      thumb: item.itemId ? firstProductImage(productImages[item.itemId]) : null,
+      unitPrice: parseFloat(String(item.unitPrice)), quantity: item.quantity, total: parseFloat(String(item.total)),
+    })),
+    breakdown: {
+      subtotal: parseFloat(String(inv.subtotal)), shipping: parseFloat(String(inv.shippingTotal)),
+      discount: parseFloat(String(inv.discount)), total, paid: paidAmount,
+    },
+    lines: tenantLines, invoicePaid, readOnlyFulfillment: false,
+    billingHref: `/app/${slug}/finance/billing/invoice/${inv.id}`,
+  };
 
-  return (
-    <div className="p-6 space-y-6 max-w-2xl">
-      {/* Breadcrumb */}
-      <div className="flex items-center justify-between">
-        <Link
-          href={`/app/${slug}/toko/pesanan`}
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ChevronLeft className="h-4 w-4" />
-          Pesanan
-        </Link>
-        <span className={`rounded-full px-3 py-1 text-xs font-medium ${invStatus.cls}`}>
-          {invStatus.label}
-        </span>
-      </div>
-
-      {/* Header invoice */}
-      <div>
-        <p className="font-mono text-xs text-muted-foreground">{inv.invoiceNumber}</p>
-        <h1 className="text-xl font-semibold mt-1">{inv.customerName}</h1>
-        <p className="text-sm text-muted-foreground">{fmtDate(inv.createdAt)}</p>
-        {inv.status === "paid" && (
-          <div className="mt-3">
-            <OrderDetailActions
-              slug={slug} invoiceId={invoiceId} status={mainLine?.status ?? null}
-              batch={batchRef ? { id: batchRef.id, name: batchRef.name } : null}
-              trackingNumber={mainLine?.trackingNumber ?? null} proofUrl={mainLine?.trackingProofUrl ?? null}
-              canChangePhoto={!mainLine?.shippedAt || Date.now() - new Date(mainLine.shippedAt).getTime() <= 30 * 86_400_000}
-              canPrint
-              canResi={hasFullAccess(access.tenantUser, "toko")}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Info pelanggan */}
-      <div className="rounded-lg border border-border bg-card divide-y divide-border text-sm">
-        {[
-          ["Telepon",       displayPhone(inv.customerPhone)],
-          ["Email",         inv.customerEmail ?? "—"],
-          ["Alamat Kirim",  [inv.shippingAddress, inv.shippingCityName].filter(Boolean).join(", ") || "—"],
-          ...(inv.notes ? [["Catatan", inv.notes]] : []),
-          ...(batchRef ? [["Batch Pengiriman", batchRef.name]] : []),
-        ].map(([label, value]) => (
-          <div key={label} className="flex justify-between px-4 py-3 gap-3">
-            <span className="text-muted-foreground shrink-0 w-28">{label}</span>
-            <span className="text-right">{value}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Item pesanan */}
-      <div>
-        <h2 className="font-semibold text-sm mb-2">Item Pesanan</h2>
-        <div className="rounded-lg border border-border overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium">Produk</th>
-                <th className="px-4 py-2 text-center font-medium w-12">Qty</th>
-                <th className="px-4 py-2 text-right font-medium">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {items.map((item) => {
-                const thumb = item.itemId
-                  ? getThumb(productImages[item.itemId])
-                  : null;
-                return (
-                  <tr key={item.id}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        {thumb ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={thumb} alt={item.name} className="w-9 h-9 rounded object-cover shrink-0" />
-                        ) : (
-                          <div className="w-9 h-9 rounded bg-muted shrink-0 flex items-center justify-center">
-                            <Package size={14} className="text-muted-foreground" />
-                          </div>
-                        )}
-                        <div>
-                          <p className="font-medium leading-snug">{item.name}</p>
-                          {item.description && (
-                            <p className="text-xs text-muted-foreground">{item.description}</p>
-                          )}
-                          <p className="text-xs text-muted-foreground">{fmt(parseFloat(String(item.unitPrice)))} / item</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-center font-medium">{item.quantity}</td>
-                    <td className="px-4 py-3 text-right font-medium">{fmt(parseFloat(String(item.total)))}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot className="border-t border-border bg-muted/10 text-sm">
-              <tr>
-                <td colSpan={2} className="px-4 py-2 text-right text-muted-foreground">Subtotal</td>
-                <td className="px-4 py-2 text-right">{fmt(parseFloat(String(inv.subtotal)))}</td>
-              </tr>
-              {parseFloat(String(inv.shippingTotal)) > 0 && (
-                <tr>
-                  <td colSpan={2} className="px-4 py-2 text-right text-muted-foreground">Ongkos Kirim</td>
-                  <td className="px-4 py-2 text-right">{fmt(parseFloat(String(inv.shippingTotal)))}</td>
-                </tr>
-              )}
-              {parseFloat(String(inv.discount)) > 0 && (
-                <tr>
-                  <td colSpan={2} className="px-4 py-2 text-right text-muted-foreground">Diskon</td>
-                  <td className="px-4 py-2 text-right text-red-600">-{fmt(parseFloat(String(inv.discount)))}</td>
-                </tr>
-              )}
-              <tr>
-                <td colSpan={2} className="px-4 py-2 text-right font-semibold">Total</td>
-                <td className="px-4 py-2 text-right font-semibold text-base">{fmt(total)}</td>
-              </tr>
-              {paidAmount < total && (
-                <tr>
-                  <td colSpan={2} className="px-4 py-2 text-right text-muted-foreground">Terbayar</td>
-                  <td className="px-4 py-2 text-right text-green-600">{fmt(paidAmount)}</td>
-                </tr>
-              )}
-            </tfoot>
-          </table>
-        </div>
-      </div>
-
-      {/* Fulfillment cards */}
-      {tenantLines.length > 0 && (
-        <div className="space-y-4">
-          <h2 className="font-semibold text-sm">Pengiriman &amp; Fulfillment</h2>
-          {tenantLines.map(line => (
-            <FulfillmentCard
-              key={line.id}
-              slug={slug}
-              line={line}
-              invoicePaid={invoicePaid}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Link ke detail billing (pembayaran) */}
-      <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium">Detail Pembayaran</p>
-          <p className="text-xs text-muted-foreground">Verifikasi bukti transfer, konfirmasi manual</p>
-        </div>
-        <Link
-          href={`/app/${slug}/finance/billing/invoice/${inv.id}`}
-          className="flex items-center gap-1.5 text-xs text-primary hover:underline shrink-0"
-        >
-          Buka Invoice
-          <ExternalLink size={12} />
-        </Link>
-      </div>
-    </div>
-  );
+  return <OrderDetailView vm={vm} />;
 }

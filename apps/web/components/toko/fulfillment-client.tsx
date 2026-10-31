@@ -253,10 +253,13 @@ export function FulfillmentCard({
   slug,
   line,
   invoicePaid,
+  readOnly = false,
 }: {
   slug:        string;
   line:        FulfillmentShippingLine;
   invoicePaid: boolean;
+  /** true = tanpa tombol ubah status (dipakai halaman detail produsen: status diubah lewat batch/resi, bukan aksi admin). */
+  readOnly?:   boolean;
 }) {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -299,7 +302,7 @@ export function FulfillmentCard({
 
       {/* Aksi */}
       <div className="px-4 pb-4">
-        <FulfillmentActions slug={slug} line={line} invoicePaid={invoicePaid} />
+        {!readOnly && <FulfillmentActions slug={slug} line={line} invoicePaid={invoicePaid} />}
       </div>
     </div>
   );
