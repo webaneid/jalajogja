@@ -54,4 +54,28 @@ export function createProducersTable(s: ReturnType<typeof pgSchema>) {
   }));
 }
 
-export type ProducersTable = ReturnType<typeof createProducersTable>;
+// ─── Gudang pengiriman produsen (format RajaOngkir) ──────────────────────────────────────────────
+// Alamat asal pengiriman produk milik produsen. Kota asal checkout produk tenant = gudang UTAMA produsen
+// (prioritas: gudang → products.origin_city_id → default toko). Siap multi-alamat; UI sekarang hanya satu (alamat utama).
+// Doc: docs/arsitektur-portal-produsen.md § 20.
+export function createProducerWarehousesTable(s: ReturnType<typeof pgSchema>) {
+  return s.table("producer_warehouses", {
+    id:                 uuid("id").primaryKey().defaultRandom(),
+    producerId:         uuid("producer_id").notNull(),   // FK → producers.id RESTRICT via DDL
+    label:              text("label").notNull(),         // nama gudang
+    addressDetail:      text("address_detail").notNull(),// jalan / RT / RW / patokan
+    rajaongkirCityId:   integer("rajaongkir_city_id").notNull(),  // id lokasi hasil <RajaOngkirCityPicker>
+    rajaongkirCityLabel: text("rajaongkir_city_label").notNull(), // "KELURAHAN, KECAMATAN, KOTA, PROVINSI, KODEPOS"
+    postalCode:         text("postal_code"),
+    isDefault:          boolean("is_default").notNull().default(true),
+    createdAt:          timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:          timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  }, (t) => ({
+    producerIdx:    index("producer_warehouses_producer_idx").on(t.producerId),
+    // Satu alamat utama per produsen — dijaga database
+    defaultUniq:    uniqueIndex("producer_warehouses_default_uniq").on(t.producerId).where(sql`${t.isDefault}`),
+  }));
+}
+
+export type ProducersTable          = ReturnType<typeof createProducersTable>;
+export type ProducerWarehousesTable = ReturnType<typeof createProducerWarehousesTable>;

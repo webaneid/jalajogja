@@ -96,6 +96,9 @@ export type ProductFormProps = {
   // Produsen (ADMIN-ONLY, docs/arsitektur-produsen.md): daftar produsen aktif (id + nama saja — tanpa
   // nomor/alamat). `null` = field disembunyikan (produk mitra tidak memakai produsen).
   producerOptions: { value: string; label: string }[] | null;
+  // Id produsen (aktif) yang sudah punya Gudang Pengiriman — produk milik produsen ini memakai kota asal gudang
+  // (docs/arsitektur-portal-produsen.md § 20), jadi kolom "Kota Asal" per produk disembunyikan.
+  producerIdsWithWarehouse?: string[];
 };
 
 // ─── StatusBadge ──────────────────────────────────────────────────────────────
@@ -244,6 +247,7 @@ export function ProductForm({
   initialData,
   categories,
   producerOptions,
+  producerIdsWithWarehouse = [],
 }: ProductFormProps) {
   const router = useRouter();
 
@@ -637,18 +641,27 @@ export function ProductForm({
                   lihat docs/arsitektur-addon-ongkir.md). Kosongkan untuk pakai default toko. */}
               <div className="rounded-xl border border-border bg-card p-3 space-y-1.5">
                 <p className="text-xs font-medium leading-none">Kota Asal Pengiriman</p>
-                <p className="text-[10px] text-muted-foreground">
-                  Opsional — kosongkan untuk pakai kota asal default toko.
-                </p>
-                <RajaOngkirCityPicker
-                  value={originCityId}
-                  valueLabel={originCityName}
-                  onChange={(city: RajaOngkirCity | null) => {
-                    setOriginCityId(city?.id ?? null);
-                    setOriginCityName(city?.label ?? "");
-                  }}
-                  placeholder="Ketik nama kota (min. 2 karakter)..."
-                />
+                {producerId !== "internal" && producerIdsWithWarehouse.includes(producerId) ? (
+                  <p className="text-[10px] text-muted-foreground">
+                    Mengikuti <b>Gudang Pengiriman</b> produsen yang dipilih (diatur produsen di portalnya).
+                    {originCityId ? " Kota per produk yang pernah diisi tidak dipakai selama produsen punya gudang." : ""}
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-[10px] text-muted-foreground">
+                      Opsional — kosongkan untuk pakai kota asal default toko.
+                    </p>
+                    <RajaOngkirCityPicker
+                      value={originCityId}
+                      valueLabel={originCityName}
+                      onChange={(city: RajaOngkirCity | null) => {
+                        setOriginCityId(city?.id ?? null);
+                        setOriginCityName(city?.label ?? "");
+                      }}
+                      placeholder="Ketik nama kota (min. 2 karakter)..."
+                    />
+                  </>
+                )}
               </div>
 
               {/* Gratis Ongkir — diskon proporsional-berat saat checkout, bukan hard Rp0.

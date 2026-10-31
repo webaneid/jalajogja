@@ -6,13 +6,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, ClipboardList, Truck, Menu, X } from "lucide-react";
+import { LayoutDashboard, Package, ClipboardList, Truck, UserCircle, Menu, X } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Dashboard",  icon: LayoutDashboard, path: "dashboard"  },
   { label: "Produk",     icon: Package,         path: "produk"     },
   { label: "Pesanan",    icon: ClipboardList,   path: "pesanan"    },
   { label: "Pengiriman", icon: Truck,           path: "pengiriman" },
+  { label: "Profil",     icon: UserCircle,      path: "profil"     },
 ] as const;
 
 function SidebarBody({ slug, orgName, producerName, onNavigate }: {

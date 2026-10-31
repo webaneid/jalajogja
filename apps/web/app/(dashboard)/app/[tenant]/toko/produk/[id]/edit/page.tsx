@@ -1,3 +1,4 @@
+import { listProducerIdsWithWarehouse } from "@/lib/producer-warehouse.server";
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
@@ -84,11 +85,15 @@ export default async function ProductEditPage({
     }));
   }
 
+  // Produsen yang sudah punya gudang → kolom "Kota Asal" per produk disembunyikan (kota asal mengikuti gudang produsen).
+  const producerIdsWithWarehouse = producerOptions ? await listProducerIdsWithWarehouse(createTenantDb(slug)) : [];
+
   return (
     <ProductForm
       slug={slug}
       tenantName={access.tenant.name}
       producerOptions={producerOptions}
+      producerIdsWithWarehouse={producerIdsWithWarehouse}
       productId={productId}
       initialData={{
         name:        product.name,

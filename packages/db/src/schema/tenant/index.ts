@@ -27,7 +27,7 @@ import {
 import { createSettingsTable, createMenusTable, createMenuItemsTable } from "./settings";
 import { createSeoPageOverridesTable } from "./seo";
 import { createMitraApplicationsTable, createMitrasTable } from "./mitra";
-import { createProducersTable } from "./producers";
+import { createProducersTable, createProducerWarehousesTable } from "./producers";
 import { createProducerShipmentBatchesTable, createProducerShipmentInvoicesTable } from "./producer-shipments";
 import {
   createCartsTable,
@@ -110,6 +110,7 @@ function buildTenantSchema(slug: string) {
     mitraApplications:  createMitraApplicationsTable(s),
     mitras:             createMitrasTable(s),
     producers:          createProducersTable(s),
+    producerWarehouses: createProducerWarehousesTable(s),
     producerShipmentBatches:  createProducerShipmentBatchesTable(s),
     producerShipmentInvoices: createProducerShipmentInvoicesTable(s),
     // Settings & navigasi

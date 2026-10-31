@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { db, tenants, tenantAddonInstallations, addons, memberBusinesses } from "@jalajogja/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
+import { loadDefaultWarehouses } from "@/lib/producer-warehouse.server";
 import { auth } from "@/lib/auth";
 import { getAkunIdentity } from "@/lib/akun-identity";
 import { getTokoSettings } from "@/lib/toko-settings";
@@ -185,6 +186,7 @@ export default async function CheckoutPage({ params }: Props) {
               productId:       ts.products.id,
               weightGram:      ts.products.weightGram,
               mitraId:         ts.products.mitraId,
+              productProducerId: ts.products.producerId, // gudang produsen → kota asal (prioritas di atas override per-produk)
               // Override kota asal per-produk — KHUSUS produk tenant sendiri, tidak pernah
               // dipakai untuk produk mitra (mitra selalu pakai originCityId mitranya sendiri,
               // lihat resolusi di bawah). docs/arsitektur-addon-ongkir.md § "RENCANA — Kota
@@ -216,6 +218,20 @@ export default async function CheckoutPage({ params }: Props) {
             .from(ts.products)
             .leftJoin(ts.mitras, eq(ts.mitras.id, ts.products.mitraId))
             .where(inArray(ts.products.id, resolvedProductIds));
+
+          // Kota asal produk TENANT yang punya produsen = gudang utama produsen (prioritas: gudang → override per-produk →
+          // default toko). Diterapkan dengan menimpa productOriginCity* sebelum percabangan di bawah, jadi urutan resolusi
+          // lain tidak berubah. Produk mitra tidak disentuh. Gudang kosong = perilaku lama persis.
+          // docs/arsitektur-portal-produsen.md § 20.
+          const warehouseByProducer = await loadDefaultWarehouses(
+            createTenantDb(slug),
+            productDetails.filter((p) => !p.mitraId && p.productProducerId).map((p) => p.productProducerId as string),
+          );
+          for (const p of productDetails) {
+            if (p.mitraId || !p.productProducerId) continue;
+            const wh = warehouseByProducer.get(p.productProducerId);
+            if (wh) { p.productOriginCityId = wh.cityId; p.productOriginCityName = wh.cityLabel; }
+          }
 
           // Ambil nama usaha mitra dari public.member_businesses
           const bizIds = [...new Set(

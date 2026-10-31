@@ -6,6 +6,7 @@ import { eq, and, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { OrderCreateClient } from "@/components/toko/order-create-client";
+import { loadDefaultWarehouses } from "@/lib/producer-warehouse.server";
 
 type RajaOngkirConfig = {
   origin_city_id?:   number;
@@ -43,6 +44,7 @@ export default async function PesananNewPage({
       stock:       schema.products.stock,
       weightGram:  schema.products.weightGram,
       mitraId:     schema.products.mitraId,
+      producerId:  schema.products.producerId,
       sellerType:  schema.products.sellerType,
       productType: schema.products.productType,
       // Override kota asal per-produk — KHUSUS produk tenant sendiri (mitraId null), tidak
@@ -71,7 +73,17 @@ export default async function PesananNewPage({
     products.filter((p) => p.productType === "variable").map((p) => p.id),
   );
 
-  const productList = products.map((p) => ({
+  // Kota asal produk TENANT yang punya produsen = gudang utama produsen (prioritas: gudang → override per-produk → default
+  // toko), sama dengan checkout publik. Menimpa originCity* yang dikirim ke klien, jadi logika klien tidak berubah.
+  const warehouseByProducer = await loadDefaultWarehouses(
+    createTenantDb(slug),
+    products.filter((p) => !p.mitraId && p.producerId).map((p) => p.producerId as string),
+  );
+
+  const productList = products.map((p) => {
+    const wh = !p.mitraId && p.producerId ? warehouseByProducer.get(p.producerId) : undefined;
+    return { ...p, originCityId: wh ? wh.cityId : p.originCityId, originCityName: wh ? wh.cityLabel : p.originCityName };
+  }).map((p) => ({
     id:          p.id,
     name:        p.name,
     sku:         p.sku,

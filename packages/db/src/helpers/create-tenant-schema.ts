@@ -1493,6 +1493,24 @@ export async function createTenantSchemaInDb(
     `));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_shipment_invoices_batch_idx ON "${s}".producer_shipment_invoices(batch_id)`));
 
+    // ── Gudang pengiriman produsen (format RajaOngkir, docs/arsitektur-portal-produsen.md § 20) ──
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".producer_warehouses (
+        id                    UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        producer_id           UUID        NOT NULL REFERENCES "${s}".producers(id) ON DELETE RESTRICT,
+        label                 TEXT        NOT NULL,
+        address_detail        TEXT        NOT NULL,
+        rajaongkir_city_id    INTEGER     NOT NULL,
+        rajaongkir_city_label TEXT        NOT NULL,
+        postal_code           TEXT,
+        is_default            BOOLEAN     NOT NULL DEFAULT TRUE,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_warehouses_producer_idx ON "${s}".producer_warehouses(producer_id)`));
+    await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producer_warehouses_default_uniq ON "${s}".producer_warehouses(producer_id) WHERE is_default`));
+
     // ── 39. SEO Page Overrides (Fase 3, docs/arsitektur-seo.md § 3.3) ───────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".seo_page_overrides (
