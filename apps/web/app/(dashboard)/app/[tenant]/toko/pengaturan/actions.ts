@@ -7,6 +7,7 @@ import { normalizePhone } from "@/lib/phone";
 import { revalidatePath } from "next/cache";
 import type { TokoSettings } from "@/lib/toko-settings";
 import { PRODUCT_ARCHIVE_CARD_DESIGN_IDS, type ProductArchiveCardDesignId } from "@/lib/product-archive-card-designs";
+import { RAJAONGKIR_COURIER_CODES } from "@/lib/rajaongkir-couriers";
 
 type ActionResult = { error?: string };
 
@@ -71,6 +72,36 @@ export async function saveProductArchiveDesignAction(
   await upsertSetting(tenantDb, "product_archive_design", "toko", { design });
 
   revalidatePath(`/${slug}/produk`);
+  revalidatePath(`/app/${slug}/toko/pengaturan`);
+  return {};
+}
+
+// ─── Logo Kurir untuk label pengiriman — docs/arsitektur-portal-produsen.md § 21 ──────────────────────────
+// Disimpan di settings group "toko", key "courier_logos": { [kodeKurir]: urlGambar }. Dibaca buildLabelData (disematkan ke PDF).
+// URL HARUS berasal dari penyimpanan publik kita sendiri (MINIO_PUBLIC_URL) — sama dengan batas SSRF di imageToDataUri.
+export async function saveCourierLogosAction(
+  slug:  string,
+  logos: Record<string, string>,
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { error: "Akses ditolak." };
+
+  const base = process.env.MINIO_PUBLIC_URL?.replace(/\/$/, "");
+  if (!base) return { error: "Penyimpanan gambar belum dikonfigurasi di server." };
+
+  const clean: Record<string, string> = {};
+  for (const [code, url] of Object.entries(logos ?? {})) {
+    if (!RAJAONGKIR_COURIER_CODES.includes(code)) return { error: `Kurir tidak dikenal: ${code}.` };
+    const u = String(url ?? "").trim();
+    if (!u) continue; // kosong = tanpa logo
+    if (u.length > 500 || !u.startsWith(`${base}/`)) return { error: "Logo harus dipilih dari Media Library." };
+    clean[code] = u;
+  }
+
+  const tenantDb = createTenantDb(slug);
+  await upsertSetting(tenantDb, "courier_logos", "toko", clean);
+
   revalidatePath(`/app/${slug}/toko/pengaturan`);
   return {};
 }

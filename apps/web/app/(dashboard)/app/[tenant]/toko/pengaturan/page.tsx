@@ -1,6 +1,10 @@
 import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess } from "@/lib/permissions";
 import { redirect } from "next/navigation";
-import { createTenantDb, getSettings } from "@jalajogja/db";
+import { createTenantDb, getSettings, db as publicDb, tenantAddonInstallations, addons } from "@jalajogja/db";
+import { and, eq } from "drizzle-orm";
+import { RAJAONGKIR_COURIER_OPTIONS } from "@/lib/rajaongkir-couriers";
+import { CourierLogosForm } from "./courier-logos-form";
 import { getTokoSettings } from "@/lib/toko-settings";
 import { TokoSettingsForm } from "./toko-settings-form";
 import { ProductArchiveDesignForm } from "./product-archive-design-form";
@@ -26,6 +30,23 @@ export default async function TokoSettingsPage({
     ? (archiveDesignRaw!.design as ProductArchiveCardDesignId)
     : "1";
 
+  // Logo kurir: daftar kurir = yang diaktifkan tenant di add-on RajaOngkir (bila terpasang), selain itu semua kurir yang didukung
+  const logoMap = (tokoSettingsRaw.courier_logos as Record<string, string> | undefined) ?? {};
+  let enabledCodes: string[] | null = null;
+  try {
+    const inst = await publicDb
+      .select({ config: tenantAddonInstallations.config })
+      .from(tenantAddonInstallations)
+      .innerJoin(addons, eq(addons.id, tenantAddonInstallations.addonId))
+      .where(and(eq(tenantAddonInstallations.tenantId, access.tenant.id), eq(addons.slug, "rajaongkir")))
+      .limit(1).then((r) => r[0]);
+    const cs = (inst?.config as { couriers?: string[] } | undefined)?.couriers;
+    if (Array.isArray(cs) && cs.length > 0) enabledCodes = cs;
+  } catch { /* add-on belum terpasang → tampilkan semua */ }
+  const courierOptions = RAJAONGKIR_COURIER_OPTIONS
+    .filter((c) => !enabledCodes || enabledCodes.includes(c.value))
+    .map((c) => ({ code: c.value as string, label: c.label as string }));
+
   return (
     <div className="p-6 max-w-2xl space-y-10">
       <div>
@@ -39,6 +60,10 @@ export default async function TokoSettingsPage({
       <div className="border-t border-border" />
 
       <ProductArchiveDesignForm slug={slug} initialDesign={archiveDesign} />
+
+      <div className="border-t border-border" />
+
+      <CourierLogosForm slug={slug} couriers={courierOptions} initialLogos={logoMap} canEdit={hasFullAccess(access.tenantUser, "toko")} />
     </div>
   );
 }
