@@ -4,6 +4,7 @@ import { db, tenants, tenantAddonInstallations, addons, memberBusinesses } from 
 import { eq, and, inArray } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
 import { loadDefaultWarehouses } from "@/lib/producer-warehouse.server";
+import { shortCityName } from "@/lib/city-label";
 import { auth } from "@/lib/auth";
 import { getAkunIdentity } from "@/lib/akun-identity";
 import { getTokoSettings } from "@/lib/toko-settings";
@@ -316,12 +317,30 @@ export default async function CheckoutPage({ params }: Props) {
               continue; // kota asal tidak diketahui, skip
             }
 
-            // groupKey ikut origin — 2 produk tenant dengan kota asal beda otomatis jadi 2
-            // SellerGroup terpisah (2 kartu "Paket dari..." di checkout), bukan tergabung salah.
-            const groupKey = `${sellerType}:${sellerId ?? "tenant"}:${originCityId}`;
+            // PENGIRIMAN PER PRODUSEN (ADR-0005): produk tenant milik produsen X selalu satu paket sendiri — terpisah dari produsen lain
+            // dan dari barang toko — walau gudangnya sekota. Produsen = dari DB (products.producer_id), produk mitra tak pernah punya produsen.
+            const producerId = d.mitraId ? null : (d.productProducerId ?? null);
+            const warehouse  = producerId ? warehouseByProducer.get(producerId) : undefined;
+            if (producerId) {
+              // Judul paket untuk pelanggan = kota asal (identitas produsen tidak diperlihatkan; keputusan user 2026-11-01)
+              const city = shortCityName(originCityName);
+              if (city) sellerName = `${tenant.name} (${city})`;
+              // Ambil di tempat ikut gudang produsen (bila ada gudang); selain itu lokasi produk/toko seperti sebelumnya
+              // HANYA bila toko mengaktifkan ambil-sendiri: alamat lengkap gudang tak boleh dikirim ke setiap pengunjung checkout
+              // bila fitur pickup mati (audit F2). Server tetap menurunkan alamat dari gudang saat checkout (bukan dari klien).
+              if (warehouse && pickupEnabled) {
+                pickupLocationName = warehouse.name;
+                pickupAddress      = `${warehouse.addressDetail}, ${warehouse.fullLabel}`;
+                pickupMapsUrl      = null;
+              }
+            }
+
+            // groupKey ikut produsen + origin — produsen berbeda = paket berbeda; produk tanpa produsen/produsen tanpa gudang
+            // dengan kota asal beda tetap terpisah per kota (perilaku lama).
+            const groupKey = `${sellerType}:${sellerId ?? "tenant"}:${producerId ?? "-"}:${originCityId}`;
             if (!groupMap[groupKey]) {
               groupMap[groupKey] = {
-                key: groupKey, sellerType, sellerId, sellerName,
+                key: groupKey, sellerType, sellerId, producerId, sellerName,
                 originCityId, originCityName, items: [], totalWeightGram: 0,
                 codEnabled, pickupEnabled, pickupLocationName, pickupAddress, pickupMapsUrl,
               };

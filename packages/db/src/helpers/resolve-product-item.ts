@@ -45,6 +45,8 @@ export type ResolvedProductCartItem = {
   // pembeli berhak; per field variasi ikut produk induk kalau kosong. Lihat product-price.ts.
   price:     number;
   mitraId:   string | null;
+  // Produsen pemilik produk (products.producer_id; null = toko/internal). Dasar pengiriman per produsen — ADR-0005. Selalu dari DB.
+  producerId: string | null;
   // false = produsen produk ini DINONAKTIFKAN admin → produk tidak boleh dipesan (keranjang/checkout publik
   // menolak). Pemanggil admin (invoice manual) boleh mengabaikan. Lihat product-orderable.ts.
   producerActive: boolean;
@@ -70,7 +72,7 @@ export async function resolveProductCartItem(
   // 1) Coba sebagai produk simple dulu — kasus paling umum.
   const [prod] = await db
     .select({
-      id: schema.products.id, price: schema.products.price, mitraId: schema.products.mitraId,
+      id: schema.products.id, price: schema.products.price, mitraId: schema.products.mitraId, producerId: schema.products.producerId,
       publicPrice: schema.products.publicPrice, memberPrice: schema.products.memberPrice,
       tenantOnly: schema.products.memberPriceTenantOnly,
     })
@@ -82,6 +84,7 @@ export async function resolveProductCartItem(
       productId: prod.id,
       price:     resolveSellingPrice(prod, tier, prod.tenantOnly),
       mitraId:   prod.mitraId ?? null,
+      producerId: prod.producerId ?? null,
       producerActive: await isProducerActive(db, schema, prod.id),
     };
   }
@@ -100,6 +103,7 @@ export async function resolveProductCartItem(
       productMemberPrice:   schema.products.memberPrice,
       tenantOnly:           schema.products.memberPriceTenantOnly,
       mitraId:        schema.products.mitraId,
+      producerId:     schema.products.producerId,
     })
     .from(schema.productVariations)
     .innerJoin(schema.products, eq(schema.products.id, schema.productVariations.productId))
@@ -116,5 +120,5 @@ export async function resolveProductCartItem(
   );
   const price = resolveSellingPrice(merged, tier, variation.tenantOnly);
 
-  return { productId: variation.productId, price, mitraId: variation.mitraId ?? null, producerActive: await isProducerActive(db, schema, variation.productId) };
+  return { productId: variation.productId, price, mitraId: variation.mitraId ?? null, producerId: variation.producerId ?? null, producerActive: await isProducerActive(db, schema, variation.productId) };
 }

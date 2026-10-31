@@ -19,6 +19,8 @@ import {
 import { tenants } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
 import { getTokoSettings } from "@/lib/toko-settings";
+import { resolveLineProducers } from "@/lib/shipment-producers";
+import { loadDefaultWarehouses } from "@/lib/producer-warehouse.server";
 import { isSafeExternalUrl } from "@/lib/safe-url";
 import { auth } from "@/lib/auth";
 import { resolveViewerTier } from "@/lib/session-type.server";
@@ -85,6 +87,8 @@ export type SellerGroup = {
   key:             string;
   sellerType:      "tenant" | "mitra";
   sellerId:        string | null;
+  // Produsen pengirim kelompok ini (null = barang toko/internal atau mitra). Satu kelompok/pengiriman per produsen — ADR-0005.
+  producerId:      string | null;
   sellerName:      string;
   originCityId:    number;
   originCityName:  string;
@@ -116,6 +120,8 @@ export type SellerGroup = {
 export type CheckoutShippingLine = {
   sellerType:      "tenant" | "mitra";
   sellerId:        string | null;
+  // Produsen pengirim — DIVALIDASI server terhadap produsen item di keranjang (resolveLineProducers), bukan dipercaya.
+  producerId?:     string | null;
   sellerName:      string;
   // courier/*, hanya terisi kalau deliveryMethod === "courier".
   originCityId?:    number;
@@ -734,6 +740,8 @@ export async function checkoutAction(
         unitPrice: number;
         quantity:  number;
         mitraId:   string | null;
+        // Produsen pemilik barang (server, dari products.producer_id) — snapshot ke invoice_items.producer_id. Hanya produk tenant.
+        producerId: string | null;
         forGabungRegistration: boolean;
         // ID PRODUK INDUK untuk cocokkan voucher.targetItemIds — beda dari itemId di atas kalau
         // item ini variasi produk (itemId = product_variations.id, VoucherTargetPicker cuma
@@ -744,6 +752,7 @@ export async function checkoutAction(
       for (const item of cartItems) {
         let unitPrice = parseFloat(String(item.unitPrice));
         let mitraId: string | null = null;
+        let producerId: string | null = null;
         let voucherTargetId = item.itemId;
 
         if (item.itemId) {
@@ -765,6 +774,7 @@ export async function checkoutAction(
             }
             unitPrice        = resolved.price;
             mitraId          = resolved.mitraId;
+            producerId       = resolved.mitraId ? null : resolved.producerId;
             voucherTargetId  = resolved.productId;
           } else if (item.itemType === "ticket") {
             const [ticket] = await tx
@@ -811,10 +821,20 @@ export async function checkoutAction(
           unitPrice,
           quantity:  item.quantity,
           mitraId,
+          producerId,
           forGabungRegistration: item.forGabungRegistration,
           voucherTargetId,
         });
       }
+
+      // ── Produsen tiap baris pengiriman (ADR-0005) — SEBELUM penulisan apa pun: `return { error }` di dalam transaksi ini
+      // MENG-COMMIT (hanya throw yang rollback), jadi penolakan setelah invoice/voucher/stok ditulis meninggalkan invoice yatim.
+      // Produsen sah = yang sungguh memiliki barang tenant di keranjang; klien basi/palsu ditolak di sini.
+      const lineProducers = resolveLineProducers(
+        shipping?.lines ?? [],
+        resolvedItems.filter(it => it.itemType === "product" && !it.mitraId).map(it => it.producerId),
+      );
+      if (!lineProducers.ok) return { error: lineProducers.error };
 
       // ── Validasi stok tersedia — SEBELUM invoice dibuat. Lihat docs/arsitektur-stok.md.
       // Bukan penolakan mutlak (2 checkout hampir bersamaan tetap bisa sama-sama lolos), itu
@@ -939,6 +959,7 @@ export async function checkoutAction(
             sortOrder:   i,
             sellerType:  (item.mitraId ? "mitra" : "tenant") as "tenant" | "mitra",
             sellerId:    item.mitraId ?? null,
+            producerId:  item.itemType === "product" && !item.mitraId ? item.producerId : null,
             discountAmount: discountAmount.toFixed(2),
             voucherId:      discountAmount > 0 ? (voucherApplication?.voucher.id ?? null) : null,
             forGabungRegistration: item.forGabungRegistration,
@@ -989,7 +1010,13 @@ export async function checkoutAction(
           : [];
         const mitraConfigMap = new Map(mitraRows.map(m => [m.id, m]));
 
-        const shippingLineValues = shipping.lines.map(line => {
+        // lineProducers (produsen tiap baris) sudah divalidasi di atas, SEBELUM penulisan pertama.
+        // Alamat/nama ambil-di-tempat untuk baris ber-produsen diturunkan SERVER dari gudang produsen (bukan dipercaya dari klien).
+        const pickupWarehouses = await loadDefaultWarehouses(
+          tenantDb, lineProducers.producerIds.filter((x): x is string => !!x),
+        );
+
+        const shippingLineValues = shipping.lines.map((line, lineIdx) => {
           const sellerConfig = line.sellerType === "mitra" && line.sellerId
             ? mitraConfigMap.get(line.sellerId)
             : { codEnabled: tokoSettings.codEnabled, pickupEnabled: tokoSettings.pickupEnabled };
@@ -1007,13 +1034,15 @@ export async function checkoutAction(
               invoiceId:      invoice.id,
               sellerType:     line.sellerType,
               sellerId:       line.sellerId ?? null,
+              producerId:     lineProducers.producerIds[lineIdx],
               sellerName:     line.sellerName,
               cost:           "0.00",
               status:         "pending" as const,
               deliveryMethod: "pickup" as const,
               paymentMethod:  "prepaid" as const,
-              pickupLocationName: line.pickupLocationName ?? null,
-              pickupAddress:      line.pickupAddress ?? null,
+              // Baris ber-produsen dengan gudang: nama/alamat DARI GUDANG (server); selain itu nilai klien seperti sebelumnya.
+              pickupLocationName: (lineProducers.producerIds[lineIdx] && pickupWarehouses.get(lineProducers.producerIds[lineIdx]!)?.name) || line.pickupLocationName || null,
+              pickupAddress:      (() => { const w = lineProducers.producerIds[lineIdx] ? pickupWarehouses.get(lineProducers.producerIds[lineIdx]!) : undefined; return w ? `${w.addressDetail}, ${w.fullLabel}` : (line.pickupAddress ?? null); })(),
               // Validasi skema URL sebelum simpan — dirender sebagai <a href> mentah di admin,
               // checkoutAction ini publik/tanpa auth, jangan percaya URL dari client apa adanya
               // (cegah javascript:/data: URI). Lihat lib/safe-url.ts.
@@ -1024,6 +1053,7 @@ export async function checkoutAction(
             invoiceId:      invoice.id,
             sellerType:     line.sellerType,
             sellerId:       line.sellerId ?? null,
+            producerId:     lineProducers.producerIds[lineIdx],
             sellerName:     line.sellerName,
             originCityId:   line.originCityId ?? null,
             originCityName: line.originCityName ?? null,

@@ -15,6 +15,8 @@ import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, anchorTodayUtc } from "@/lib/tenant-timezone.server";
 import { getTokoSettings } from "@/lib/toko-settings";
 import { isSafeExternalUrl } from "@/lib/safe-url";
+import { resolveLineProducers } from "@/lib/shipment-producers";
+import { loadDefaultWarehouses } from "@/lib/producer-warehouse.server";
 import type { CheckoutShippingData } from "@/app/(public)/[tenant]/cart/actions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -716,7 +718,7 @@ export async function createOrderAction(
       // (voucher.targetItemIds cuma pernah simpan products.id, tidak pernah variasi). Dua
       // field ini WAJIB dipisah — lihat komentar di resolveProductCartItem() untuk root cause
       // bug kelas ini yang pernah terjadi di checkout publik.
-      const resolvedItems: Array<{ itemId: string; productId: string; name: string; unitPrice: number; quantity: number; mitraId: string | null }> = [];
+      const resolvedItems: Array<{ itemId: string; productId: string; name: string; unitPrice: number; quantity: number; mitraId: string | null; producerId: string | null }> = [];
       for (const item of data.items) {
         const resolved = await resolveProductCartItem(tx, schema, item.productId);
         if (!resolved) return { error: "Produk tidak ditemukan." };
@@ -753,7 +755,7 @@ export async function createOrderAction(
         }
 
         if (availableStock < item.qty) return { error: `Stok "${itemName}" tidak cukup. Tersedia: ${availableStock}, diminta: ${item.qty}.` };
-        resolvedItems.push({ itemId: item.productId, productId: resolved.productId, name: itemName, unitPrice: resolved.price, quantity: item.qty, mitraId: resolved.mitraId });
+        resolvedItems.push({ itemId: item.productId, productId: resolved.productId, name: itemName, unitPrice: resolved.price, quantity: item.qty, mitraId: resolved.mitraId, producerId: resolved.mitraId ? null : resolved.producerId });
       }
 
       // ── Voucher (opsional) ──
@@ -784,6 +786,7 @@ export async function createOrderAction(
         sellerType:          "tenant" | "mitra";
         sellerId:            string | null;
         sellerName:          string;
+        producerId:          string | null;
         cost:                string;
         status:              "pending";
         deliveryMethod:      "courier" | "pickup";
@@ -813,7 +816,18 @@ export async function createOrderAction(
           : [];
         const mitraConfigMap = new Map(mitraRows.map(m => [m.id, m]));
 
-        for (const line of data.shipping.lines) {
+        // Produsen tiap baris = produsen yang sungguh memiliki barang tenant di pesanan ini (ADR-0005); selain itu tolak.
+        const lineProducers = resolveLineProducers(
+          data.shipping.lines,
+          resolvedItems.filter(it => !it.mitraId).map(it => it.producerId),
+        );
+        if (!lineProducers.ok) return { error: lineProducers.error };
+        // Alamat/nama ambil-di-tempat untuk baris ber-produsen diturunkan SERVER dari gudang produsen (bukan dari klien)
+        const pickupWarehouses = await loadDefaultWarehouses(
+          tenantClient, lineProducers.producerIds.filter((x): x is string => !!x),
+        );
+
+        for (const [lineIdx, line] of data.shipping.lines.entries()) {
           const sellerConfig = line.sellerType === "mitra" && line.sellerId
             ? mitraConfigMap.get(line.sellerId)
             : { codEnabled: tokoSettings.codEnabled, pickupEnabled: tokoSettings.pickupEnabled };
@@ -825,9 +839,10 @@ export async function createOrderAction(
 
           if (deliveryMethod === "pickup") {
             shippingLineValues.push({
-              sellerType: line.sellerType, sellerId: line.sellerId ?? null, sellerName: line.sellerName,
+              sellerType: line.sellerType, sellerId: line.sellerId ?? null, producerId: lineProducers.producerIds[lineIdx], sellerName: line.sellerName,
               cost: "0.00", status: "pending" as const, deliveryMethod: "pickup" as const, paymentMethod: "prepaid" as const,
-              pickupLocationName: line.pickupLocationName ?? null, pickupAddress: line.pickupAddress ?? null,
+              pickupLocationName: (lineProducers.producerIds[lineIdx] && pickupWarehouses.get(lineProducers.producerIds[lineIdx]!)?.name) || line.pickupLocationName || null,
+              pickupAddress: (() => { const w = lineProducers.producerIds[lineIdx] ? pickupWarehouses.get(lineProducers.producerIds[lineIdx]!) : undefined; return w ? `${w.addressDetail}, ${w.fullLabel}` : (line.pickupAddress ?? null); })(),
               // Validasi skema URL sebelum simpan — dirender sebagai <a href> mentah di admin,
               // defense-in-depth meski aktor di sini sudah admin terautentikasi. Lihat lib/safe-url.ts.
               pickupMapsUrl: isSafeExternalUrl(line.pickupMapsUrl) ? line.pickupMapsUrl : null,
@@ -839,7 +854,7 @@ export async function createOrderAction(
             const safeCost = Math.max(0, line.cost);
             shippingTotal += safeCost;
             shippingLineValues.push({
-              sellerType: line.sellerType, sellerId: line.sellerId ?? null, sellerName: line.sellerName,
+              sellerType: line.sellerType, sellerId: line.sellerId ?? null, producerId: lineProducers.producerIds[lineIdx], sellerName: line.sellerName,
               originCityId: line.originCityId ?? null, originCityName: line.originCityName ?? null,
               courier: line.courier ?? null, service: line.service ?? null, serviceDesc: line.serviceDesc ?? null,
               etd: line.etd ?? null, weightGram: line.weightGram ?? null, cost: safeCost.toFixed(2),
@@ -911,6 +926,7 @@ export async function createOrderAction(
             sortOrder:   i,
             sellerType:  item.mitraId ? ("mitra" as const) : ("tenant" as const),
             sellerId:    item.mitraId,
+            producerId:  item.producerId, // snapshot produsen pemilik barang (ADR-0005)
             discountAmount: disc.toFixed(2),
             voucherId:      disc > 0 ? (voucherApplication?.voucher.id ?? null) : null,
           };

@@ -8,6 +8,14 @@
 
 ---
 
+## [2026-11-01] `return { error }` di dalam `db.transaction(...)` Drizzle MENG-COMMIT — validasi baru WAJIB sebelum penulisan pertama
+**Masalah:** Saat menambah validasi baris pengiriman (`resolveLineProducers`) ke `checkoutAction`, validasi itu saya taruh di blok "insert shipping lines" yang berada SETELAH insert invoice, invoice_items, pengurangan stok, dan pemakaian voucher di transaksi yang sama. Penolakannya berbentuk `return { error }`; callback transaksi tidak melempar, sehingga Drizzle COMMIT semuanya. Hasilnya (untuk klien basi/tab lama): invoice `pending` yatim tanpa baris pengiriman, voucher terpakai (`usedCount` naik) dan checkout ulang memakainya dua kali, invoice Rp 0 jadi `paid` + stok berkurang padahal pelanggan melihat error. Ditemukan audit, sebelum deploy.
+**Root cause:** semua `return { error }` lain di transaksi itu sengaja diletakkan SEBELUM penulisan pertama — itu satu-satunya yang membuat pola "return error" aman; konvensi tak tertulis ini mudah dilanggar saat menambah validasi di titik yang kebetulan sudah punya data yang dibutuhkan.
+**Fix:** validasi dipindah ke tepat setelah `resolvedItems` selesai dan sebelum stok/voucher/insert invoice; blok pengiriman hanya memakai hasilnya.
+**Pencegahan:** (1) di dalam `db.transaction`, penolakan setelah penulisan pertama HARUS `throw` (lalu ditangkap di luar), bukan `return`; (2) tiap kali menambah validasi ke aksi bertransaksi, jalankan: `awk 'NR>N && /return \{ error/'` dari baris penulisan pertama — hasil harus kosong; (3) validasi yang hanya butuh input + data DB read-only dipanggil di AWAL transaksi.
+
+---
+
 ## [2026-11-01] Objek `Date` di dalam template `sql\`...\`` mentah membuat query gagal (driver postgres-js); cron yang menelan error per-tenant membuat "uji sukses" palsu
 **Masalah:** Cron `cleanup-resi` memakai `sql\`coalesce(${L.shippedAt}, ${L.updatedAt}) <= ${cutoff}\`` dengan `cutoff` bertipe `Date`. Di production setiap tenant gagal dengan `TypeError: The "string" argument must be of type string or an instance of Buffer ... Received an instance of Date` (dari driver, bukan Drizzle). Uji manual pertama tetap menampilkan `{"deleted":0,"failed":0}` karena error per-tenant ditangkap `try/catch` lalu hanya di-`console.error` — respons tidak mencerminkan kegagalan sama sekali. Operator mengira cron sehat; baru ketahuan dari membaca log PM2.
 **Root cause:** operator Drizzle (`lte`, `gte`, `eq`) memetakan `Date` lewat kolom bertipe timestamp; `sql\`...\`` mentah TIDAK — nilai `Date` diteruskan apa adanya ke driver yang tak bisa men-serialize-nya.

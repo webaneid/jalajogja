@@ -1,5 +1,6 @@
 "use client";
 
+import { shortCityName } from "@/lib/city-label";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, Search, Ticket } from "lucide-react";
@@ -42,6 +43,10 @@ type ProductOption = {
   pickupLocationName: string | null;
   pickupAddress:      string | null;
   pickupMapsUrl:      string | null;
+  // Pengiriman per produsen (ADR-0005): produsen pemilik produk tenant (null = toko/internal/mitra) + lokasi ambil gudangnya
+  producerId:             string | null;
+  warehousePickupName:    string | null;
+  warehousePickupAddress: string | null;
 };
 
 type CartItem = { product: ProductOption; qty: number };
@@ -71,6 +76,7 @@ type LocalSellerGroup = {
   key:                 string;
   sellerType:          "tenant" | "mitra";
   sellerId:            string | null;
+  producerId:          string | null;
   sellerName:          string;
   originCityId:        number;
   originCityName:      string;
@@ -205,6 +211,10 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
       pickupLocationName: parent?.pickupLocationName ?? null,
       pickupAddress:      parent?.pickupAddress      ?? null,
       pickupMapsUrl:      parent?.pickupMapsUrl       ?? null,
+      // Variasi ikut produsen produk induknya (pengiriman per produsen, ADR-0005)
+      producerId:             parent?.producerId ?? null,
+      warehousePickupName:    parent?.warehousePickupName ?? null,
+      warehousePickupAddress: parent?.warehousePickupAddress ?? null,
     });
     setVariationPicker(null);
   }
@@ -293,12 +303,17 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
         continue; // kota asal tidak diketahui — grup dilewati (produk tetap masuk item pesanan)
       }
 
-      // key ikut origin — 2 produk tenant dengan kota asal beda otomatis jadi 2 SellerGroup
-      // terpisah, sama seperti checkout publik.
-      const key = `${sellerType}:${sellerId ?? "tenant"}:${originCityId}`;
+      // PENGIRIMAN PER PRODUSEN (ADR-0005) — sama persis dengan checkout publik: produsen berbeda = paket berbeda.
+      const producerId = p.mitraId ? null : (p.producerId ?? null);
+      if (producerId) {
+        const city = shortCityName(originCityName);
+        if (city) sellerName = `${tenantName} (${city})`;
+        if (p.warehousePickupAddress && pickupEnabled) { pickupLocationName = p.warehousePickupName; pickupAddress = p.warehousePickupAddress; pickupMapsUrl = null; }
+      }
+      const key = `${sellerType}:${sellerId ?? "tenant"}:${producerId ?? "-"}:${originCityId}`;
       if (!groupMap[key]) {
         groupMap[key] = {
-          key, sellerType, sellerId, sellerName, originCityId, originCityName, totalWeightGram: 0,
+          key, sellerType, sellerId, producerId, sellerName, originCityId, originCityName, totalWeightGram: 0,
           codEnabled, pickupEnabled, pickupLocationName, pickupAddress, pickupMapsUrl, items: [],
         };
       }
@@ -430,7 +445,7 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
         const choice = getChoice(g.key);
         if (choice.deliveryMethod === "pickup") {
           lines.push({
-            sellerType: g.sellerType, sellerId: g.sellerId, sellerName: g.sellerName,
+            sellerType: g.sellerType, sellerId: g.sellerId, producerId: g.producerId, sellerName: g.sellerName,
             deliveryMethod: "pickup", paymentMethod: "prepaid", cost: 0,
             pickupLocationName: g.pickupLocationName, pickupAddress: g.pickupAddress, pickupMapsUrl: g.pickupMapsUrl,
           });
@@ -439,7 +454,7 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
         const sel = groupStates[g.key]?.selected;
         if (!sel) { setError(`Pilih opsi kurir untuk pengiriman dari ${g.sellerName}.`); return; }
         lines.push({
-          sellerType: g.sellerType, sellerId: g.sellerId, sellerName: g.sellerName,
+          sellerType: g.sellerType, sellerId: g.sellerId, producerId: g.producerId, sellerName: g.sellerName,
           originCityId: g.originCityId, originCityName: g.originCityName,
           courier: sel.courier, service: sel.service, serviceDesc: sel.serviceDesc, etd: sel.etd,
           weightGram: g.totalWeightGram, cost: sel.cost,

@@ -6,18 +6,18 @@ import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
 
-export type WarehouseOrigin = { cityId: number; cityLabel: string };
+export type WarehouseOrigin = {
+  cityId: number;
+  /** Label AMAN untuk pembeli ("KOTA, PROVINSI") — dipakai judul paket & asal ongkir. */
+  cityLabel: string;
+  /** Detail gudang — HANYA untuk opsi "Ambil di tempat" yang dipilih pembeli (alamat lengkap). */
+  name: string;
+  addressDetail: string;
+  fullLabel: string;
+};
 
-/**
- * Label yang AMAN tampil ke pembeli: hanya "KOTA, PROVINSI". Label RajaOngkir lengkap = "KELURAHAN, KECAMATAN, KOTA, PROVINSI, KODEPOS"
- * — kelurahan + kode pos gudang (sering rumah produsen perorangan) tidak boleh terlihat publik di halaman checkout
- * (selaras aturan direktori publik: tidak menampilkan kecamatan/desa). id lokasi (untuk hitung ongkir) tetap tingkat kelurahan.
- */
-export function publicCityLabel(label: string): string {
-  const parts = label.split(",").map((p) => p.trim()).filter(Boolean);
-  if (parts.length > 0 && /^\d{4,10}$/.test(parts[parts.length - 1])) parts.pop(); // buang kode pos
-  return parts.length >= 3 ? parts.slice(-2).join(", ") : parts.join(", ");
-}
+export { publicCityLabel } from "@/lib/city-label";
+import { publicCityLabel } from "@/lib/city-label";
 
 /** producerId → gudang utama (hanya produsen aktif yang punya gudang). */
 export async function loadDefaultWarehouses(tenantClient: TenantDb, producerIds: string[]): Promise<Map<string, WarehouseOrigin>> {
@@ -30,6 +30,8 @@ export async function loadDefaultWarehouses(tenantClient: TenantDb, producerIds:
       producerId: schema.producerWarehouses.producerId,
       cityId: schema.producerWarehouses.rajaongkirCityId,
       cityLabel: schema.producerWarehouses.rajaongkirCityLabel,
+      name: schema.producerWarehouses.label,
+      addressDetail: schema.producerWarehouses.addressDetail,
     }).from(schema.producerWarehouses)
       .innerJoin(schema.producers, eq(schema.producers.id, schema.producerWarehouses.producerId))
       .where(and(
@@ -37,7 +39,7 @@ export async function loadDefaultWarehouses(tenantClient: TenantDb, producerIds:
         eq(schema.producerWarehouses.isDefault, true),
         eq(schema.producers.isActive, true),
       ));
-    for (const r of rows) out.set(r.producerId, { cityId: r.cityId, cityLabel: publicCityLabel(r.cityLabel) });
+    for (const r of rows) out.set(r.producerId, { cityId: r.cityId, cityLabel: publicCityLabel(r.cityLabel), name: r.name, addressDetail: r.addressDetail, fullLabel: r.cityLabel });
   } catch (e) {
     // Tabel belum ada (migration 0080 terlambat/terlewat) tidak boleh merusak checkout: fallback ke kota asal lama.
     // Pemanggil di checkout publik berada dalam try yang bila gagal MENGOSONGKAN seluruh opsi pengiriman — jangan sampai terjadi.

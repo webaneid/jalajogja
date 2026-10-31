@@ -419,6 +419,7 @@ export function CheckoutForm({
           return {
             sellerType:         g.sellerType,
             sellerId:           g.sellerId,
+            producerId:         g.producerId,
             sellerName:         g.sellerName,
             deliveryMethod:     "pickup",
             paymentMethod:      "prepaid",
@@ -433,6 +434,7 @@ export function CheckoutForm({
         return {
           sellerType:    g.sellerType,
           sellerId:      g.sellerId,
+          producerId:    g.producerId,
           sellerName:    g.sellerName,
           originCityId:  g.originCityId,
           originCityName: g.originCityName,

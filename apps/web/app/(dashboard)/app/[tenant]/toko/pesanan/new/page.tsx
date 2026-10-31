@@ -82,7 +82,7 @@ export default async function PesananNewPage({
 
   const productList = products.map((p) => {
     const wh = !p.mitraId && p.producerId ? warehouseByProducer.get(p.producerId) : undefined;
-    return { ...p, originCityId: wh ? wh.cityId : p.originCityId, originCityName: wh ? wh.cityLabel : p.originCityName };
+    return { ...p, wh, originCityId: wh ? wh.cityId : p.originCityId, originCityName: wh ? wh.cityLabel : p.originCityName };
   }).map((p) => ({
     id:          p.id,
     name:        p.name,
@@ -102,6 +102,10 @@ export default async function PesananNewPage({
     pickupLocationName: p.pickupLocationName,
     pickupAddress:      p.pickupAddress,
     pickupMapsUrl:      p.pickupMapsUrl,
+    // Pengiriman per produsen (ADR-0005): produsen pemilik (produk tenant) + lokasi ambil-di-tempat dari gudangnya bila ada
+    producerId:             p.mitraId ? null : (p.producerId ?? null),
+    warehousePickupName:    p.wh?.name ?? null,
+    warehousePickupAddress: p.wh ? `${p.wh.addressDetail}, ${p.wh.fullLabel}` : null,
   }));
 
   // ── Konfig ongkir tenant (add-on RajaOngkir) — sama pola checkout/page.tsx ────────
