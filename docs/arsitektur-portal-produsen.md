@@ -319,3 +319,47 @@ Bagian ini ada supaya definisi tidak lagi disalahpahami. Bila bertentangan denga
 **8. Dikerjakan 2026-10-31 (permintaan user):** semua kolom tabel admin ada di produsen (sudah) · kolom **HP** pembeli ditambahkan di tabel bersama (admin ikut punya) · **paginasi** tabel bersama · desain tabel tetap SATU komponen.
 
 **Status § 18 butir 8 (2026-10-31):** SELESAI KODE — `components/toko/product-buyer-list.tsx` (SATU komponen untuk admin & produsen): kolom **HP** pembeli (format `displayPhone`, teks biasa — bukan tautan WhatsApp, tidak ada yang ditambahkan di luar permintaan) dan **paginasi** 20 baris/halaman (sisi klien; reset ke halaman 1 saat mencari; kontrol Sebelumnya/Berikutnya + "Halaman x dari y · N pesanan" hanya bila > 20 baris). `tsc` + `bun run build` bersih. Tidak menyentuh data/akses (tidak ada risiko keamanan baru; baris yang sama yang sudah dikirim). Belum dites browser/deploy.
+
+## 19. Perombakan portal: sidebar + Pesanan + Pengiriman (batch) — RENCANA (2026-11-01, belum ada kode)
+
+**Permintaan user (2026-11-01, setelah uji browser P1–P6 + tabel bersama lolos):** portal dirombak total menjadi bergaya dashboard admin (sidebar), dikembangkan bertahap.
+
+### 19.1 Menu
+1. **Dashboard** — halaman kosong dulu (dikembangkan nanti).
+2. **Produk** — seperti sekarang (daftar + detail bertab bersama admin).
+3. **Pesanan** — semua pesanan dari semua produk milik produsen, HANYA invoice `paid`. Kolom: tgl pesan · invoice · pemesan (nama + HP) · pesanan (produk, atau variannya bila produk bervariasi) · jml · kurir · status · aksi (ikon saja: mata = lihat, printer = cetak — mesin cetak dibuat user secara terpisah, tombol nonaktif dulu).
+   Keputusan user: **satu baris = satu invoice** (status pengiriman memang per invoice; satu invoice boleh memuat banyak varian dalam satu sel). Ini menjawab keputusan terbuka § 18 butir 7 ("pesanan belum dibayar tampil?") → TIDAK, hanya paid.
+4. **Pengiriman** — batch pengiriman.
+
+### 19.2 Batch pengiriman
+- **Nama batch** otomatis `DDMMYYYY` + nomor urut 4 digit, mis. `011120260001` (1 Nov 2026, urutan ke-1). Dugaan: urutan direset per hari per produsen — dikonfirmasi saat implementasi.
+- **Form:** nama batch (otomatis) · tanggal pengiriman · daftar pemesan/invoice yang dikirim saat itu (pilih dari pesanan paid yang belum masuk batch).
+- **Alur status (keputusan user)** — memakai 5-tahap fulfillment yang SUDAH ADA (`invoice_shipping_lines.status`, `docs/arsitektur-fulfillment.md`):
+  1. buat batch → invoice di dalamnya `pending → processing` (Diproses)
+  2. cetak/kemas (mesin printing, dibuat terpisah) → `packed` (Dikemas)
+  3. produsen mengisi **nomor resi + unggah foto resi** → `shipped` (Dikirim; `trackingNumber` + `shippedAt`). Pelanggan dan admin melihat status yang sama (satu sumber).
+- **Aturan batch:** batch TIDAK bisa dihapus/dibatalkan — harus berjalan sampai selesai (agar tahapan pengiriman rapi). Yang boleh diubah: daftar pemesan di dalam batch.
+- Batch dianggap selesai bila semua invoice di dalamnya `shipped`.
+
+### 19.3 Temuan kode yang menentukan rancangan
+- Status pengiriman satu-satunya ada di `invoice_shipping_lines` (per invoice per seller; semua produk berpenjual `tenant` — termasuk produk produsen — berbagi SATU baris). Aturan transisi sudah ada: hanya maju satu langkah, `shipped` wajib resi, hanya invoice paid.
+- `updateFulfillmentStatusAction` ada di `finance/billing/actions.ts` dan dijaga `getTenantAccess` (pengurus) → produsen TIDAK bisa memakainya; perlu aksi khusus produsen yang menumpang aturan transisi yang sama (jangan menyalin logika).
+- Tabel baru di schema tenant (batch + isi batch) → pola ADR-0003 + `create-tenant-schema` + migration SQL tenant lama.
+- Unggah foto resi: produsen bukan `tenant.users`, jadi tidak bisa memakai Media Library tenant; butuh jalur unggah sendiri sesuai aturan keamanan (validasi ukuran + proses ulang Sharp + nama `randomUUID()`).
+
+### 19.4 Risiko
+1. **Portal berubah dari baca-saja menjadi punya Server Action** (aksi tulis pertama produsen). Wajib: `getProducerAccess` + bukti kepemilikan (invoice memuat item produsen ini) + paid + transisi valid + tidak masuk batch lain; lalu security review.
+2. **Invoice campuran** (item dari beberapa produsen / produk milik tenant sendiri) berbagi satu status + satu resi → bila dua pihak bertindak, saling menimpa. Perlu aturan (lihat 19.6).
+3. Migration di VPS untuk tenant lama.
+4. Unggah file dari akun non-pengurus = permukaan serangan baru.
+
+### 19.5 Fase (tiap fase: tsc → security review → commit; push hanya bila diminta)
+| Fase | Isi |
+|---|---|
+| S1 | Shell sidebar (desktop + drawer HP) + menu Dashboard (kosong) / Produk / Pesanan / Pengiriman |
+| S2 | Menu Pesanan (baca-saja, paid, per invoice) |
+| S3 | Tabel batch + form buat batch (invoice → Diproses) + edit isi batch |
+| S4 | Input resi + unggah foto resi → Dikirim; batch selesai |
+
+### 19.6 Pertanyaan terbuka (menunggu user)
+(a) Invoice campuran: boleh masuk batch? (b) Pemicu `processing → packed` selama mesin printing belum ada. (c) Boleh mengeluarkan invoice dari batch, dan sampai tahap apa.
