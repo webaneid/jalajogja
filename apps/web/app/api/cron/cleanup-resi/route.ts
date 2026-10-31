@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
 
   let deleted = 0;
   let failed = 0;
+  const tenantsSkipped: string[] = []; // tenant yang querynya gagal — dilaporkan di respons agar kegagalan TIDAK senyap
 
   for (const t of active) {
     try {
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
       const L = schema.invoiceShippingLines;
       const due = await tdb.select({ id: L.id, path: L.trackingProofPath, mediaId: L.trackingProofMediaId }).from(L)
         // shipped_at bisa NULL (pengiriman yang di-shipped lewat jalur admin lama) → cadangan ke updated_at agar foto tetap terhapus
-        .where(and(isNotNull(L.trackingProofPath), sql`coalesce(${L.shippedAt}, ${L.updatedAt}) <= ${cutoff}`))
+        .where(and(isNotNull(L.trackingProofPath), sql`coalesce(${L.shippedAt}, ${L.updatedAt}) <= ${cutoff.toISOString()}::timestamptz`))
         .limit(BATCH_LIMIT);
       if (due.length === 0) continue;
 
@@ -44,9 +45,10 @@ export async function GET(request: NextRequest) {
       }
     } catch (e) {
       // Tenant tanpa kolom/tabel (migration belum jalan) tidak boleh menghentikan tenant lain
+      tenantsSkipped.push(t.slug);
       console.error("[cleanup-resi] tenant dilewati:", t.slug, e);
     }
   }
 
-  return NextResponse.json({ deleted, failed });
+  return NextResponse.json({ deleted, failed, tenantsSkipped });
 }

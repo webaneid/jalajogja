@@ -8,6 +8,14 @@
 
 ---
 
+## [2026-11-01] Objek `Date` di dalam template `sql\`...\`` mentah membuat query gagal (driver postgres-js); cron yang menelan error per-tenant membuat "uji sukses" palsu
+**Masalah:** Cron `cleanup-resi` memakai `sql\`coalesce(${L.shippedAt}, ${L.updatedAt}) <= ${cutoff}\`` dengan `cutoff` bertipe `Date`. Di production setiap tenant gagal dengan `TypeError: The "string" argument must be of type string or an instance of Buffer ... Received an instance of Date` (dari driver, bukan Drizzle). Uji manual pertama tetap menampilkan `{"deleted":0,"failed":0}` karena error per-tenant ditangkap `try/catch` lalu hanya di-`console.error` — respons tidak mencerminkan kegagalan sama sekali. Operator mengira cron sehat; baru ketahuan dari membaca log PM2.
+**Root cause:** operator Drizzle (`lte`, `gte`, `eq`) memetakan `Date` lewat kolom bertipe timestamp; `sql\`...\`` mentah TIDAK — nilai `Date` diteruskan apa adanya ke driver yang tak bisa men-serialize-nya.
+**Fix:** `${cutoff.toISOString()}::timestamptz` di template mentah; respons cron kini memuat `tenantsSkipped` (daftar slug yang querynya gagal).
+**Pencegahan:** (1) di `sql\`...\`` mentah jangan pernah menyisipkan `Date` — pakai `.toISOString()` + cast, atau operator Drizzle; (2) cron/job yang membungkus kegagalan per-unit dengan try/catch WAJIB menaruh hitungan/daftar kegagalan di respons (bukan hanya log), dan uji "sukses" harus memeriksa field itu — `deleted:0` bisa berarti "tidak ada data" ATAU "semua gagal"; (3) saat menguji cron di production, buat satu baris data yang memenuhi syarat (mis. ubah `shipped_at` ke > 30 hari lalu) supaya hasil `0` tidak ambigu.
+
+---
+
 ## [2026-10-31] Nama schema tenant = `tenant_` + slug APA ADANYA (tanda hubung TIDAK diganti underscore)
 **Masalah:** Komentar diagnosa di header migration `0075` menyarankan `replace(slug,'-','_')` — untuk tenant ber-tanda-hubung (mis. `pc-ikpm-jogjakarta`) query akan menuju schema yang tidak ada (`tenant_pc_ikpm_jogjakarta`), padahal schema aslinya `"tenant_pc-ikpm-jogjakarta"`. Ketahuan oleh audit subagent; sebelumnya user juga sempat salah mengetik nama schema begitu saat mengecek constraint 0074.
 **Fix:** semua migration/diagnosa memakai `format('%I', 'tenant_' || slug)` (di-quote, persis seperti 0070/0074/0075); `createTenantDb` juga `tenant_${slug}` (validateSlug mengizinkan `-`).
