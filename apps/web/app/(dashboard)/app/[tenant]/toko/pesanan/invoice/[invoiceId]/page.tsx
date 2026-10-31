@@ -7,6 +7,7 @@ import { ChevronLeft, ExternalLink, Package } from "lucide-react";
 import { FulfillmentCard } from "@/components/toko/fulfillment-client";
 import type { FulfillmentShippingLine } from "@/components/toko/fulfillment-client";
 import { displayPhone } from "@/lib/phone";
+import { publicUrl } from "@/lib/minio";
 
 function fmt(n: number | string) {
   const v = typeof n === "string" ? parseFloat(n) : n;
@@ -123,6 +124,7 @@ export default async function FulfillmentPage({
       etd:            sl.etd ?? null,
       cost:           parseFloat(String(sl.cost)),
       trackingNumber: sl.trackingNumber ?? null,
+      trackingProofUrl: sl.trackingProofPath ? publicUrl(slug, sl.trackingProofPath) : null,
       shippedAt:      sl.shippedAt?.toISOString() ?? null,
       status:         sl.status as FulfillmentShippingLine["status"],
     }));

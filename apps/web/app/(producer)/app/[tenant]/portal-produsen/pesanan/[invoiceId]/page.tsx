@@ -7,6 +7,7 @@ import { createTenantDb } from "@jalajogja/db";
 import { getProducerAccess } from "@/lib/producer-access.server";
 import { getProducerOrder } from "@/lib/producer-orders.server";
 import { isValidUuid } from "@/lib/is-uuid";
+import { publicUrl } from "@/lib/minio";
 import { displayPhone } from "@/lib/phone";
 import { OrderStatusBadge } from "@/components/producer/order-status-badge";
 
@@ -45,7 +46,10 @@ export default async function ProducerOrderDetailPage({ params }: { params: Prom
         <Row label="No. HP">{order.customerPhone ? displayPhone(order.customerPhone) : "—"}</Row>
         <Row label="Alamat tujuan">{order.checkoutAddress || "—"}</Row>
         <Row label="Kurir">{order.courierLabel}</Row>
-        <Row label="No. resi">{order.trackingNumber ?? "—"}</Row>
+        <Row label="No. resi">
+          {order.trackingNumber ?? "—"}
+          {order.trackingProofPath && <a href={publicUrl(access.tenant.slug, order.trackingProofPath)} target="_blank" rel="noopener noreferrer" className="ml-3 text-primary hover:underline">Lihat foto resi</a>}
+        </Row>
         <Row label="Pesanan">
           <ul className="space-y-1">
             {order.items.map((it, i) => (

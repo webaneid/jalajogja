@@ -5,6 +5,7 @@ import { createTenantDb } from "@jalajogja/db";
 import { getProducerAccess } from "@/lib/producer-access.server";
 import { getProducerBatch, listBatchableOrders } from "@/lib/producer-orders.server";
 import { isValidUuid } from "@/lib/is-uuid";
+import { publicUrl } from "@/lib/minio";
 import { displayPhone } from "@/lib/phone";
 import { OrderStatusBadge } from "@/components/producer/order-status-badge";
 import { BatchAddOrders, BatchPackAll, BatchRowActions } from "@/components/producer/batch-detail-actions";
@@ -59,7 +60,7 @@ export default async function BatchDetailPage({ params }: { params: Promise<{ te
                 <td className="px-3 py-2 text-right tabular-nums">{o.totalQty}</td>
                 <td className="whitespace-nowrap px-3 py-2">{o.courierLabel}</td>
                 <td className="px-3 py-2"><OrderStatusBadge status={o.status} /></td>
-                <td className="px-3 py-2"><BatchRowActions slug={slug} batchId={batch.id} invoiceId={o.invoiceId} status={o.status} /></td>
+                <td className="px-3 py-2"><BatchRowActions slug={slug} batchId={batch.id} invoiceId={o.invoiceId} status={o.status} trackingNumber={o.trackingNumber} proofUrl={o.trackingProofPath ? publicUrl(access.tenant.slug, o.trackingProofPath) : null} /></td>
               </tr>
             ))}
           </tbody>
@@ -70,7 +71,7 @@ export default async function BatchDetailPage({ params }: { params: Promise<{ te
         <BatchAddOrders slug={slug} batchId={batch.id}
           orders={addable.map((o) => ({ invoiceId: o.invoiceId, invoiceNumber: o.invoiceNumber, customerName: o.customerName, summary: o.items.map((i) => i.name).join(", "), qty: o.totalQty }))} />
       )}
-      <p className="text-xs text-muted-foreground">Mengisi nomor resi dan foto resi (status Dikirim) menyusul di tahap berikutnya.</p>
+      <p className="text-xs text-muted-foreground">Alur status: Diproses → Dikemas → (isi nomor resi + foto resi) → Dikirim.</p>
     </div>
   );
 }

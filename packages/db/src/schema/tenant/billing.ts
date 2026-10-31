@@ -334,6 +334,8 @@ export function createInvoiceShippingLinesTable(s: ReturnType<typeof pgSchema>) 
     // tidak ada diskon gratis-ongkir sama sekali di baris ini.
     freeShippingDiscount: numeric("free_shipping_discount", { precision: 15, scale: 2 }),
     trackingNumber:  text("tracking_number"),            // resi, diisi mitra setelah kirim
+    // Foto/bukti resi (path di bucket tenant) — diisi Portal Produsen saat status → shipped. null = tanpa foto (jalur admin/mitra).
+    trackingProofPath: text("tracking_proof_path"),
     shippedAt:       timestamp("shipped_at",   { withTimezone: true }),
     deliveredAt:     timestamp("delivered_at", { withTimezone: true }),
     status:          text("status", { enum: SHIPPING_STATUSES }).notNull().default("pending"),

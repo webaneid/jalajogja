@@ -25,12 +25,13 @@ export type ProducerOrderRow = {
   courierLabel:  string;
   status:        ShippingStatus | null; // status pengiriman (invoice_shipping_lines.status), null = tak ada baris
   deliveryMethod: string | null;        // 'courier' | 'pickup' (ambil sendiri tidak dikirim kurir → tak bisa di batch)
+  trackingNumber: string | null;        // resi (diisi saat Dikirim)
+  trackingProofPath: string | null;     // path foto resi di bucket tenant (URL dibentuk di halaman)
   isMixed:       boolean;               // ada item selain milik produsen ini di invoice yang sama
 };
 
 export type ProducerOrderDetail = ProducerOrderRow & {
   checkoutAddress: string;
-  trackingNumber:  string | null;
   shippedAt:       Date | null;
 };
 
@@ -66,6 +67,7 @@ async function buildRows(
       deliveryMethod: schema.invoiceShippingLines.deliveryMethod, courier: schema.invoiceShippingLines.courier,
       service: schema.invoiceShippingLines.service, paymentMethod: schema.invoiceShippingLines.paymentMethod,
       status: schema.invoiceShippingLines.status, createdAt: schema.invoiceShippingLines.createdAt,
+      trackingNumber: schema.invoiceShippingLines.trackingNumber, trackingProofPath: schema.invoiceShippingLines.trackingProofPath,
     }).from(schema.invoiceShippingLines).where(inArray(schema.invoiceShippingLines.invoiceId, invoiceIds))
       .orderBy(schema.invoiceShippingLines.createdAt),
   ]);
@@ -89,6 +91,8 @@ async function buildRows(
       courierLabel: formatShippingMethod(line),
       status: (line?.status ?? null) as ShippingStatus | null,
       deliveryMethod: line?.deliveryMethod ?? null,
+      trackingNumber: line?.trackingNumber ?? null,
+      trackingProofPath: line?.trackingProofPath ?? null,
       isMixed: mine.length !== its.length,
     };
   });
@@ -152,7 +156,7 @@ export async function getProducerOrder(
   if (!row || row.items.length === 0) return null; // bukan invoice milik produsen ini
 
   const [line] = await db.select({
-    trackingNumber: schema.invoiceShippingLines.trackingNumber, shippedAt: schema.invoiceShippingLines.shippedAt,
+    shippedAt: schema.invoiceShippingLines.shippedAt,
   }).from(schema.invoiceShippingLines)
     .where(and(eq(schema.invoiceShippingLines.invoiceId, inv.id), eq(schema.invoiceShippingLines.sellerType, "tenant")))
     .limit(1);
@@ -160,7 +164,6 @@ export async function getProducerOrder(
   return {
     ...row,
     checkoutAddress: [inv.shippingAddress, inv.shippingCityName].filter((p): p is string => !!p?.trim()).join(", "),
-    trackingNumber: line?.trackingNumber ?? null,
     shippedAt: line?.shippedAt ?? null,
   };
 }

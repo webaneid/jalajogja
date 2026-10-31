@@ -21,6 +21,7 @@ export type FulfillmentShippingLine = {
   etd:            string | null;
   cost:           number;
   trackingNumber: string | null;
+  trackingProofUrl?: string | null; // foto resi dari Portal Produsen (opsional)
   shippedAt:      string | null;
   status:         "pending" | "processing" | "packed" | "shipped" | "delivered";
 };
@@ -283,6 +284,9 @@ export function FulfillmentCard({
           <div>
             <p className="text-xs text-muted-foreground">Nomor Resi</p>
             <p className="font-mono text-sm font-semibold">{line.trackingNumber}</p>
+            {line.trackingProofUrl && (
+              <a href={line.trackingProofUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">Lihat foto resi</a>
+            )}
           </div>
           {line.shippedAt && (
             <p className="ml-auto text-xs text-muted-foreground text-right shrink-0">
