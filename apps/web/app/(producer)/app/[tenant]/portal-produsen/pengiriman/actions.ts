@@ -9,25 +9,8 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
 import { getProducerAccess } from "@/lib/producer-access.server";
 import { getProducerOrdersByIds, isBatchable } from "@/lib/producer-orders.server";
+import { createBatchCore, cleanIds, isUniqueViolation, notifyProcessing, toProcessing, MAX_INVOICES, type Result } from "@/lib/producer-batch.server";
 import { isValidUuid } from "@/lib/is-uuid";
-import { notifyWa, waAppUrl } from "@/lib/wa-notify";
-
-type Result<T = void> = { success: true; data: T } | { success: false; error: string };
-
-const MAX_INVOICES = 100;
-const NAME_RE = /^[A-Za-z0-9._-]{1,40}$/;
-
-function cleanIds(ids: unknown): string[] | null {
-  if (!Array.isArray(ids)) return null;
-  const out = [...new Set(ids.map((x) => String(x)))];
-  if (out.length === 0 || out.length > MAX_INVOICES || !out.every(isValidUuid)) return null;
-  return out;
-}
-
-function isUniqueViolation(e: unknown): boolean {
-  const any = e as { code?: string; cause?: { code?: string } };
-  return any?.code === "23505" || any?.cause?.code === "23505";
-}
 
 function refresh(slug: string, batchId?: string) {
   const base = `/app/${slug}/portal-produsen`;
@@ -36,105 +19,16 @@ function refresh(slug: string, batchId?: string) {
   if (batchId) revalidatePath(`${base}/pengiriman/${batchId}`);
 }
 
-/** Notifikasi "Diproses" ke pelanggan — sama dengan jalur admin (order_processing; mengikuti pengaturan notifikasi tenant). */
-function notifyProcessing(slug: string, tenantDb: ReturnType<typeof createTenantDb>, rows: { invoiceId: string; invoiceNumber: string; customerName: string; customerPhone: string | null }[]) {
-  void (async () => {
-    try {
-      // Email pelanggan hanya dibaca di server untuk notifikasi (tidak masuk ProducerOrderRow / tidak ke klien)
-      const { db, schema } = tenantDb;
-      const emails = await db.select({ id: schema.invoices.id, email: schema.invoices.customerEmail }).from(schema.invoices)
-        .where(inArray(schema.invoices.id, rows.map((r) => r.invoiceId)));
-      const emailOf = new Map(emails.map((e) => [e.id, e.email]));
-      for (const r of rows) {
-        try {
-          const trackingUrl = await waAppUrl(slug, `/invoice/${r.invoiceId}`);
-          void notifyWa({
-            slug, tenantDb, event: "order_processing", phone: r.customerPhone, email: emailOf.get(r.invoiceId) ?? null,
-            vars: { name: r.customerName, orderNumber: r.invoiceNumber, courier: "", trackingNumber: "", trackingUrl },
-          });
-        } catch { /* notifikasi tak boleh menggagalkan aksi */ }
-      }
-    } catch { /* idem */ }
-  })();
-}
-
-type Tdb = ReturnType<typeof createTenantDb>;
-
-/**
- * Maju pending → processing untuk invoice-invoice ini DI DALAM transaksi; batalkan semuanya bila ada yang gagal.
- * Syarat invoice LUNAS ikut dicek di dalam UPDATE yang sama (bukan hanya snapshot sebelum transaksi — cegah TOCTOU).
- * Mengembalikan id invoice yang BELUM pernah diberi notifikasi "Diproses" (penanda processing_notified_at) —
- * supaya siklus Keluarkan → Masukkan lagi tidak mengirim pesan berulang ke pelanggan.
- */
-async function toProcessing(tx: Parameters<Parameters<Tdb["db"]["transaction"]>[0]>[0], schema: Tdb["schema"], invoiceIds: string[]): Promise<string[]> {
-  const toNotify: string[] = [];
-  for (const invoiceId of invoiceIds) {
-    const upd = await tx.update(schema.invoiceShippingLines)
-      .set({ status: "processing", updatedAt: new Date() })
-      .where(and(
-        eq(schema.invoiceShippingLines.invoiceId, invoiceId),
-        eq(schema.invoiceShippingLines.sellerType, "tenant"),
-        eq(schema.invoiceShippingLines.status, "pending"),
-        inArray(schema.invoiceShippingLines.invoiceId,
-          tx.select({ id: schema.invoices.id }).from(schema.invoices)
-            .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.status, "paid")))),
-      ))
-      .returning({ id: schema.invoiceShippingLines.id });
-    if (upd.length === 0) throw new Error("STATUS_BERUBAH");
-    const first = await tx.update(schema.invoiceShippingLines)
-      .set({ processingNotifiedAt: new Date() })
-      .where(and(
-        eq(schema.invoiceShippingLines.invoiceId, invoiceId),
-        eq(schema.invoiceShippingLines.sellerType, "tenant"),
-        isNull(schema.invoiceShippingLines.processingNotifiedAt),
-      ))
-      .returning({ id: schema.invoiceShippingLines.id });
-    if (first.length > 0) toNotify.push(invoiceId);
-  }
-  return toNotify;
-}
-
 export async function createBatchAction(
   slug: string,
   input: { name: string; shippingDate: string; invoiceIds: string[] },
-): Promise<Result<{ batchId: string }>> {
+): Promise<Result<{ batchId: string; name: string; count: number }>> {
   const access = await getProducerAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-
-  const name = String(input?.name ?? "").trim();
-  if (!NAME_RE.test(name)) return { success: false, error: "Nama batch 1–40 karakter (huruf, angka, titik, strip, garis bawah)." };
-  const date = String(input?.shippingDate ?? "");
-  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T00:00:00Z`) : null;
-  if (!parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) return { success: false, error: "Tanggal pengiriman tidak valid." };
-  const dayMs = 86_400_000;
-  if (parsed.getTime() < Date.now() - 31 * dayMs || parsed.getTime() > Date.now() + 366 * dayMs) return { success: false, error: "Tanggal pengiriman di luar rentang (30 hari lalu s/d 1 tahun ke depan)." };
-  const ids = cleanIds(input?.invoiceIds);
-  if (!ids) return { success: false, error: `Pilih 1–${MAX_INVOICES} pesanan.` };
-
-  const tenantDb = createTenantDb(access.tenant.slug);
-  const { db, schema } = tenantDb;
-
-  const orders = await getProducerOrdersByIds(tenantDb, access.producer.id, ids);
-  if (orders.length !== ids.length) return { success: false, error: "Sebagian pesanan tidak ditemukan atau belum lunas." };
-  if (!orders.every(isBatchable)) return { success: false, error: "Sebagian pesanan tidak bisa dimasukkan ke batch (campuran, ambil sendiri, atau sudah diproses)." };
-
-  try {
-    const { batchId, toNotify } = await db.transaction(async (tx) => {
-      const [b] = await tx.insert(schema.producerShipmentBatches)
-        .values({ producerId: access.producer.id, name, shippingDate: date })
-        .returning({ id: schema.producerShipmentBatches.id });
-      await tx.insert(schema.producerShipmentInvoices).values(ids.map((invoiceId) => ({ batchId: b.id, invoiceId })));
-      return { batchId: b.id, toNotify: await toProcessing(tx, schema, ids) };
-    });
-    notifyProcessing(access.tenant.slug, tenantDb, orders.filter((o) => toNotify.includes(o.invoiceId)));
-    refresh(slug, batchId);
-    return { success: true, data: { batchId } };
-  } catch (e) {
-    if (isUniqueViolation(e)) return { success: false, error: "Nama batch sudah dipakai, atau ada pesanan yang sudah masuk batch lain." };
-    if (e instanceof Error && e.message === "STATUS_BERUBAH") return { success: false, error: "Status sebagian pesanan berubah. Muat ulang halaman lalu coba lagi." };
-    console.error("[producer-batch] createBatchAction:", e);
-    return { success: false, error: "Gagal membuat batch." };
-  }
+  // producerId dari SESI; seluruh validasi + transaksi di inti bersama (lib/producer-batch.server.ts)
+  const res = await createBatchCore(createTenantDb(access.tenant.slug), access.tenant.slug, access.producer.id, input);
+  if (res.success) refresh(slug, res.data.batchId);
+  return res;
 }
 
 export async function addInvoicesToBatchAction(slug: string, batchId: string, invoiceIds: string[]): Promise<Result> {

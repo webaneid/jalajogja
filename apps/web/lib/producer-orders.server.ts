@@ -136,7 +136,7 @@ async function listByOwned(
     ) : undefined,
   );
 
-  const [invoices, [{ total }], countRows] = await Promise.all([
+  const [invoices, [{ total }], countRows, allRow] = await Promise.all([
     db.select({
       id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber, createdAt: schema.invoices.createdAt,
       customerName: schema.invoices.customerName, customerPhone: schema.invoices.customerPhone,
@@ -148,11 +148,14 @@ async function listByOwned(
       .innerJoin(schema.invoices, eq(schema.invoices.id, L.invoiceId))
       .where(and(eq(schema.invoices.status, "paid"), eq(L.sellerType, "tenant"), inArray(L.invoiceId, mineInvoiceIds)))
       .groupBy(L.status),
+    // "Semua" dihitung terpisah (bukan jumlah chip) agar invoice dengan >1 baris pengiriman tenant tidak terhitung ganda
+    db.select({ n: sql<number>`count(*)::int` }).from(schema.invoices)
+      .where(and(eq(schema.invoices.status, "paid"), inArray(schema.invoices.id, mineInvoiceIds))),
   ]);
 
-  const statusCounts: StatusCounts = { ...EMPTY_COUNTS };
+  const statusCounts: StatusCounts = { ...EMPTY_COUNTS, all: Number(allRow[0]?.n ?? 0) };
   for (const r of countRows) {
-    if ((ORDER_STATUS_FILTERS as readonly string[]).includes(r.status)) { statusCounts[r.status as OrderStatusFilter] = r.n; statusCounts.all += r.n; }
+    if ((ORDER_STATUS_FILTERS as readonly string[]).includes(r.status)) statusCounts[r.status as OrderStatusFilter] = r.n;
   }
   return { rows: await buildRows(tenantClient, invoices, owned), total: Number(total), statusCounts };
 }
