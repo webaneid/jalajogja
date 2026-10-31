@@ -2,7 +2,7 @@
 // Murni fungsi (tanpa DB/jaringan) — data diisi pemanggil. Barcode Code128 lewat bwip-js (SVG vektor, tajam di thermal).
 // Desain: monokrom (aman untuk printer thermal hitam-putih), hierarki tipografi tegas, COD tampil inversi hitam agar tak terlewat.
 // Doc: docs/arsitektur-portal-produsen.md § 21.
-import bwipjs from "bwip-js";
+import bwipjs from "bwip-js/node";
 import { FORMAT_SPECS, type FormatSpec } from "./formats";
 import type { LabelData, LabelFormat } from "./types";
 
