@@ -669,3 +669,34 @@ WHERE l.producer_id IS NOT NULL AND ii.producer_id IS DISTINCT FROM l.producer_i
 SELECT count(*) FROM tenant_forbis.producer_shipment_invoices WHERE shipping_line_id IS NULL;
 ```
 Urutan deploy F2+F3: `git pull` → migration `0082` → `bun install && bun run build && pm2 restart jalajogja && pm2 flush jalajogja` → `0082` ulang → uji § 24.8.
+
+---
+
+## 25. Kurir per produsen (RENCANA 2026-11-01 — belum dieksekusi, menunggu "mulai" dari user)
+
+**Permintaan user:** tiap produsen memilih sendiri kurir yang dipakainya (kurir terdekat dari tempatnya), bukan mengikuti pilihan admin. Admin (yang juga produsen untuk pesanan tenant sendiri) memilih dari semua kurir RajaOngkir.
+
+### 25.1 Hasil pengecekan (fakta dari kode, bukan asumsi)
+- **API RajaOngkir:** `POST /calculate/domestic-cost` menerima parameter `courier` berisi kode dipisah titik dua (`jne:tiki:pos`) **per permintaan**. Jadi memilih kurir per produsen BUKAN batasan API — cukup mengirim daftar yang berbeda untuk tiap paket. 16 kode valid untuk key platform kita (`lib/rajaongkir-couriers.ts`); beberapa (ncs/sentral/star) tidak selalu mengembalikan harga di semua rute.
+- **Sekarang:** SATU daftar kurir per tenant, di `tenant_addon_installations.config.couriers` (diatur di `/settings/addons/rajaongkir`; `toko/pengaturan` membacanya untuk Logo Kurir). Daftar yang sama dikirim ke SEMUA paket di checkout publik (`checkout/page.tsx` → `addonCouriers` → `checkout-form.tsx:288`) dan pesanan manual admin (`order-create-client.tsx:390`). Route `/api/ongkir/cost` hanya memeriksa add-on aktif; string `courier` dipercaya dari klien.
+- Sejak F2, tiap paket sudah punya `producerId` → titik sambung untuk daftar kurir per produsen sudah ada.
+
+### 25.2 Keputusan user (2026-11-01)
+1. Produsen **bebas memilih dari 16 kurir** (daftar admin BUKAN batas atas). Daftar admin hanya dipakai untuk paket tenant sendiri (tanpa produsen).
+2. Pilihan **melekat ke produsen** (satu gudang saja saat ini; multi-gudang UI belum ada, § 20). Jika nanti ada multi-gudang, dipindah ke gudang lewat migration baru.
+3. **Produsen mengatur di Profil; admin juga bisa atas nama produsen** (pola sama Buat Batch masal).
+
+### 25.3 Rancangan teknis
+- **DB:** kolom `couriers JSONB NULL` di tabel `producers` (migration `0083`, juga DDL tenant baru + Drizzle). `NULL` = belum diatur → **ikut daftar admin** (tidak ada perubahan perilaku untuk produsen lama).
+- **Resolusi daftar kurir per paket** (satu fungsi bersama `resolveCouriersForGroup`): paket dengan `producerId` yang `couriers` terisi → daftar produsen; selain itu → `config.couriers` tenant. Dipakai checkout publik + pesanan manual admin; checkout-form menerima daftar **per paket** (bukan satu `addonCouriers` global).
+- **UI:** kartu "Kurir Pengiriman" di Portal Produsen → Profil (checkbox 16 kurir, minimal 1) + Server Action `saveProducerCouriersAction` (`getProducerAccess`, validasi ⊆ `RAJAONGKIR_COURIER_CODES`). Jalur admin: aksi terpisah di `toko/produsen` dengan `hasFullAccess(toko)`, producerId dari DB.
+- **Validasi server (celah yang sekalian ditutup):** `checkoutAction` / `createOrderAction` menolak kurir terpilih yang tidak ada di daftar resolusi paketnya. Catatan: ONGKIR (biaya) tetap dikirim klien — kelemahan PRA-EKSISTING, di luar cakupan ini kecuali user meminta.
+- **Logo Kurir di label:** logo diunggah admin per kode kurir. Kurir produsen yang tidak diaktifkan admin tidak punya logo → label jatuh ke teks nama kurir (perilaku sekarang, `build.server.ts`). Form Logo Kurir diubah agar menampilkan SEMUA kurir yang dipakai siapa pun (admin + semua produsen) — butuh konfirmasi user saat dikerjakan.
+
+### 25.4 Risiko / yang perlu dijaga
+- Produsen memilih kurir yang tidak melayani rute → opsi kosong di checkout paket itu (sudah ada penanganan "tidak ada kurir tersedia"? — verifikasi saat F-kurir-3).
+- Daftar kurir kosong tidak boleh disimpan (minimal 1), atau kembali ke `NULL` lewat tombol "Ikuti pengaturan admin".
+- Pesanan lama: tidak terpengaruh (kurir tersimpan di `invoice_shipping_lines`).
+
+### 25.5 Langkah (K1–K4)
+K1 migration 0083 + DDL + Drizzle · K2 resolver + checkout publik & pesanan manual per paket + validasi server · K3 UI Profil produsen + jalur admin · K4 Logo Kurir + audit `security-auditor` + dokumen.
