@@ -36,7 +36,14 @@ const { RO_DAILY_LIMITS } = await import("../lib/ro-budget.server");
 const clearAll = async () => {
   await db.execute(sql`DELETE FROM public.ro_search_log`);
   await db.execute(sql`DELETE FROM public.ro_api_usage`);
-  await db.execute(sql`DELETE FROM public.ro_destinations WHERE id NOT IN (SELECT destination_id FROM public.address_book)`);
+  // Jangan hapus tujuan yang dirujuk FK: buku alamat (public) dan shipping_origins di SEMUA schema tenant
+  const slugs = (Array.from(await db.execute(sql`SELECT slug FROM public.tenants`)) as { slug: string }[]).map((r) => r.slug);
+  const refs = [`SELECT destination_id FROM public.address_book`];
+  for (const slug of slugs) {
+    const has = Array.from(await db.execute(sql`SELECT to_regclass(${`"tenant_${slug}".shipping_origins`}) AS t`))[0] as { t: string | null };
+    if (has.t) refs.push(`SELECT destination_id FROM "tenant_${slug}".shipping_origins`);
+  }
+  await db.execute(sql.raw(`DELETE FROM public.ro_destinations WHERE id NOT IN (${refs.join(" UNION ")})`));
 };
 let fails = 0;
 const check = (name: string, ok: boolean, extra = "") => { console.log(`${ok ? "OK  " : "GAGAL"}  ${name} ${extra}`); if (!ok) fails++; };
