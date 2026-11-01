@@ -8,7 +8,7 @@ Alamat tersebar di 9 tempat dan dua sistem yang tidak nyambung (Kemendagri: `pub
 ## 2. Keputusan user (2026-11-02)
 1. **RajaOngkir hanya untuk ongkos kirim transaksi toko.** Kemendagri (domisili anggota, direktori, statistik) TIDAK diubah.
 2. **Buku alamat melekat pada ORANG** (`member_id` atau `profile_id`), di schema `public`, ikut ke semua tenant — seperti data identitas lain. Pemakaian khusus: alamat kirim/asal kirim berbasis RajaOngkir.
-3. **Pembeli tamu/anonim:** BELUM diputuskan — lihat § 5.
+3. **Pembeli tamu/anonim:** untuk SEKARANG ikuti perilaku yang ada (pilihan A di § 5). Arah jangka panjang user: SEMUA pengguna wajib login, sistem login disederhanakan, checkout tamu kemungkinan dihapus, posisi tamu/user/anggota dirombak total — sebagai pekerjaan terpisah SETELAH refactor alamat ini selesai. Buku alamat tidak boleh bergantung pada konsep tamu.
 4. **Gudang & asal produk lama BOLEH dihapus total** (belum banyak dipakai) lalu diganti struktur baru. Dilakukan dengan cadangan DB dulu + SELECT isi aktual sebelum DROP.
 5. **Cache ongkir di database**, masa berlaku default **6 jam** (konstanta, bisa diatur).
 
@@ -54,3 +54,14 @@ Aturan keamanan: alamat adalah data pribadi — hanya tampil ke pemiliknya (sesi
 - Syarat layanan penyalinan data (belum diperiksa).
 - Menghapus struktur gudang/asal lama memutus ongkir sampai struktur baru terpasang → dilakukan dalam satu rilis, dengan cadangan.
 - Ekstensi `pg_trgm` perlu hak DB; kalau tidak ada, pencarian awalan (`ILIKE 'x%'`) + indeks biasa.
+
+## 9. Hasil spike P0 (dijalankan user di VPS, 2026-11-02, 11 panggilan)
+- **Endpoint hierarki ADA dan jalan:** `/destination/province` (34 provinsi — data lama, tanpa provinsi Papua baru), `/destination/city/{provinsi}`, `/destination/district/{kota}`, `/destination/sub-district/{kecamatan}` (kelurahan + `zip_code`). Bentuk: `{id, name}` (+`zip_code` di kelurahan). Contoh: DIY → 5 kota; Kota Yogyakarta → 14 kecamatan; Tegalrejo → 4 kelurahan (BENER id 31397, kode pos 55243).
+- **API ongkir MENERIMA ID kelurahan dari hierarki** (31397 dipakai sebagai asal, harga JNE keluar) → ID hierarki valid untuk ongkir.
+- **TIDAK TERSIMPULKAN:** apakah ID hierarki = ID hasil pencarian. Tes mencari "BENER" mengembalikan 30 hasil dari seluruh Indonesia (Aceh dulu), kelurahan Yogyakarta tak termasuk — itu kegagalan desain tes, bukan bukti ID berbeda. Perlu tes ulang dengan "BENER TEGALREJO" (lihat § 10).
+- **Pola harga JNE:** 900g/1000g/1001g sama (REG 16.000), 1500g/2000g sama (REG 32.000). Jadi harga naik per kilogram dengan toleransi (khas JNE: ±300 g). Pembulatan ke kilogram untuk kunci cache TIDAK aman (1001 g≠1500 g, tetapi bucket "ceil kg" akan menyamakan 1001 g dengan 2000 g); toleransi tiap kurir bisa berbeda dan hanya JNE yang diuji → **kunci cache memakai gram persis** (aman; hit-rate cukup karena kombinasi berat produk berulang), dievaluasi dari data nyata.
+- **Ukuran crawl hierarki:** 1 + 34 + ~514 + ~7.000 ≈ 7.550 panggilan, ~80 ribu kelurahan. Kuota API user BELUM diketahui → crawl harus berbudget per hari (cron) dan bisa dilanjutkan; pencarian lokal jatuh ke API (lalu menyimpan hasilnya) selama crawl belum selesai.
+
+## 10. Tes lanjutan sebelum P1 (dua perintah singkat, ±2 panggilan)
+1. Cari "BENER TEGALREJO": apakah ada hasil ber-ID 31397 (ID hierarki = ID pencarian)?
+2. Cari dengan `limit=1000`: berapa baris dikembalikan per halaman (kalau besar, mengisi data via pencarian berhalaman jauh lebih hemat daripada 7.000 panggilan hierarki).
