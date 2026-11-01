@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createTenantDb, getSettings, db as publicDb, tenantAddonInstallations, addons } from "@jalajogja/db";
 import { and, eq } from "drizzle-orm";
 import { RAJAONGKIR_COURIER_OPTIONS } from "@/lib/rajaongkir-couriers";
+import { sanitizeCouriers } from "@/lib/producer-couriers";
 import { CourierLogosForm } from "./courier-logos-form";
 import { getTokoSettings } from "@/lib/toko-settings";
 import { TokoSettingsForm } from "./toko-settings-form";
@@ -43,6 +44,15 @@ export default async function TokoSettingsPage({
     const cs = (inst?.config as { couriers?: string[] } | undefined)?.couriers;
     if (Array.isArray(cs) && cs.length > 0) enabledCodes = cs;
   } catch { /* add-on belum terpasang → tampilkan semua */ }
+  // Kurir pilihan produsen (§ 25) ikut tampil, supaya label produsen yang memakai kurir di luar daftar admin tetap bisa berlogo
+  if (enabledCodes) {
+    try {
+      const prodRows = await tenantClient.db.select({ couriers: tenantClient.schema.producers.couriers }).from(tenantClient.schema.producers);
+      const extra = new Set(enabledCodes);
+      for (const r of prodRows) for (const c of sanitizeCouriers(r.couriers) ?? []) extra.add(c);
+      enabledCodes = [...extra];
+    } catch { /* kolom/tabel belum ada → pakai daftar admin saja */ }
+  }
   const courierOptions = RAJAONGKIR_COURIER_OPTIONS
     .filter((c) => !enabledCodes || enabledCodes.includes(c.value))
     .map((c) => ({ code: c.value as string, label: c.label as string }));

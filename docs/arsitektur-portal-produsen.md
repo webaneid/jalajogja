@@ -714,3 +714,7 @@ Urutan deploy F2+F3: `git pull` → migration `0082` → `bun install && bun run
 - **Medium DIPERBAIKI:** `validateLineCouriers` dulu melewati baris berlabel `pickup` dari klien, padahal server memperlakukannya sebagai kurir bila ambil-sendiri tenant tidak aktif → pembatasan kurir produsen bisa dilewati. Kini validator menerima `tenantPickupEnabled` dan hanya melewati baris `pickup` bila pickup benar-benar aktif (logika sama dengan aksi).
 - **Low (diketahui, tidak diubah):** produsen tanpa pilihan (NULL) & paket tenant tidak divalidasi terhadap daftar admin di server (pra-eksisting, ongkir/kurir tetap dari klien); `saveProducerCouriersAction` tidak menolak produsen nonaktif (mengikuti `getProducerAccess`).
 - **Belum diuji di browser.** Sisa: K4 (Logo Kurir menampilkan semua kurir yang dipakai + audit akhir + dokumen).
+
+### 25.8 K4 — Logo Kurir + penutup (2026-11-01)
+**K4 ✅ KODE SELESAI.** Form Logo Kurir (`/toko/pengaturan`) kini menampilkan daftar kurir admin (`config.couriers`) DITAMBAH semua kurir yang dipilih produsen mana pun (read-only, tanpa perubahan skema/aksi). Label PDF sudah memakai logo untuk kurir apa pun yang tercatat di pengiriman (`build.server.ts`), jadi tidak perlu diubah. Bila add-on belum punya daftar kurir, form tetap menampilkan semua 16 kurir (perilaku lama).
+Audit: perubahan K4 hanya membaca kolom `producers.couriers` di halaman yang sudah terlindungi `getTenantAccess`; K1–K3 sudah diaudit (§ 25.7). **Seluruh § 25 (K1–K4) selesai di kode; belum diuji browser; belum push; migration `0083` wajib jalan di VPS SEBELUM deploy.**
