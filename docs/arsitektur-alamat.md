@@ -192,3 +192,7 @@ Pemilik asal dari sesi/otorisasi (produsen: `getProducerAccess`; admin: `getTena
 5. Pemulihan bila perlu: `pg_restore` dari berkas cadangan (`scripts/restore-db.sh`).
 **Tidak disentuh:** `mitras.rajaongkir_city_*` (mitra di luar cakupan), `invoice_shipping_lines.origin_city_*` (snapshot pesanan).
 **Sisa pekerjaan alamat:** mitra memakai struktur asal yang sama (belum diputuskan); alamat asal pickup khusus produk; keputusan terbuka viewer-toko melihat alamat gudang.
+
+### 22.1 Hasil deploy Tahap B (user, VPS, 2026-11-02)
+Kode `f332df2` ter-deploy (build + restart); cadangan `pg_dump -Fc` 6,3 MB (valid: `pg_restore -l` terbaca); `0089` sukses di 5 tenant — `forbis`: gudang lama=1, asal produsen baru=2 (pengaman lolos); log error PM2 kosong. **Seluruh refactor alamat P0–P5 + P4 Tahap A/B sekarang DEPLOYED.** Simpan berkas cadangan beberapa hari (berisi data pribadi — jangan dibagikan; hapus setelah yakin).
+**Masih perlu uji browser oleh user (belum dikonfirmasi):** buku alamat (`/akun/alamat`) tambah/ubah/hapus/utama; checkout memilih/menambah alamat; nama penerima di label & halaman pesanan; ongkir sesuai tujuan; tampilan mobile.
