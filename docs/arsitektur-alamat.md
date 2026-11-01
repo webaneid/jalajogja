@@ -13,7 +13,7 @@ Alamat tersebar di 9 tempat dan dua sistem yang tidak nyambung (Kemendagri: `pub
 5. **Cache ongkir di database**, masa berlaku default **6 jam** (konstanta, bisa diatur).
 
 ## 3. Rancangan data
-**`public.ro_destinations`** — salinan lokal data tujuan RajaOngkir (satu baris per kelurahan, ±80 ribu baris, ~20 MB): `id` (ID RajaOngkir, PK), `label`, `province_name`, `city_name`, `district_name`, `subdistrict_name`, `zip_code`, `search_text` (huruf kecil, untuk pencarian), `synced_at`. Pencarian tujuan dilayani Postgres (nol token). Terisi lewat (a) crawl bertahap per provinsi→kota→kecamatan→kelurahan dan (b) upsert otomatis dari setiap hasil pencarian/pemuatan API ("chunk": apa pun yang dimuat sekali tidak dimuat lagi).
+**`public.ro_destinations`** — salinan lokal data tujuan RajaOngkir (satu baris per kelurahan, ±80 ribu baris, ~20 MB): `id` (ID RajaOngkir, PK), `label`, `province_name`, `city_name`, `district_name`, `subdistrict_name`, `zip_code`, `search_text` (huruf kecil, untuk pencarian), `synced_at`. Pencarian tujuan dilayani Postgres (nol token). Terisi HANYA dari permintaan pengunjung (read-through, lihat § 11) — TIDAK ada crawl massal.
 **`public.address_book`** — `id`, `member_id`|`profile_id` (tepat satu terisi), `label` ("Rumah", "Indah Permata"), `recipient_name`, `phone` (E.164), `destination_id` → `ro_destinations`, `detail` (jalan/RT/RW), `postal_code`, `is_default`, `deleted_at`. Nama wilayah TIDAK disalin — diambil lewat JOIN (lebih ringan, koreksi satu tempat).
 **`public.ro_cost_cache`** — `origin_id, destination_id, weight, courier` → `payload jsonb`, `fetched_at`; dipakai `fetchDomesticCost` sebelum memanggil API.
 **Tenant (`tenant_{slug}`)**: tabel asal-kirim baru (gudang produsen + asal default toko) dengan bentuk kolom yang SAMA (`destination_id`, `detail`, `label`) dan komponen yang sama. Pengganti: `producer_warehouses`, `products.origin_city_*`, `mitras.rajaongkir_city_*`, `origin_city_*` di config add-on (butuh keputusan rinci saat P4, termasuk mitra).
@@ -38,11 +38,11 @@ Aturan keamanan: alamat adalah data pribadi — hanya tampil ke pemiliknya (sesi
 |---|---|
 | Cari tujuan (autocomplete, `resolveDestination`) | `ro_destinations` lokal → nol token; juga menghapus false-negative audit L1 |
 | Hitung ongkir tiap checkout | `ro_cost_cache` DB 6 jam; kunci berat disesuaikan hasil tes P0 |
-| Isi data awal | crawl bertahap (cron, sebagian per jalan), sekali; lalu hanya refresh berkala |
+| Isi data | read-through dari permintaan pengunjung (§ 11); TANPA crawl massal (user pernah diblokir karena pengambilan sekaligus) |
 
 ## 7. Langkah
 - **P0 (spike, ±15 panggilan):** `apps/web/scripts/spike-rajaongkir-hierarchy.ts` — verifikasi endpoint provinsi/kota/kecamatan/kelurahan, bentuk respons, apakah ID kelurahan = ID pencarian = ID yang diterima API ongkir, dan pola harga per berat (menentukan kunci cache). Dijalankan user di VPS. Juga: **baca syarat layanan Komerce** soal menyimpan/menyalin data tujuan.
-- P1 `ro_destinations` + crawl + pencarian lokal (ganti `/api/ongkir/cities` & `resolveDestination`). 
+- P1 `ro_destinations` + `ro_search_log` + `ro_api_usage` + pencarian lokal-dulu (ganti `/api/ongkir/cities` & `resolveDestination`) — rancangan § 11.
 - P2 komponen + `address_book` + halaman akun.
 - P3 integrasi checkout (pilih alamat tersimpan, snapshot invoice).
 - P4 asal-kirim tenant (hapus struktur lama setelah cadangan).
@@ -60,8 +60,18 @@ Aturan keamanan: alamat adalah data pribadi — hanya tampil ke pemiliknya (sesi
 - **API ongkir MENERIMA ID kelurahan dari hierarki** (31397 dipakai sebagai asal, harga JNE keluar) → ID hierarki valid untuk ongkir.
 - **TIDAK TERSIMPULKAN:** apakah ID hierarki = ID hasil pencarian. Tes mencari "BENER" mengembalikan 30 hasil dari seluruh Indonesia (Aceh dulu), kelurahan Yogyakarta tak termasuk — itu kegagalan desain tes, bukan bukti ID berbeda. Perlu tes ulang dengan "BENER TEGALREJO" (lihat § 10).
 - **Pola harga JNE:** 900g/1000g/1001g sama (REG 16.000), 1500g/2000g sama (REG 32.000). Jadi harga naik per kilogram dengan toleransi (khas JNE: ±300 g). Pembulatan ke kilogram untuk kunci cache TIDAK aman (1001 g≠1500 g, tetapi bucket "ceil kg" akan menyamakan 1001 g dengan 2000 g); toleransi tiap kurir bisa berbeda dan hanya JNE yang diuji → **kunci cache memakai gram persis** (aman; hit-rate cukup karena kombinasi berat produk berulang), dievaluasi dari data nyata.
-- **Ukuran crawl hierarki:** 1 + 34 + ~514 + ~7.000 ≈ 7.550 panggilan, ~80 ribu kelurahan. Kuota API user BELUM diketahui → crawl harus berbudget per hari (cron) dan bisa dilanjutkan; pencarian lokal jatuh ke API (lalu menyimpan hasilnya) selama crawl belum selesai.
+- **Crawl hierarki DIBATALKAN** (≈7.550 panggilan; kuota user 100/hari; user pernah diblokir karena pengambilan massal). Diganti read-through § 11.
 
 ## 10. Tes lanjutan sebelum P1 (dua perintah singkat, ±2 panggilan)
 1. Cari "BENER TEGALREJO": apakah ada hasil ber-ID 31397 (ID hierarki = ID pencarian)?
 2. Cari dengan `limit=1000`: berapa baris dikembalikan per halaman (kalau besar, mengisi data via pencarian berhalaman jauh lebih hemat daripada 7.000 panggilan hierarki).
+
+## 11. Revisi 2026-11-02 malam — read-through, bukan crawl (disepakati konsepnya dengan user)
+**Fakta:** paket gratis RajaOngkir/Komerce = **100 panggilan/hari**; user pernah diblokir karena pengambilan massal. Data bersifat PUBLIK dan dibagi semua tenant (schema `public`, seperti `ref_*`) — satu panggilan dari tenant mana pun menguntungkan semua.
+
+**Alur pencarian tujuan (autocomplete):** cari di `ro_destinations` dulu → cukup? pakai lokal : panggil API → simpan semua baris hasil → jawab. Masalah inti: "ada sebagian hasil di data kita" ≠ "hasilnya lengkap". Solusi: `ro_search_log(query_norm, limit, result_count, fetched_at)`. Pertanyaan boleh dijawab lokal bila (a) query yang SAMA persis pernah diambil, atau (b) ada query-induk (awalan) yang pernah diambil dan hasilnya tidak terpotong (`result_count < limit`) — hasil query yang lebih panjang pasti himpunan bagiannya. Selain itu → API (1 panggilan), hasil + log disimpan. Ukuran halaman API (`limit`) menentukan seberapa sering terpotong → tes terbuka § 10 no. 2.
+**`resolveDestination(id)` tidak lagi memanggil API:** pembeli hanya bisa memilih id dari hasil pencarian kita, jadi baris itu SUDAH ada di `ro_destinations`. Id yang tak ada di tabel = ditolak (nol panggilan). Ini juga menutup temuan audit L1 (false-negative).
+**Hitung ongkir:** `ro_cost_cache` di DB, dibagi semua tenant (tarif sama), kunci = asal+tujuan+**gram persis**+kurir. TTL default 6 jam (usul: 12–24 jam mengingat kuota). Bila kuota harian habis dan ada cache KADALUARSA → pakai itu (lebih baik daripada checkout gagal); tanpa cache → "ongkir tidak bisa diverifikasi".
+**Anggaran harian `ro_api_usage(day, kind, count)`** (hari WIB): batas keras sebelum memanggil API — usul: pencarian ≤ 30, ongkir ≤ 60, cadangan 10 (tes/admin). Pencarian saat habis → hanya hasil lokal + pesan; ongkir mendapat prioritas karena checkout bergantung padanya. Konstanta dapat diubah (naik saat paket berbayar). Penghitung diperbarui atomik; pada respons 429 dari upstream → berhenti memanggil sampai besok.
+**Penyegaran:** tiap kali baris terlihat lagi dari API, `synced_at` diperbarui; data basi hanya bisa diperbaiki dengan pencarian baru (alamat tersimpan menyimpan label snapshot untuk di-resolve ulang bila ID berubah).
+**Catatan kuota:** 100/hari cukup untuk tahap uji beberapa tenant, tidak untuk lalu lintas nyata (tiap paket checkout yang belum ada di cache = 1 panggilan; tiap ketikan yang belum tercakup = 1 panggilan). Paket berbayar kemungkinan diperlukan saat tenant bertambah.
