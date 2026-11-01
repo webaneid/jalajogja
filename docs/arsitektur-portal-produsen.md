@@ -699,4 +699,4 @@ Urutan deploy F2+F3: `git pull` → migration `0082` → `bun install && bun run
 - Pesanan lama: tidak terpengaruh (kurir tersimpan di `invoice_shipping_lines`).
 
 ### 25.5 Langkah (K1–K4)
-K1 migration 0083 + DDL + Drizzle · K2 resolver + checkout publik & pesanan manual per paket + validasi server · K3 UI Profil produsen + jalur admin · K4 Logo Kurir + audit `security-auditor` + dokumen.
+**K1 ✅ KODE SELESAI 2026-11-01** (migration `0083_producer_couriers.sql`, DDL `create-tenant-schema.ts`, Drizzle `producers.couriers`; type-check bersih; migration BELUM dijalankan di VPS — wajib SEBELUM deploy kode K2+. Admin memakai `config.couriers` add-on RajaOngkir, tanpa tabel baru) · K2 resolver + checkout publik & pesanan manual per paket + validasi server · K3 UI Profil produsen + jalur admin · K4 Logo Kurir + audit `security-auditor` + dokumen.

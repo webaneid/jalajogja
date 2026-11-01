@@ -915,6 +915,7 @@ export async function createTenantSchemaInDb(
         custom_district_id     INTEGER,
         custom_village_id      TEXT,
         custom_postal_code     TEXT,
+        couriers    JSONB,       -- kode kurir RajaOngkir pilihan produsen; NULL = ikut daftar admin (0083)
         notes       TEXT,
         is_active   BOOLEAN     NOT NULL DEFAULT TRUE,
         created_by  UUID,

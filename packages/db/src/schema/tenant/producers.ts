@@ -1,4 +1,4 @@
-import { pgSchema, uuid, text, integer, boolean, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgSchema, uuid, text, integer, boolean, jsonb, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // ─── Produsen produk (ADMIN-ONLY) ─────────────────────────────────────────────────────────────
@@ -40,6 +40,9 @@ export function createProducersTable(s: ReturnType<typeof pgSchema>) {
     customDistrictId:    integer("custom_district_id"),
     customVillageId:     text("custom_village_id"),  // bigint di ref_villages — disimpan sebagai teks (angka besar)
     customPostalCode:    text("custom_postal_code"),
+
+    // Kode kurir RajaOngkir pilihan produsen (subset RAJAONGKIR_COURIER_CODES). NULL = ikut daftar kurir admin (0083, § 25).
+    couriers:    jsonb("couriers").$type<string[] | null>(),
 
     notes:       text("notes"),
     isActive:    boolean("is_active").notNull().default(true),
