@@ -1,4 +1,5 @@
-import { listProducerIdsWithWarehouse } from "@/lib/producer-warehouse.server";
+import { listAllOrigins } from "@/lib/shipping-origins.server";
+import { publicCityLabel } from "@/lib/city-label";
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
@@ -53,14 +54,17 @@ export default async function ProdukNewPage({
   }
 
   // Produsen yang sudah punya gudang → kolom "Kota Asal" per produk disembunyikan (kota asal mengikuti gudang produsen).
-  const producerIdsWithWarehouse = producerOptions ? await listProducerIdsWithWarehouse(createTenantDb(slug)) : [];
+  // Asal kirim (semua pemilik) — form menyaring ke pemilik produk. Label wilayah AMAN (kota, provinsi) saja.
+  const originOptions = (await listAllOrigins(createTenantDb(slug))).map((o) => ({
+    id: o.id, producerId: o.producerId, label: o.label, isDefault: o.isDefault, place: publicCityLabel(o.destination.label),
+  }));
 
   return (
     <ProductForm
       slug={slug}
       tenantName={access.tenant.name}
       producerOptions={producerOptions}
-      producerIdsWithWarehouse={producerIdsWithWarehouse}
+      originOptions={originOptions}
       productId={null}
       initialData={{
         name:        "",
@@ -73,8 +77,7 @@ export default async function ProdukNewPage({
         memberPriceTenantOnly: false,
         stock:           0,
         weightGram:      null,
-        originCityId:    null,
-        originCityName:  null,
+        originId:        null,
         freeShippingMode:      "none",
         freeShippingProvinces: [],
         freeShippingCities:    [],

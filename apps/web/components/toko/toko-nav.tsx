@@ -11,6 +11,7 @@ import {
   Handshake,
   Factory,
   Settings2,
+  MapPin,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { label: "Kategori",    icon: Tag,             path: "/kategori"    },
   { label: "Mitra",       icon: Handshake,       path: "/mitra"       },
   { label: "Produsen",    icon: Factory,         path: "/produsen"    },
+  { label: "Asal Kirim",  icon: MapPin,          path: "/asal-kirim"  },
   { label: "Pengaturan",  icon: Settings2,       path: "/pengaturan"  },
 ] as const;
 

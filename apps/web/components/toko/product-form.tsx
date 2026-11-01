@@ -17,7 +17,6 @@ import {
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { SeoPanel } from "@/components/seo/seo-panel";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
-import { RajaOngkirCityPicker, type RajaOngkirCity } from "@/components/ui/rajaongkir-city-picker";
 import { FreeShippingPicker, type FreeShippingMode, type FreeShippingRegion } from "@/components/toko/free-shipping-picker";
 import {
   createProductAction,
@@ -75,8 +74,7 @@ export type ProductFormProps = {
     memberPriceTenantOnly: boolean;
     stock:           number;
     weightGram:      number | null;
-    originCityId:    number | null;
-    originCityName:  string | null;
+    originId:        string | null;
     freeShippingMode:      "none" | "all" | "regions";
     freeShippingProvinces: FreeShippingRegion[];
     freeShippingCities:    FreeShippingRegion[];
@@ -96,9 +94,9 @@ export type ProductFormProps = {
   // Produsen (ADMIN-ONLY, docs/arsitektur-produsen.md): daftar produsen aktif (id + nama saja — tanpa
   // nomor/alamat). `null` = field disembunyikan (produk mitra tidak memakai produsen).
   producerOptions: { value: string; label: string }[] | null;
-  // Id produsen (aktif) yang sudah punya Gudang Pengiriman — produk milik produsen ini memakai kota asal gudang
-  // (docs/arsitektur-portal-produsen.md § 20), jadi kolom "Kota Asal" per produk disembunyikan.
-  producerIdsWithWarehouse?: string[];
+  // Asal kirim yang tersedia (shipping_origins, semua pemilik) — dipilih per produk; difilter ke pemilik produk di form.
+  // producerId null = milik toko/internal. Doc: docs/arsitektur-alamat.md § 20.
+  originOptions?: { id: string; producerId: string | null; label: string; place: string; isDefault: boolean }[];
 };
 
 // ─── StatusBadge ──────────────────────────────────────────────────────────────
@@ -247,7 +245,7 @@ export function ProductForm({
   initialData,
   categories,
   producerOptions,
-  producerIdsWithWarehouse = [],
+  originOptions = [],
 }: ProductFormProps) {
   const router = useRouter();
 
@@ -262,8 +260,7 @@ export function ProductForm({
   const [memberPriceTenantOnly, setMemberPriceTenantOnly] = useState(initialData.memberPriceTenantOnly);
   const [stock,           setStock]           = useState(String(initialData.stock));
   const [weightGram,      setWeightGram]      = useState(initialData.weightGram != null ? String(initialData.weightGram) : "");
-  const [originCityId,    setOriginCityId]    = useState<number | null>(initialData.originCityId);
-  const [originCityName,  setOriginCityName]  = useState(initialData.originCityName ?? "");
+  const [originId, setOriginId] = useState<string>(initialData.originId ?? "");
   const [freeShippingMode,      setFreeShippingMode]      = useState<FreeShippingMode>(initialData.freeShippingMode);
   const [freeShippingProvinces, setFreeShippingProvinces] = useState<FreeShippingRegion[]>(initialData.freeShippingProvinces);
   const [freeShippingCities,    setFreeShippingCities]    = useState<FreeShippingRegion[]>(initialData.freeShippingCities);
@@ -331,8 +328,8 @@ export function ProductForm({
       memberPriceTenantOnly,
       stock:           stockNum,
       weightGram:      weightGramNum,
-      originCityId,
-      originCityName:  originCityId ? (originCityName.trim() || null) : null,
+      // Hanya asal milik pemilik produk SAAT INI (mengganti produsen membuang pilihan asal produsen lama)
+      originId:        originOptions.some((o) => o.id === originId && o.producerId === (producerId === "internal" ? null : producerId)) ? originId : null,
       freeShippingMode,
       freeShippingProvinces: freeShippingMode === "regions" ? freeShippingProvinces : [],
       freeShippingCities:    freeShippingMode === "regions" ? freeShippingCities    : [],
@@ -636,32 +633,31 @@ export function ProductForm({
                 </div>
               </div>
 
-              {/* Kota Asal Pengiriman — override opsional dari default toko, KHUSUS produk
-                  tenant sendiri (bukan mitra — mitra atur kota asal sendiri di profil mitra,
-                  lihat docs/arsitektur-addon-ongkir.md). Kosongkan untuk pakai default toko. */}
+              {/* Asal Pengiriman — pilih salah satu asal kirim milik pemilik produk (toko, atau produsen yang dipilih);
+                  kosong = ikut asal utama pemilik. KHUSUS produk tenant (mitra atur kota asal sendiri di profil mitra).
+                  Kelola daftar asal di Toko → Asal Kirim (admin) atau Portal Produsen → Profil. */}
               <div className="rounded-xl border border-border bg-card p-3 space-y-1.5">
-                <p className="text-xs font-medium leading-none">Kota Asal Pengiriman</p>
-                {producerId !== "internal" && producerIdsWithWarehouse.includes(producerId) ? (
-                  <p className="text-[10px] text-muted-foreground">
-                    Mengikuti <b>Gudang Pengiriman</b> produsen yang dipilih (diatur produsen di portalnya).
-                    {originCityId ? " Kota per produk yang pernah diisi tidak dipakai selama produsen punya gudang." : ""}
-                  </p>
-                ) : (
-                  <>
-                    <p className="text-[10px] text-muted-foreground">
-                      Opsional — kosongkan untuk pakai kota asal default toko.
-                    </p>
-                    <RajaOngkirCityPicker
-                      value={originCityId}
-                      valueLabel={originCityName}
-                      onChange={(city: RajaOngkirCity | null) => {
-                        setOriginCityId(city?.id ?? null);
-                        setOriginCityName(city?.label ?? "");
-                      }}
-                      placeholder="Ketik nama kota (min. 2 karakter)..."
-                    />
-                  </>
-                )}
+                <p className="text-xs font-medium leading-none">Asal Pengiriman</p>
+                {(() => {
+                  const ownerId = producerId === "internal" ? null : producerId;
+                  const mine = originOptions.filter((o) => o.producerId === ownerId);
+                  const main = mine.find((o) => o.isDefault);
+                  return (
+                    <>
+                      <p className="text-[10px] text-muted-foreground">
+                        Opsional — kosongkan untuk memakai asal utama{main ? ` (${main.label} — ${main.place})` : ownerId ? " produsen; bila produsen belum punya asal, memakai asal utama toko" : " toko"}.
+                      </p>
+                      <Combobox
+                        options={[{ value: "", label: "Ikuti asal utama" }, ...mine.map((o) => ({ value: o.id, label: `${o.label} — ${o.place}` }))]}
+                        value={mine.some((o) => o.id === originId) ? originId : ""}
+                        onValueChange={setOriginId}
+                        placeholder="Ikuti asal utama"
+                        searchPlaceholder="Cari asal kirim..."
+                        emptyText="Belum ada asal kirim."
+                      />
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Gratis Ongkir — diskon proporsional-berat saat checkout, bukan hard Rp0.

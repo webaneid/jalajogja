@@ -1,10 +1,8 @@
-// Gudang pengiriman produsen → kota asal ongkir. Doc: docs/arsitektur-portal-produsen.md § 20.
-// Dipakai di tiga titik: checkout publik, pesanan manual admin, dan form produk (apakah kolom "Kota Asal" per produk
-// disembunyikan). Prioritas kota asal produk TENANT: gudang utama produsen → products.origin_city_id → default toko.
-// Hanya produsen AKTIF yang gudangnya dipakai (produsen nonaktif = produknya memang tak bisa dipesan, P6).
+// Asal kirim UTAMA produsen (pembungkus tipis di atas shipping_origins — docs/arsitektur-alamat.md § 20). Dipakai: checkout publik
+// (alamat ambil-di-tempat diturunkan server), pesanan manual admin. Hanya produsen AKTIF (nonaktif = produknya tak bisa dipesan).
 import "server-only";
-import { and, eq, inArray } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
+import { loadOriginIndex } from "@/lib/shipping-origins.server";
 
 export type WarehouseOrigin = {
   cityId: number;
@@ -19,46 +17,15 @@ export type WarehouseOrigin = {
 export { publicCityLabel } from "@/lib/city-label";
 import { publicCityLabel } from "@/lib/city-label";
 
-/** producerId → gudang utama (hanya produsen aktif yang punya gudang). */
+/** producerId → asal kirim UTAMA produsen (hanya produsen aktif yang punya asal). Pembungkus tipis di atas shipping_origins (§ 20). */
 export async function loadDefaultWarehouses(tenantClient: TenantDb, producerIds: string[]): Promise<Map<string, WarehouseOrigin>> {
   const out = new Map<string, WarehouseOrigin>();
-  const ids = [...new Set(producerIds.filter(Boolean))];
-  if (ids.length === 0) return out;
-  const { db, schema } = tenantClient;
-  try {
-    const rows = await db.select({
-      producerId: schema.producerWarehouses.producerId,
-      cityId: schema.producerWarehouses.rajaongkirCityId,
-      cityLabel: schema.producerWarehouses.rajaongkirCityLabel,
-      name: schema.producerWarehouses.label,
-      addressDetail: schema.producerWarehouses.addressDetail,
-    }).from(schema.producerWarehouses)
-      .innerJoin(schema.producers, eq(schema.producers.id, schema.producerWarehouses.producerId))
-      .where(and(
-        inArray(schema.producerWarehouses.producerId, ids),
-        eq(schema.producerWarehouses.isDefault, true),
-        eq(schema.producers.isActive, true),
-      ));
-    for (const r of rows) out.set(r.producerId, { cityId: r.cityId, cityLabel: publicCityLabel(r.cityLabel), name: r.name, addressDetail: r.addressDetail, fullLabel: r.cityLabel });
-  } catch (e) {
-    // Tabel belum ada (migration 0080 terlambat/terlewat) tidak boleh merusak checkout: fallback ke kota asal lama.
-    // Pemanggil di checkout publik berada dalam try yang bila gagal MENGOSONGKAN seluruh opsi pengiriman — jangan sampai terjadi.
-    console.error("[producer-warehouse] loadDefaultWarehouses gagal, memakai kota asal lama:", e);
+  const ids = new Set(producerIds.filter(Boolean));
+  if (ids.size === 0) return out;
+  const index = await loadOriginIndex(tenantClient); // gagal baca → indeks kosong + log (tak merusak checkout)
+  for (const id of ids) {
+    const o = index.producerDefault.get(id);
+    if (o) out.set(id, { cityId: o.cityId, cityLabel: publicCityLabel(o.fullLabel), name: o.name, addressDetail: o.addressDetail, fullLabel: o.fullLabel });
   }
   return out;
-}
-
-/** Id produsen (aktif) yang sudah punya gudang — untuk form produk. */
-export async function listProducerIdsWithWarehouse(tenantClient: TenantDb): Promise<string[]> {
-  const { db, schema } = tenantClient;
-  try {
-    const rows = await db.select({ producerId: schema.producerWarehouses.producerId })
-      .from(schema.producerWarehouses)
-      .innerJoin(schema.producers, eq(schema.producers.id, schema.producerWarehouses.producerId))
-      .where(and(eq(schema.producerWarehouses.isDefault, true), eq(schema.producers.isActive, true)));
-    return rows.map((r) => r.producerId);
-  } catch (e) {
-    console.error("[producer-warehouse] listProducerIdsWithWarehouse gagal:", e);
-    return [];
-  }
 }

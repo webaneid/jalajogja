@@ -5,7 +5,7 @@
 // Mengembalikan error (bukan sebagian hasil) bila ada invoice tak layak — cetak masal tidak diam-diam melewatkan pesanan.
 import "server-only";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { getSettings, type TenantDb } from "@jalajogja/db";
+import { getSettings, roDestinations, type TenantDb } from "@jalajogja/db";
 import { getProducerOrdersByIds } from "@/lib/producer-orders.server";
 import { resolveInternalProducer, resolveProducers } from "@/lib/producer.server";
 import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone.server";
@@ -99,15 +99,17 @@ export async function buildLabelData(
     if (hit) return hit;
     const [views, [wh]] = await Promise.all([
       resolveProducers(tenantClient, tenantRef, [producerId]),
-      db.select().from(schema.producerWarehouses)
-        .where(and(eq(schema.producerWarehouses.producerId, producerId), eq(schema.producerWarehouses.isDefault, true))).limit(1),
+      // Alamat pengirim = asal kirim UTAMA produsen (shipping_origins, § 20): detail + label wilayah dari tujuan RajaOngkir
+      db.select({ detail: schema.shippingOrigins.detail, label: roDestinations.label })
+        .from(schema.shippingOrigins).innerJoin(roDestinations, eq(roDestinations.id, schema.shippingOrigins.destinationId))
+        .where(and(eq(schema.shippingOrigins.producerId, producerId), eq(schema.shippingOrigins.isDefault, true))).limit(1),
     ]);
     const v = views.get(producerId);
     if (!v) return tenantSender();
     const p = {
       name: v.name,
       phone: v.phone ? displayPhone(v.phone.value) : "—",
-      address: wh ? `${wh.addressDetail}, ${wh.rajaongkirCityLabel}` : (v.address?.text ?? "—"),
+      address: wh ? `${wh.detail}, ${wh.label}` : (v.address?.text ?? "—"),
     };
     senderCache.set(producerId, p);
     return p;

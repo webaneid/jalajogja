@@ -209,12 +209,18 @@ export async function deleteProducerAction(slug: string, producerId: string): Pr
     // Satu pernyataan atomik: hapus HANYA bila tidak ada produk yang merujuk. Cek-lalu-hapus terpisah
     // membuka celah — produk yang baru dipasangi produsen ini di antara dua langkah akan diam-diam
     // jadi "internal" lewat FK ON DELETE SET NULL.
-    const deleted = await db.delete(schema.producers)
-      .where(and(
-        eq(schema.producers.id, producerId),
-        sql`NOT EXISTS (SELECT 1 FROM ${schema.products} WHERE ${schema.products.producerId} = ${schema.producers.id})`,
-      ))
-      .returning({ id: schema.producers.id });
+    const notUsed = sql`NOT EXISTS (SELECT 1 FROM ${schema.products} WHERE ${schema.products.producerId} = ${producerId})`;
+    const deleted = await db.transaction(async (tx) => {
+      // Asal kirim milik produsen ini (shipping_origins, FK RESTRICT) ikut dihapus — hanya bila produsen memang tidak dipakai produk
+      // (kalau dipakai, tidak ada yang dihapus: transaksi tetap sah, produsen tidak terhapus).
+      await tx.delete(schema.shippingOrigins).where(and(eq(schema.shippingOrigins.producerId, producerId), notUsed));
+      return tx.delete(schema.producers)
+        .where(and(
+          eq(schema.producers.id, producerId),
+          sql`NOT EXISTS (SELECT 1 FROM ${schema.products} WHERE ${schema.products.producerId} = ${schema.producers.id})`,
+        ))
+        .returning({ id: schema.producers.id });
+    });
     if (deleted.length === 0) {
       // Tidak terhapus: jelaskan alasannya (hanya untuk pesan; keputusan hapus sudah diambil atomik di atas).
       const [exists] = await db.select({ id: schema.producers.id }).from(schema.producers).where(eq(schema.producers.id, producerId)).limit(1);

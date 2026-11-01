@@ -97,8 +97,10 @@ export function createProductsTable(s: ReturnType<typeof pgSchema>) {
     // (mitraId null). Produk mitra TIDAK PERNAH pakai kolom ini — kota asal mitra selalu dari
     // mitras.rajaongkir_city_id (mitra wajib jual produk sendiri, satu lokasi tunggal). Lihat
     // docs/arsitektur-addon-ongkir.md § "RENCANA — Kota Asal Pengiriman per Produk Tenant".
-    originCityId:   integer("origin_city_id"),
-    originCityName: text("origin_city_name"),
+    originCityId:   integer("origin_city_id"),     // LEGACY — diganti origin_id (dihapus di migration 0089 setelah verifikasi)
+    originCityName: text("origin_city_name"),      // LEGACY
+    // Asal kirim produk (shipping_origins; FK via DDL). NULL = ikut asal utama pemilik (produsen / toko). Doc: docs/arsitektur-alamat.md § 20.
+    originId:       uuid("origin_id"),
     // Gratis ongkir — "none" (default), "all" (semua daerah), "regions" (provinsi/kabupaten
     // tertentu, cocok kode RajaOngkir). KHUSUS produk tenant sendiri (sama alasan originCityId
     // di atas). Dihitung sebagai diskon proporsional-berat saat checkout, bukan hard Rp0 — lihat

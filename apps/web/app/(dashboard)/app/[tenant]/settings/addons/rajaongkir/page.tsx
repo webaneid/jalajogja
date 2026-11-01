@@ -51,9 +51,7 @@ export default async function RajaOngkirSettingsPage({
   }
 
   type Config = {
-    origin_city_id?:   number;
-    origin_city_name?: string;
-    couriers?:         string[];
+    couriers?: string[];
   };
 
   const config = (installation.config as Config) ?? {};
@@ -63,15 +61,13 @@ export default async function RajaOngkirSettingsPage({
       <div>
         <h2 className="text-base font-semibold">Ongkos Kirim — RajaOngkir</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Atur kota asal pengiriman dan kurir yang ditawarkan ke customer
+          Atur kurir yang ditawarkan ke customer. Asal kirim (gudang/pabrik/toko) diatur di Toko → Asal Kirim.
         </p>
       </div>
       <RajaOngkirConfigForm
         slug={slug}
         installationId={installation.id}
         initialConfig={{
-          originCityId:   config.origin_city_id ?? null,
-          originCityName: config.origin_city_name ?? "",
           couriers:       config.couriers ?? ["jne", "tiki", "pos"],
         }}
       />

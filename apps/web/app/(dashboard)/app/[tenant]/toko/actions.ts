@@ -20,6 +20,7 @@ import { getTokoSettings } from "@/lib/toko-settings";
 import { isSafeExternalUrl } from "@/lib/safe-url";
 import { resolveLineProducers } from "@/lib/shipment-producers";
 import { loadDefaultWarehouses } from "@/lib/producer-warehouse.server";
+import { originBelongsTo } from "@/lib/shipping-origins.server";
 import type { CheckoutShippingData } from "@/app/(public)/[tenant]/cart/actions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -52,8 +53,8 @@ export type ProductData = {
   producerId?: string | null;
   stock:           number;
   weightGram?:     number | null;
-  originCityId?:   number | null;
-  originCityName?: string | null;
+  // Asal kirim produk (shipping_origins; docs/arsitektur-alamat.md § 20): undefined/null = ikut asal utama pemilik. Harus milik pemilik produk yang sama.
+  originId?:       string | null;
   freeShippingMode?:      FreeShippingMode;
   freeShippingProvinces?: FreeShippingRegion[];
   freeShippingCities?:    FreeShippingRegion[];
@@ -260,6 +261,10 @@ export async function createProductAction(
     const perr = await validateProducerChoice(db, schema, data.producerId, null, false);
     if (perr) return { success: false, error: perr };
   }
+  if (data.originId) {
+    if (!isValidUuid(data.originId) || !(await originBelongsTo({ db, schema }, data.originId, data.producerId ?? null)))
+      return { success: false, error: "Asal kirim tidak valid untuk produsen produk ini." };
+  }
 
   const [dup] = await db
     .select({ id: schema.products.id })
@@ -283,8 +288,7 @@ export async function createProductAction(
         producerId:    data.producerId ?? null,
         stock:         data.stock,
         weightGram:    data.weightGram      ?? null,
-        originCityId:  data.originCityId    ?? null,
-        originCityName: data.originCityName ?? null,
+        originId:      data.originId        ?? null,
         freeShippingMode:      data.freeShippingMode      ?? "none",
         freeShippingProvinces: data.freeShippingProvinces ?? [],
         freeShippingCities:    data.freeShippingCities    ?? [],
@@ -393,6 +397,18 @@ export async function updateProductAction(
     }
   }
 
+  // Asal kirim: harus milik pemilik produk yang EFEKTIF (produsen baru bila diganti, selain itu produsen sekarang). Produk mitra: diabaikan.
+  const [curOwner] = await db.select({ producerId: schema.products.producerId, mitraId: schema.products.mitraId })
+    .from(schema.products).where(eq(schema.products.id, productId)).limit(1);
+  if (!curOwner) return { success: false, error: "Produk tidak ditemukan." };
+  const effectiveProducer = data.producerId !== undefined ? data.producerId : curOwner.producerId;
+  let originIdValue: string | null = null;
+  if (!curOwner.mitraId && data.originId) {
+    if (!isValidUuid(data.originId) || !(await originBelongsTo({ db, schema }, data.originId, effectiveProducer ?? null)))
+      return { success: false, error: "Asal kirim tidak valid untuk produsen produk ini." };
+    originIdValue = data.originId;
+  }
+
   // Cek slug duplikat (kecuali produk ini sendiri)
   const [dup] = await db
     .select({ id: schema.products.id })
@@ -420,8 +436,7 @@ export async function updateProductAction(
         ...producerUpdate,
         stock:           data.stock,
         weightGram:      data.weightGram   ?? null,
-        originCityId:    data.originCityId   ?? null,
-        originCityName:  data.originCityName ?? null,
+        originId:        originIdValue,
         freeShippingMode:      data.freeShippingMode      ?? "none",
         freeShippingProvinces: data.freeShippingProvinces ?? [],
         freeShippingCities:    data.freeShippingCities    ?? [],

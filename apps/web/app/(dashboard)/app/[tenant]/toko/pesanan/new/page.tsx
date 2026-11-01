@@ -7,12 +7,11 @@ import { eq, and, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { OrderCreateClient } from "@/components/toko/order-create-client";
-import { loadDefaultWarehouses } from "@/lib/producer-warehouse.server";
+import { loadOriginIndex } from "@/lib/shipping-origins.server";
+import { resolveProductOrigin } from "@/lib/shipping-origins";
 
 type RajaOngkirConfig = {
-  origin_city_id?:   number;
-  origin_city_name?: string;
-  couriers?:         string[];
+  couriers?: string[];   // asal kirim tidak lagi di config add-on — lihat shipping_origins (docs/arsitektur-alamat.md § 20)
 };
 
 export default async function PesananNewPage({
@@ -48,11 +47,8 @@ export default async function PesananNewPage({
       producerId:  schema.products.producerId,
       sellerType:  schema.products.sellerType,
       productType: schema.products.productType,
-      // Override kota asal per-produk — KHUSUS produk tenant sendiri (mitraId null), tidak
-      // pernah dipakai untuk produk mitra. Lihat docs/arsitektur-addon-ongkir.md § "RENCANA —
-      // Kota Asal Pengiriman per Produk Tenant".
-      originCityId:   schema.products.originCityId,
-      originCityName: schema.products.originCityName,
+      // Asal kirim produk (shipping_origins) — KHUSUS produk tenant (mitraId null). Docs: arsitektur-alamat.md § 20.
+      originId:       schema.products.originId,
       // Gratis ongkir per-produk — KHUSUS produk tenant sendiri, sama scope kota asal di atas.
       // docs/arsitektur-addon-ongkir.md § "RENCANA — Gratis Ongkir per Produk".
       freeShippingMode:      schema.products.freeShippingMode,
@@ -74,16 +70,15 @@ export default async function PesananNewPage({
     products.filter((p) => p.productType === "variable").map((p) => p.id),
   );
 
-  // Kota asal produk TENANT yang punya produsen = gudang utama produsen (prioritas: gudang → override per-produk → default
-  // toko), sama dengan checkout publik. Menimpa originCity* yang dikirim ke klien, jadi logika klien tidak berubah.
-  const warehouseByProducer = await loadDefaultWarehouses(
-    createTenantDb(slug),
-    products.filter((p) => !p.mitraId && p.producerId).map((p) => p.producerId as string),
-  );
+  // Asal kirim produk TENANT: products.origin_id → asal utama produsen → asal utama toko (SATU sumber dengan checkout publik —
+  // lib/shipping-origins). Menimpa originCity* yang dikirim ke klien, jadi logika pengelompokan klien tidak berubah.
+  const originIndex = await loadOriginIndex(createTenantDb(slug));
 
   const productList = products.map((p) => {
-    const wh = !p.mitraId && p.producerId ? warehouseByProducer.get(p.producerId) : undefined;
-    return { ...p, wh, originCityId: wh ? wh.cityId : p.originCityId, originCityName: wh ? wh.cityLabel : p.originCityName };
+    const origin = p.mitraId ? null : resolveProductOrigin(originIndex, { originId: p.originId, producerId: p.producerId });
+    // Ambil-di-tempat produsen = asal UTAMA produsen (sama dengan yang diturunkan server saat checkout)
+    const wh = !p.mitraId && p.producerId ? originIndex.producerDefault.get(p.producerId) : undefined;
+    return { ...p, wh, originCityId: origin?.cityId ?? null, originCityName: origin?.fullLabel ?? null };
   }).map((p) => ({
     id:          p.id,
     name:        p.name,
@@ -133,11 +128,11 @@ export default async function PesananNewPage({
     if (installation && installation.status !== "expired" && installation.status !== "inactive") {
       const cfg = installation.config as RajaOngkirConfig;
       addonCouriers = cfg.couriers ?? [];
-      if (cfg.origin_city_id) {
+      if (originIndex.tenantDefault) {
         const tokoSettings = await getTokoSettings(slug);
         tenantShipping = {
-          originCityId:   cfg.origin_city_id,
-          originCityName: cfg.origin_city_name ?? "",
+          originCityId:   originIndex.tenantDefault.cityId,
+          originCityName: originIndex.tenantDefault.fullLabel,
           codEnabled:         tokoSettings.codEnabled,
           pickupEnabled:      tokoSettings.pickupEnabled,
           pickupLocationName: tokoSettings.pickupLocationName || null,

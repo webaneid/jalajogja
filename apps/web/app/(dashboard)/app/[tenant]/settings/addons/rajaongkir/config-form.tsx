@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { saveRajaOngkirConfigAction } from "./actions";
-import { RajaOngkirCityPicker, type RajaOngkirCity } from "@/components/ui/rajaongkir-city-picker";
 
 import { RAJAONGKIR_COURIER_OPTIONS as COURIER_OPTIONS } from "@/lib/rajaongkir-couriers";
 
@@ -10,9 +9,7 @@ type Props = {
   slug:           string;
   installationId: string;
   initialConfig: {
-    originCityId:   number | null;
-    originCityName: string;
-    couriers:       string[];
+    couriers: string[];
   };
 };
 
@@ -22,14 +19,6 @@ export function RajaOngkirConfigForm({ slug, installationId, initialConfig }: Pr
   const [error,   setError]   = useState("");
 
   const [couriers, setCouriers] = useState<string[]>(initialConfig.couriers);
-
-  const [originCityId,   setOriginCityId]   = useState<number | null>(initialConfig.originCityId);
-  const [originCityName, setOriginCityName] = useState(initialConfig.originCityName);
-
-  function handleCityChange(city: RajaOngkirCity | null) {
-    setOriginCityId(city?.id ?? null);
-    setOriginCityName(city?.label ?? "");
-  }
 
   function toggleCourier(val: string) {
     setCouriers(prev => prev.includes(val) ? prev.filter(c => c !== val) : [...prev, val]);
@@ -41,8 +30,6 @@ export function RajaOngkirConfigForm({ slug, installationId, initialConfig }: Pr
     setSaved(false);
     startTransition(async () => {
       const res = await saveRajaOngkirConfigAction(slug, installationId, {
-        origin_city_id:   originCityId,
-        origin_city_name: originCityName,
         couriers,
       });
       if ("error" in res) {
@@ -60,15 +47,11 @@ export function RajaOngkirConfigForm({ slug, installationId, initialConfig }: Pr
         <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</p>
       )}
 
-      {/* Kota asal */}
-      <div className="space-y-1">
-        <label className="block text-sm font-medium">Kota Asal Pengiriman</label>
-        <RajaOngkirCityPicker
-          value={originCityId}
-          valueLabel={originCityName}
-          onChange={handleCityChange}
-          helperText="Kota asal default untuk produk milik toko ini (bisa di-override per-produk di form produk). Mitra atur kota asal sendiri di profil mitra."
-        />
+      {/* Asal kirim dipindah ke Toko → Asal Kirim (docs/arsitektur-alamat.md § 20) */}
+      <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+        Kota asal pengiriman kini diatur di{" "}
+        <a href={`/app/${slug}/toko/asal-kirim`} className="text-primary hover:underline">Toko → Asal Kirim</a>{" "}
+        (bisa lebih dari satu alamat; produsen juga mengelola asalnya sendiri).
       </div>
 
       {/* Kurir */}

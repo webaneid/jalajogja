@@ -4,8 +4,9 @@
 import "server-only";
 import { inArray, eq, and } from "drizzle-orm";
 import { db, createTenantDb, memberBusinesses, tenants, tenantAddonInstallations, addons } from "@jalajogja/db";
-import { loadDefaultWarehouses } from "@/lib/producer-warehouse.server";
-import { shortCityName } from "@/lib/city-label";
+import { loadOriginIndex } from "@/lib/shipping-origins.server";
+import { resolveProductOrigin } from "@/lib/shipping-origins";
+import { shortCityName, publicCityLabel } from "@/lib/city-label";
 import type { TokoSettings } from "@/lib/toko-settings";
 import type { SellerGroup } from "@/app/(public)/[tenant]/cart/actions";
 
@@ -16,9 +17,10 @@ export async function buildSellerGroups(a: {
   tenantName: string;
   cartItems: ShippingCartItem[];
   tokoSettings: TokoSettings;
-  config: { origin_city_id?: number; origin_city_name?: string };
+  /** Tidak lagi memuat asal kirim (pindah ke shipping_origins, § 20); dipertahankan agar pemanggil tak berubah. */
+  config?: unknown;
 }): Promise<SellerGroup[]> {
-  const { slug, tenantName, cartItems, tokoSettings, config } = a;
+  const { slug, tenantName, cartItems, tokoSettings } = a;
   const { db: tdb, schema: ts } = createTenantDb(slug);
   const productItemIds = cartItems
     .filter((i) => i.itemType === "product" && i.itemId)
@@ -60,8 +62,7 @@ export async function buildSellerGroups(a: {
       // dipakai untuk produk mitra (mitra selalu pakai originCityId mitranya sendiri,
       // lihat resolusi di bawah). docs/arsitektur-addon-ongkir.md § "RENCANA — Kota
       // Asal Pengiriman per Produk Tenant".
-      productOriginCityId:   ts.products.originCityId,
-      productOriginCityName: ts.products.originCityName,
+      productOriginId:       ts.products.originId,
       // Gratis ongkir per-produk — KHUSUS produk tenant sendiri, sama scope kota asal
       // di atas (mitra tidak pernah baca ini). docs/arsitektur-addon-ongkir.md §
       // "RENCANA — Gratis Ongkir per Produk".
@@ -88,19 +89,10 @@ export async function buildSellerGroups(a: {
     .leftJoin(ts.mitras, eq(ts.mitras.id, ts.products.mitraId))
     .where(inArray(ts.products.id, resolvedProductIds));
 
-  // Kota asal produk TENANT yang punya produsen = gudang utama produsen (prioritas: gudang → override per-produk →
-  // default toko). Diterapkan dengan menimpa productOriginCity* sebelum percabangan di bawah, jadi urutan resolusi
-  // lain tidak berubah. Produk mitra tidak disentuh. Gudang kosong = perilaku lama persis.
-  // docs/arsitektur-portal-produsen.md § 20.
-  const warehouseByProducer = await loadDefaultWarehouses(
-    createTenantDb(slug),
-    productDetails.filter((p) => !p.mitraId && p.productProducerId).map((p) => p.productProducerId as string),
-  );
-  for (const p of productDetails) {
-    if (p.mitraId || !p.productProducerId) continue;
-    const wh = warehouseByProducer.get(p.productProducerId);
-    if (wh) { p.productOriginCityId = wh.cityId; p.productOriginCityName = wh.cityLabel; }
-  }
+  // Asal kirim produk TENANT (bukan mitra): products.origin_id → asal utama produsen → asal utama toko (shipping_origins, § 20).
+  // Produk mitra tidak disentuh (selalu kota mitra). Asal produsen nonaktif tak masuk indeks.
+  // strict: galat baca asal = checkout GAGAL (aman), bukan paket dilewati lalu ongkir Rp0 (audit P4).
+  const originIndex = await loadOriginIndex(createTenantDb(slug), { strict: true });
 
   // Ambil nama usaha mitra dari public.member_businesses
   const bizIds = [...new Set(
@@ -140,6 +132,8 @@ export async function buildSellerGroups(a: {
     let pickupAddress: string | null;
     let pickupMapsUrl: string | null;
 
+    const tenantOrigin = d.mitraId ? null : resolveProductOrigin(originIndex, { originId: d.productOriginId, producerId: d.productProducerId });
+
     if (d.mitraId && d.mitraOriginCityId) {
       // Produk mitra — SELALU pakai kota asal mitra sendiri. product.originCityId
       // TIDAK PERNAH dibaca di sini, bahkan kalau terisi (mitra wajib jual produk
@@ -154,30 +148,17 @@ export async function buildSellerGroups(a: {
       pickupLocationName  = d.mitraPickupLocationName ?? null;
       pickupAddress       = d.mitraPickupAddress ?? null;
       pickupMapsUrl       = d.mitraPickupMapsUrl ?? null;
-    } else if (!d.mitraId && d.productOriginCityId) {
-      // BARU — produk tenant sendiri dengan override kota asal per-produk.
+    } else if (!d.mitraId && tenantOrigin) {
+      // Produk tenant sendiri: asal dari shipping_origins (lihat resolveProductOrigin).
       sellerType    = "tenant";
       sellerId      = null;
       sellerName    = tenantName;
-      originCityId  = d.productOriginCityId;
-      originCityName = d.productOriginCityName ?? "";
+      originCityId  = tenantOrigin.cityId;
+      // Label AMAN untuk pembeli ("KOTA, PROVINSI") — kelurahan & kode pos gudang produsen bisa rumah perorangan (city-label.ts).
+      originCityName = publicCityLabel(tenantOrigin.fullLabel);
       codEnabled          = tokoSettings.codEnabled;
       pickupEnabled       = tokoSettings.pickupEnabled;
-      // BARU — lokasi ambil sendiri override per-produk, fallback default toko.
-      pickupLocationName  = d.productPickupLocationName || tokoSettings.pickupLocationName || null;
-      pickupAddress       = d.productPickupAddress       || tokoSettings.pickupAddress       || null;
-      pickupMapsUrl       = d.productPickupMapsUrl       || tokoSettings.pickupMapsUrl       || null;
-    } else if (!d.mitraId && config.origin_city_id) {
-      // Fallback — produk tenant tanpa override sendiri, pakai default toko.
-      sellerType    = "tenant";
-      sellerId      = null;
-      sellerName    = tenantName;
-      originCityId  = config.origin_city_id;
-      originCityName = config.origin_city_name ?? "";
-      codEnabled          = tokoSettings.codEnabled;
-      pickupEnabled       = tokoSettings.pickupEnabled;
-      // BARU — lokasi ambil sendiri override per-produk, fallback default toko (produk
-      // bisa override lokasi pickup TANPA override kota asal — dua hal independen).
+      // Lokasi ambil sendiri override per-produk (independen dari asal kirim), fallback default toko.
       pickupLocationName  = d.productPickupLocationName || tokoSettings.pickupLocationName || null;
       pickupAddress       = d.productPickupAddress       || tokoSettings.pickupAddress       || null;
       pickupMapsUrl       = d.productPickupMapsUrl       || tokoSettings.pickupMapsUrl       || null;
@@ -188,7 +169,8 @@ export async function buildSellerGroups(a: {
     // PENGIRIMAN PER PRODUSEN (ADR-0005): produk tenant milik produsen X selalu satu paket sendiri — terpisah dari produsen lain
     // dan dari barang toko — walau gudangnya sekota. Produsen = dari DB (products.producer_id), produk mitra tak pernah punya produsen.
     const producerId = d.mitraId ? null : (d.productProducerId ?? null);
-    const warehouse  = producerId ? warehouseByProducer.get(producerId) : undefined;
+    // Ambil di tempat produsen = asal UTAMA produsen (sama dengan yang diturunkan server saat checkout — loadDefaultWarehouses)
+    const warehouse  = producerId ? originIndex.producerDefault.get(producerId) : undefined;
     if (producerId) {
       // Judul paket untuk pelanggan = kota asal (identitas produsen tidak diperlihatkan; keputusan user 2026-11-01)
       const city = shortCityName(originCityName);
@@ -232,7 +214,7 @@ export async function buildSellerGroups(a: {
   return Object.values(groupMap);
 }
 
-export type RajaOngkirConfig = { origin_city_id?: number; origin_city_name?: string; couriers?: string[] };
+export type RajaOngkirConfig = { couriers?: string[] }; // asal kirim kini di shipping_origins (docs/arsitektur-alamat.md § 20)
 
 /** Konfigurasi add-on RajaOngkir tenant (null = add-on tidak terpasang/nonaktif). */
 export async function loadRajaOngkirConfig(slug: string): Promise<RajaOngkirConfig | null> {

@@ -928,6 +928,24 @@ export async function createTenantSchemaInDb(
     // Produsen anggota tidak boleh ganda (migration 0075) — index parsial: baris custom (source_id NULL) tidak ikut
     await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producers_source_uniq ON "${s}".producers(source_type, source_id) WHERE source_type IS NOT NULL AND source_id IS NOT NULL`));
 
+    // ── 30c. Shipping Origins (asal kirim: gudang/pabrik/toko — docs/arsitektur-alamat.md § 20) ──
+    // Dibuat SEBELUM products karena products.origin_id merujuknya. producer_id NULL = milik toko/internal.
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".shipping_origins (
+        id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        producer_id    UUID        REFERENCES "${s}".producers(id) ON DELETE RESTRICT,
+        label          TEXT        NOT NULL,
+        detail         TEXT        NOT NULL,
+        destination_id INTEGER     NOT NULL REFERENCES public.ro_destinations(id),
+        is_default     BOOLEAN     NOT NULL DEFAULT FALSE,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS shipping_origins_producer_idx ON "${s}".shipping_origins(producer_id)`));
+    await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS shipping_origins_producer_default_uniq ON "${s}".shipping_origins(producer_id) WHERE is_default AND producer_id IS NOT NULL`));
+    await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS shipping_origins_tenant_default_uniq ON "${s}".shipping_origins(is_default) WHERE is_default AND producer_id IS NULL`));
+
     // ── 31. Product Categories ─────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".product_categories (
@@ -985,6 +1003,7 @@ export async function createTenantSchemaInDb(
         weight_gram  INTEGER,                   -- berat produk (gram), wajib untuk produk mitra
         origin_city_id    INTEGER,               -- kota asal override (khusus produk tenant, bukan mitra)
         origin_city_name  TEXT,
+        origin_id         UUID           REFERENCES "${s}".shipping_origins(id) ON DELETE RESTRICT,  -- asal kirim produk; NULL = asal utama pemilik (0088)
         free_shipping_mode      TEXT NOT NULL DEFAULT 'none'
                                  CHECK (free_shipping_mode IN ('none','all','regions')),
         free_shipping_provinces JSONB,            -- [{id,name}] RajaOngkir province_id

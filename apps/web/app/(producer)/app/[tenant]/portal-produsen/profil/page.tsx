@@ -1,14 +1,15 @@
 // Profil produsen — ringkasan BACA-SAJA (data usaha/pesantren/profesional & kontak milik anggota; ubah di halaman Akun) +
-// kartu Gudang Pengiriman yang bisa diedit (alamat utama format RajaOngkir → kota asal ongkir produk). Doc: arsitektur-portal-produsen.md § 20.
+// Asal Kirim (gudang/pabrik, banyak alamat) + kurir pilihan yang bisa diedit. Doc: arsitektur-alamat.md § 20.
 import { redirect } from "next/navigation";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
 import { getProducerAccess } from "@/lib/producer-access.server";
 import { resolveProducers } from "@/lib/producer.server";
-import { WarehouseForm } from "@/components/producer/warehouse-form";
+import { OriginManager } from "@/components/address/origin-manager";
+import { listOrigins } from "@/lib/shipping-origins.server";
 import { CourierForm } from "@/components/producer/courier-form";
 import { sanitizeCouriers } from "@/lib/producer-couriers";
-import { saveProducerCouriersAction } from "./actions";
+import { saveProducerCouriersAction, saveOriginAction, deleteOriginAction, setDefaultOriginAction } from "./actions";
 
 const SOURCE_LABEL: Record<string, string> = { usaha: "Usaha", pesantren: "Pesantren", profesional: "Profesional" };
 
@@ -19,10 +20,9 @@ export default async function ProducerProfilePage({ params }: { params: Promise<
 
   const tenantClient = createTenantDb(access.tenant.slug);
   const { db, schema } = tenantClient;
-  const [views, [wh], [prodRow]] = await Promise.all([
+  const [views, origins, [prodRow]] = await Promise.all([
     resolveProducers(tenantClient, access.tenant, [access.producer.id]),
-    db.select().from(schema.producerWarehouses)
-      .where(and(eq(schema.producerWarehouses.producerId, access.producer.id), eq(schema.producerWarehouses.isDefault, true))).limit(1),
+    listOrigins(tenantClient, { producerId: access.producer.id }),
     db.select({ couriers: schema.producers.couriers }).from(schema.producers)
       .where(eq(schema.producers.id, access.producer.id)).limit(1),
   ]);
@@ -60,23 +60,26 @@ export default async function ProducerProfilePage({ params }: { params: Promise<
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold">Gudang Pengiriman</h2>
+          <h2 className="text-sm font-semibold">Asal Kirim (Gudang / Pabrik)</h2>
           <p className="text-xs text-muted-foreground">
-            Alamat asal pengiriman produk Anda (format RajaOngkir). Menentukan kota asal ongkir saat pelanggan checkout —
-            mengganti kolom &ldquo;Kota Asal&rdquo; yang sebelumnya diisi per produk.
+            Alamat asal pengiriman produk Anda. Boleh lebih dari satu (mis. gudang dan pabrik); yang berstatus <b>Utama</b> dipakai
+            untuk semua produk Anda kecuali admin memilih asal lain per produk. Menentukan kota asal ongkir saat pelanggan checkout.
           </p>
         </div>
-        {!wh && (
+        {origins.length === 0 && (
           <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Belum ada gudang. Selama kosong, ongkir memakai kota asal yang diatur admin pada produk atau toko.
+            Belum ada asal kirim. Selama kosong, ongkir memakai asal kirim toko.
           </p>
         )}
-        <div className="rounded-lg border border-border bg-card p-4">
-          <WarehouseForm slug={slug} initial={{
-            label: wh?.label ?? "", addressDetail: wh?.addressDetail ?? "", cityId: wh?.rajaongkirCityId ?? null,
-            cityLabel: wh?.rajaongkirCityLabel ?? "", postalCode: wh?.postalCode ?? "",
-          }} />
-        </div>
+        <OriginManager
+          initial={origins}
+          emptyHint="Tambahkan alamat gudang/pabrik Anda."
+          actions={{
+            save: saveOriginAction.bind(null, slug),
+            remove: deleteOriginAction.bind(null, slug),
+            makeDefault: setDefaultOriginAction.bind(null, slug),
+          }}
+        />
       </section>
 
       <section className="space-y-3">
