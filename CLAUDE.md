@@ -239,7 +239,7 @@ pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
 | Koneksi Instagram otomatis (Graph API) | `docs/arsitektur-instagram-embed.md` |
 | Integrasi KBLI (klasifikasi usaha) — perencanaan, belum dieksekusi | `docs/arsitektur-integrasi-kbli.md` |
 | Mobile shell (header global, sticky bar, aturan spacer) | `docs/arsitektur-mobile-shell.md` |
-| Alamat: buku alamat per orang + data tujuan RajaOngkir lokal (read-through, anggaran 100 panggilan/hari) + cache ongkir DB — P1, P5, P2, P3, P4-Tahap-A kode selesai 2026-11-02 (belum push/deploy; migration 0084–0088; P4 Tahap B = 0089 hapus struktur lama SETELAH cadangan+verifikasi) | `docs/arsitektur-alamat.md` |
+| Alamat: buku alamat per orang + data tujuan RajaOngkir lokal (read-through, anggaran 100 panggilan/hari) + cache ongkir DB — P1, P5, P2, P3, P4-Tahap-A SUDAH DEPLOY + terverifikasi di VPS 2026-11-02 (migration 0084–0088 jalan). P4 Tahap B (kode tanpa struktur lama + 0089 hapus `producer_warehouses`/`products.origin_city_*`) kode selesai, belum push/deploy — urutan: deploy kode → cadangan DB → 0089 (lihat arsitektur-alamat.md § 22) | `docs/arsitektur-alamat.md` |
 | Notifikasi Email (paritas WA, fallback SMTP platform, preset Gmail/Resend, From per domain) — SELESAI + deployed 2026-10-30 | `docs/arsitektur-notifikasi-email.md` |
 | Notifikasi PJ modul (digest + verifikasi bendahara via tautan) — keuangan+keanggotaan+toko+donasi+event SELESAI KODE 2026-10-10, belum deploy | `docs/arsitektur-notifikasi-pengurus.md` |
 | Produsen produk (admin-only: internal/anggota/custom) — deployed 2026-10-09 | `docs/arsitektur-produsen.md` |

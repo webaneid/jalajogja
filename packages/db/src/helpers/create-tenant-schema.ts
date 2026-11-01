@@ -1001,8 +1001,6 @@ export async function createTenantSchemaInDb(
                                     CHECK (seller_type IN ('tenant','mitra')),
         mitra_id     UUID,                      -- FK → mitras.id (set setelah tabel mitras dibuat)
         weight_gram  INTEGER,                   -- berat produk (gram), wajib untuk produk mitra
-        origin_city_id    INTEGER,               -- kota asal override (khusus produk tenant, bukan mitra)
-        origin_city_name  TEXT,
         origin_id         UUID           REFERENCES "${s}".shipping_origins(id) ON DELETE RESTRICT,  -- asal kirim produk; NULL = asal utama pemilik (0088)
         free_shipping_mode      TEXT NOT NULL DEFAULT 'none'
                                  CHECK (free_shipping_mode IN ('none','all','regions')),
@@ -1523,24 +1521,6 @@ export async function createTenantSchemaInDb(
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_items_producer ON "${s}".invoice_items(producer_id) WHERE producer_id IS NOT NULL`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_shipping_producer ON "${s}".invoice_shipping_lines(producer_id) WHERE producer_id IS NOT NULL`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_shipment_invoices_batch_idx ON "${s}".producer_shipment_invoices(batch_id)`));
-
-    // ── Gudang pengiriman produsen (format RajaOngkir, docs/arsitektur-portal-produsen.md § 20) ──
-    await tx.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS "${s}".producer_warehouses (
-        id                    UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-        producer_id           UUID        NOT NULL REFERENCES "${s}".producers(id) ON DELETE RESTRICT,
-        label                 TEXT        NOT NULL,
-        address_detail        TEXT        NOT NULL,
-        rajaongkir_city_id    INTEGER     NOT NULL,
-        rajaongkir_city_label TEXT        NOT NULL,
-        postal_code           TEXT,
-        is_default            BOOLEAN     NOT NULL DEFAULT TRUE,
-        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `));
-    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_warehouses_producer_idx ON "${s}".producer_warehouses(producer_id)`));
-    await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producer_warehouses_default_uniq ON "${s}".producer_warehouses(producer_id) WHERE is_default`));
 
     // ── 39. SEO Page Overrides (Fase 3, docs/arsitektur-seo.md § 3.3) ───────
     await tx.execute(sql.raw(`
