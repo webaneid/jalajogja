@@ -1,5 +1,6 @@
 "use client";
 
+import { resolveCouriersForGroup } from "@/lib/producer-couriers";
 import { shortCityName } from "@/lib/city-label";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -127,9 +128,11 @@ type Props = {
   tenantShipping: TenantShippingConfig | null;
   mitraConfigMap: Record<string, MitraShippingConfig>;
   addonCouriers:  string[];
+  /** producerId → kurir pilihan produsen (§ 25); tanpa entri = ikut addonCouriers */
+  producerCouriers: Record<string, string[]>;
 };
 
-export function OrderCreateClient({ slug, tenantName, products, tenantShipping, mitraConfigMap, addonCouriers }: Props) {
+export function OrderCreateClient({ slug, tenantName, products, tenantShipping, mitraConfigMap, addonCouriers, producerCouriers }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -387,7 +390,7 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
           origin: String(group.originCityId),
           destination: String(dest.id),
           weight: String(Math.max(group.totalWeightGram, 1)),
-          courier: addonCouriers.join(":"),
+          courier: resolveCouriersForGroup(group.producerId, producerCouriers, addonCouriers).join(":"),
         }),
       });
       const data = (await res.json()) as { costs?: FlatCourierResult[]; error?: string };

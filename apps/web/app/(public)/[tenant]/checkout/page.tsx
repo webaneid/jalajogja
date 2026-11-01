@@ -1,4 +1,5 @@
 import { cookies, headers } from "next/headers";
+import { loadProducerCouriers } from "@/lib/producer-couriers.server";
 import { notFound, redirect } from "next/navigation";
 import { db, tenants, tenantAddonInstallations, addons, memberBusinesses } from "@jalajogja/db";
 import { eq, and, inArray } from "drizzle-orm";
@@ -369,6 +370,11 @@ export default async function CheckoutPage({ params }: Props) {
     }
   }
 
+  // Kurir pilihan produsen per paket (§ 25) — produsen tanpa pilihan ikut daftar admin (addonCouriers)
+  const producerCouriers: Record<string, string[]> = sellerGroups.length > 0
+    ? Object.fromEntries(await loadProducerCouriers(createTenantDb(slug), sellerGroups.map(g => g.producerId)))
+    : {};
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-10">
       <div className="mb-6">
@@ -383,6 +389,7 @@ export default async function CheckoutPage({ params }: Props) {
         defaults={defaults}
         sellerGroups={sellerGroups}
         addonCouriers={addonCouriers}
+        producerCouriers={producerCouriers}
       />
     </div>
   );

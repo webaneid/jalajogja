@@ -1,5 +1,6 @@
 "use client";
 
+import { resolveCouriersForGroup } from "@/lib/producer-couriers";
 import { useState, useEffect, useTransition, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Truck } from "lucide-react";
@@ -93,6 +94,8 @@ type Props = {
   defaults?:      CheckoutDefaults;
   sellerGroups?:  SellerGroup[];
   addonCouriers?: string[];
+  /** producerId → kurir pilihan produsen (§ 25); tanpa entri = ikut addonCouriers */
+  producerCouriers?: Record<string, string[]>;
 };
 
 // ─── Komponen ─────────────────────────────────────────────────────────────────
@@ -103,6 +106,7 @@ export function CheckoutForm({
   defaults,
   sellerGroups = [],
   addonCouriers = [],
+  producerCouriers = {},
 }: Props) {
   const router                     = useRouter();
   const [pending, startTransition] = useTransition();
@@ -285,7 +289,7 @@ export function CheckoutForm({
           origin:      group.originCityId,
           destination: dest.id,
           weight:      group.totalWeightGram,
-          courier:     addonCouriers.join(":"),
+          courier:     resolveCouriersForGroup(group.producerId, producerCouriers, addonCouriers).join(":"),
         }),
       });
       const data = await res.json() as { costs?: FlatCourierResult[]; error?: string };
@@ -311,7 +315,7 @@ export function CheckoutForm({
         [group.key]: { options: [], selected: null, loading: false, error: "Gagal memuat kurir" },
       }));
     }
-  }, [slug, addonCouriers]);
+  }, [slug, addonCouriers, producerCouriers]);
 
   // Kalkulasi total
   const shippingTotal      = Object.values(groupStates).reduce((s, gs) => s + (gs.selected?.cost ?? 0), 0);

@@ -1,5 +1,7 @@
 "use server";
 
+import { validateLineCouriers } from "@/lib/producer-couriers";
+import { loadProducerCouriers } from "@/lib/producer-couriers.server";
 import { cookies, headers } from "next/headers";
 import { checkRateLimit, getClientIpFromHeaders } from "@/lib/rate-limit";
 import { isWaOtpAvailable, isEmailOtpSendable } from "@/lib/checkout-otp-channel.server";
@@ -835,6 +837,12 @@ export async function checkoutAction(
         resolvedItems.filter(it => it.itemType === "product" && !it.mitraId).map(it => it.producerId),
       );
       if (!lineProducers.ok) return { error: lineProducers.error };
+      // Kurir pilihan produsen (§ 25): kurir terpilih harus ada di daftar produsennya — sebelum penulisan apa pun
+      const courierErr = validateLineCouriers(
+        shipping?.lines ?? [], lineProducers.producerIds,
+        await loadProducerCouriers(tenantDb, lineProducers.producerIds),
+      );
+      if (courierErr) return { error: courierErr };
 
       // ── Validasi stok tersedia — SEBELUM invoice dibuat. Lihat docs/arsitektur-stok.md.
       // Bukan penolakan mutlak (2 checkout hampir bersamaan tetap bisa sama-sama lolos), itu

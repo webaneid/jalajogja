@@ -1,5 +1,7 @@
 "use server";
 
+import { validateLineCouriers } from "@/lib/producer-couriers";
+import { loadProducerCouriers } from "@/lib/producer-couriers.server";
 import { eq, and, sql, ne, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import {
@@ -822,6 +824,12 @@ export async function createOrderAction(
           resolvedItems.filter(it => !it.mitraId).map(it => it.producerId),
         );
         if (!lineProducers.ok) return { error: lineProducers.error };
+        // Kurir pilihan produsen (§ 25): kurir terpilih harus ada di daftar produsennya
+        const courierErr = validateLineCouriers(
+          data.shipping.lines, lineProducers.producerIds,
+          await loadProducerCouriers(tenantClient, lineProducers.producerIds),
+        );
+        if (courierErr) return { error: courierErr };
         // Alamat/nama ambil-di-tempat untuk baris ber-produsen diturunkan SERVER dari gudang produsen (bukan dari klien)
         const pickupWarehouses = await loadDefaultWarehouses(
           tenantClient, lineProducers.producerIds.filter((x): x is string => !!x),

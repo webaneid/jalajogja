@@ -1,4 +1,5 @@
 import { createTenantDb, publicSellingPrice, getVariableProductStockTotals, db as publicDb, tenants, tenantAddonInstallations, addons, memberBusinesses } from "@jalajogja/db";
+import { loadProducerCouriers } from "@/lib/producer-couriers.server";
 import { getTenantAccess } from "@/lib/tenant";
 import { getTokoSettings } from "@/lib/toko-settings";
 import { redirect } from "next/navigation";
@@ -224,6 +225,7 @@ export default async function PesananNewPage({
         tenantShipping={tenantShipping}
         mitraConfigMap={mitraConfigMap}
         addonCouriers={addonCouriers}
+        producerCouriers={Object.fromEntries(await loadProducerCouriers(createTenantDb(slug), products.map((p) => p.mitraId ? null : p.producerId)))}
       />
     </div>
   );
