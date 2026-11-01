@@ -1,9 +1,9 @@
 // Pemuat pilihan kurir produsen dari DB tenant. Doc: docs/arsitektur-portal-produsen.md § 25.
 import "server-only";
-import { and, eq, inArray } from "drizzle-orm";
-import { db as publicDb, tenants, tenantAddonInstallations, addons } from "@jalajogja/db";
+import { inArray } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
 import { sanitizeCouriers } from "@/lib/producer-couriers";
+import { loadRajaOngkirConfig } from "@/lib/shipping-groups.server";
 
 /** producerId → daftar kurir pilihan produsen. Produsen tanpa pilihan (NULL) TIDAK masuk map (= ikut daftar admin). */
 export async function loadProducerCouriers(tenantClient: TenantDb, producerIds: (string | null | undefined)[]): Promise<Map<string, string[]>> {
@@ -22,13 +22,5 @@ export async function loadProducerCouriers(tenantClient: TenantDb, producerIds: 
 
 /** Daftar kurir admin tenant (add-on RajaOngkir aktif → config.couriers, sudah disanitasi); selain itu kosong. */
 export async function loadTenantCouriers(slug: string): Promise<string[]> {
-  const [row] = await publicDb
-    .select({ config: tenantAddonInstallations.config, status: tenantAddonInstallations.status })
-    .from(tenants)
-    .innerJoin(tenantAddonInstallations, eq(tenantAddonInstallations.tenantId, tenants.id))
-    .innerJoin(addons, eq(addons.id, tenantAddonInstallations.addonId))
-    .where(and(eq(tenants.slug, slug), eq(addons.slug, "rajaongkir")))
-    .limit(1);
-  if (!row || row.status === "expired" || row.status === "inactive") return [];
-  return sanitizeCouriers((row.config as { couriers?: unknown } | null)?.couriers) ?? [];
+  return sanitizeCouriers((await loadRajaOngkirConfig(slug))?.couriers) ?? [];
 }

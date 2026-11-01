@@ -9,19 +9,15 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db, tenants, tenantAddonInstallations, addons } from "@jalajogja/db";
 import { eq, and } from "drizzle-orm";
+import { fetchDomesticCost, RajaOngkirError } from "@/lib/rajaongkir.server";
+import { RAJAONGKIR_COURIER_CODES } from "@/lib/rajaongkir-couriers";
+import { rateLimitGuard } from "@/lib/rate-limit";
 
-const RAJAONGKIR_BASE = "https://rajaongkir.komerce.id/api/v1";
-
-export type FlatCourierOption = {
-  name:        string; // nama kurir, misal "JNE"
-  code:        string; // kode kurir, misal "jne"
-  service:     string; // misal "REG", "OKE", "YES"
-  description: string;
-  cost:        number;
-  etd:         string;
-};
+export type { FlatCourierOption } from "@/lib/rajaongkir.server";
 
 export async function POST(req: NextRequest) {
+  const blocked = rateLimitGuard(req, "ongkir-cost", 40, 60_000);
+  if (blocked) return blocked;
   const { searchParams } = req.nextUrl;
   const slug = searchParams.get("slug") ?? "";
 
@@ -39,6 +35,13 @@ export async function POST(req: NextRequest) {
   const { origin, destination, weight, courier } = body;
   if (!origin || !destination || !weight || !courier) {
     return NextResponse.json({ error: "Parameter tidak lengkap" }, { status: 400 });
+  }
+  // Validasi tipe & rentang — nilai ini diteruskan ke upstream berkuota (key platform bersama)
+  const isId = (n: unknown) => Number.isInteger(n) && (n as number) > 0 && (n as number) < 2_000_000_000;
+  const codes = typeof courier === "string" ? courier.split(":") : [];
+  if (!isId(origin) || !isId(destination) || !Number.isInteger(weight) || weight < 1 || weight > 100_000_000
+      || codes.length < 1 || codes.length > RAJAONGKIR_COURIER_CODES.length || !codes.every((c) => RAJAONGKIR_COURIER_CODES.includes(c))) {
+    return NextResponse.json({ error: "Parameter tidak valid" }, { status: 400 });
   }
 
   try {
@@ -69,44 +72,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Add-on RajaOngkir tidak aktif" }, { status: 403 });
     }
 
-    const apiKey = process.env.RAJAONGKIR_PLATFORM_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "RAJAONGKIR_PLATFORM_KEY belum diset di server" }, { status: 500 });
-    }
-
-    // v2: POST dengan multipart form-data, bukan URLSearchParams
-    const form = new FormData();
-    form.append("origin",      String(origin));
-    form.append("destination", String(destination));
-    form.append("weight",      String(weight));
-    form.append("courier",     courier); // kolon-separated, misal "jne:tiki"
-
-    const res = await fetch(`${RAJAONGKIR_BASE}/calculate/domestic-cost`, {
-      method:  "POST",
-      headers: { key: apiKey },
-      body:    form,
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error("[ongkir/cost] RajaOngkir HTTP error:", res.status, text);
-      return NextResponse.json({ error: "Gagal menghubungi RajaOngkir" }, { status: 502 });
-    }
-
-    const data = await res.json() as {
-      meta: { code: number; message?: string };
-      data: FlatCourierOption[];
-    };
-
-    if (data.meta.code !== 200) {
-      return NextResponse.json(
-        { error: data.meta.message ?? "RajaOngkir error" },
-        { status: 400 },
-      );
-    }
-
-    return NextResponse.json({ costs: data.data ?? [] });
+    const costs = await fetchDomesticCost({ origin, destination, weight, courier });
+    return NextResponse.json({ costs });
   } catch (err) {
+    if (err instanceof RajaOngkirError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error("[ongkir/cost]", err);
     return NextResponse.json({ error: "Gagal kalkulasi ongkir" }, { status: 500 });
   }

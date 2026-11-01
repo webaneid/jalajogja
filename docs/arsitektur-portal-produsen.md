@@ -723,3 +723,41 @@ Audit: perubahan K4 hanya membaca kolom `producers.couriers` di halaman yang sud
 - **Daftar admin kini ditegakkan di server:** `validateLineCouriers` memakai pilihan produsen bila ada, selain itu daftar `config.couriers` add-on RajaOngkir (`loadTenantCouriers(slug)`, sanitasi ulang; add-on nonaktif/daftar kosong = tidak ada kurir sah). Berlaku untuk paket tenant, produsen NULL, dan mitra — di `checkoutAction` & `createOrderAction`. Efek samping disengaja: pembeli yang membuka checkout lalu admin mengubah daftar kurir akan diminta memuat ulang.
 - **Produsen nonaktif:** TIDAK ada celah — `getProducerAccess` → `decideProducerAccess` sudah menolak produsen nonaktif (`producerActive`), jadi `saveProducerCouriersAction` otomatis ditolak. Catatan audit sebelumnya hanya karena tidak diverifikasi.
 - **MASIH TERBUKA (keputusan user):** `cost`/`etd`/`service` ongkir tetap dikirim klien dan dipercaya server (pra-eksisting sebelum § 25). Menutupnya = hitung ulang via RajaOngkir di server tiap checkout/pesanan manual (asal, tujuan, berat, diskon gratis-ongkir per paket) — perubahan arsitektur checkout, bukan perbaikan kecil.
+
+---
+
+## 26. Ongkir dihitung server (RENCANA → dieksekusi 2026-11-01, pilihan "A" disetujui user)
+
+**Masalah:** `checkoutAction` & `createOrderAction` menyimpan `cost/etd/service/weightGram/originCityId/freeShippingDiscount` apa adanya dari klien (pra-eksisting sebelum § 25). Pembeli bisa menurunkan ongkir ke angka bebas, memalsukan berat, mengaku gratis-ongkir, atau membuang satu baris pengiriman.
+
+**Prinsip:** klien hanya memilih "kurir X layanan Y" + kota tujuan. Server menurunkan SISANYA dan MENIMPA nilai klien.
+
+### 26.1 Keputusan
+1. Hitung ulang via RajaOngkir di server saat checkout/pesanan manual (opsi A). **RajaOngkir gagal/tidak menjawab → checkout DITOLAK** ("ongkir tidak bisa diverifikasi, coba lagi") — tanpa fallback ke angka klien (rekomendasi diajukan ke user; user menjawab "silahkan pilihan A").
+2. Satu sumber untuk pemanggilan RajaOngkir: `lib/rajaongkir.server.ts` (route `/api/ongkir/cost` & `/api/ongkir/cities` ikut memakainya).
+3. Satu sumber untuk pengelompokan paket (kota asal, berat, produsen, gratis-ongkir): `lib/shipping-groups.server.ts` `buildSellerGroups()` — dipakai halaman checkout publik DAN verifikasi di kedua aksi. (Pengelompokan di sisi klien form pesanan manual admin `order-create-client` tetap ada karena produknya dipilih interaktif; server memverifikasinya lewat fungsi yang sama.)
+4. Verifikasi `lib/shipping-verify.server.ts` `verifyShippingLines()`.
+
+### 26.2 Aturan verifikasi (per `checkoutAction`/`createOrderAction`)
+- Kelompok server = `buildSellerGroups` dari item keranjang yang sudah di-resolve server. Tiap kelompok WAJIB punya tepat satu baris klien (cocok lewat kunci `sellerType:sellerId:producerId:originCityId`); baris tak dikenal/ganda/kurang → tolak (menutup celah "buang baris = ongkir 0").
+- Baris `pickup`: biaya 0 (tetap logika lama).
+- Baris `courier`: berat = berat kelompok server; asal = kelompok server; kurir harus lolos `validateLineCouriers`; server memanggil RajaOngkir (asal, tujuan, berat, kurir) lalu mencari opsi `code+service` yang sama — tak ada → tolak.
+- **Tujuan otoritatif:** `cityId` dari klien dicocokkan ke data RajaOngkir lewat pencarian (label dari klien hanya petunjuk pencarian); nama provinsi/kota yang dipakai untuk gratis-ongkir berasal dari hasil RajaOngkir, BUKAN dari klien. Id tak ditemukan → tolak.
+- Gratis-ongkir: `ratio = Σ(berat item yang match tujuan) / berat kelompok`; `cost = round(base × (1 − ratio))`, `freeShippingDiscount = base − cost` (rumus identik dengan form, satu fungsi bersama).
+- Hasil menimpa `cost/etd/service/serviceDesc/weightGram/originCityName/freeShippingDiscount` sebelum invoice ditulis. Seluruh verifikasi berjalan SEBELUM transaksi DB (panggilan jaringan tidak boleh di dalam transaksi).
+
+### 26.3 Langkah
+S1 `rajaongkir.server.ts` + refactor dua route · S2 `buildSellerGroups` + halaman checkout memakainya · S3 `verifyShippingLines` + pasang di kedua aksi · S4 build, audit `security-auditor`, perbaiki, dokumen · Uji browser (pakai API key asli) BELUM bisa dari sisi saya.
+### 26.4 Risiko
+- Alur uang: regresi pengelompokan = ongkir salah/ditolak. Mitigasi: fungsi diekstrak PERSIS dari kode halaman checkout yang sudah jalan (bukan ditulis ulang), diuji type-check + build + audit.
+- Latensi +~0,5–1 dtk per paket; ketergantungan pada RajaOngkir saat checkout (ditolak bila down).
+- Pencarian tujuan berdasar label belum bisa diuji tanpa API key asli.
+
+### 26.5 Status eksekusi § 26 (2026-11-01)
+**KODE SELESAI** (type-check + build bersih): `lib/rajaongkir.server.ts` (satu pintu RajaOngkir + cache memori TTL, pesan error generik), `lib/shipping-groups.server.ts` (`buildSellerGroups` diekstrak PERSIS dari `checkout/page.tsx`, + `loadRajaOngkirConfig`), `lib/shipping-verify.server.ts` (`verifyShippingLines`, `cartFingerprint`), `freeShippingRatio`/`applyFreeShipping` di `lib/free-shipping-match.ts` (dipakai form + server), pemasangan di `checkoutAction` (`requireLines: true`) & `createOrderAction` (`requireLines: false`), rate limit + validasi input di `/api/ongkir/{cost,cities}`.
+Audit `security-auditor` 2 putaran. Putaran 1 (1 High, 4 Medium, 4 Low) — DIPERBAIKI: baris pengiriman wajib bila ada barang fisik (tanpa `shipping` ditolak), identitas baris (jenis/id penjual, produsen, nama) ditimpa dari kelompok server, `"tenant"`/`"-"` literal ditolak, kode kurir dicek sebelum jaringan, cache id→kota/tarif, rate limit, pesan error tidak bocor. Putaran 2 (0 High, 2 Medium, 5 Low) — DIPERBAIKI: M1 sidik jari keranjang kini SELALU dihitung (race "tiket lalu tambah produk" tertutup), L2 keranjang tanpa produk fisik → `shipping` diabaikan, L3 urutan cek kode kurir, L1 petunjuk label dipotong 100 karakter, L4 lokasi ambil-sendiri dari server bila seragam, L5 nama kota pickup-saja dipotong.
+**TERBUKA / diketahui:**
+- **M2:** checkout berongkir kini bergantung pada kuota key RajaOngkir platform (habis → pembeli melihat "ongkir tidak bisa diverifikasi"); pembatas laju per-IP bergantung pada header IP tepercaya (item terbuka di CLAUDE.md: Nginx `real_ip` + `CF-Connecting-IP`). Pertimbangkan batas harian per slug.
+- **L1 sisa:** `resolveDestination` mencari lewat teks; kota dengan nama sangat umum bisa tak ketemu saat cache miss (cache terisi saat pembeli memilih kota lewat `/api/ongkir/cities`, jadi kasus nyata jarang). Perlu dicek bila Komerce punya lookup per id.
+- Pengelompokan sisi klien form pesanan manual admin (`order-create-client`) tetap terpisah dari `buildSellerGroups` (produk dipilih interaktif); server memverifikasinya — selisih = pesanan ditolak "muat ulang".
+- **BELUM DIUJI browser/API asli:** checkout publik (kurir saja, ambil-sendiri saja, campuran, dua produsen, gratis-ongkir wilayah), pesanan manual admin, RajaOngkir down. Risiko regresi tertinggi: `MISMATCH` pada checkout sah bila klien & server berbeda pengelompokan.

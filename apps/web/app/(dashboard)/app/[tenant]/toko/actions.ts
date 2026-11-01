@@ -1,6 +1,7 @@
 "use server";
 
 import { validateLineCouriers } from "@/lib/producer-couriers";
+import { verifyShippingLines } from "@/lib/shipping-verify.server";
 import { loadProducerCouriers, loadTenantCouriers } from "@/lib/producer-couriers.server";
 import { eq, and, sql, ne, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -708,6 +709,18 @@ export async function createOrderAction(
     })();
     const uniqueCodeEnabled = paymentSettings["unique_code_enabled"] === true;
 
+    // ── Ongkir DIHITUNG ULANG server (docs/arsitektur-portal-produsen.md § 26) — sebelum transaksi; nilai klien ditimpa.
+    let shipping = data.shipping ?? null;
+    if (shipping && shipping.lines.length > 0) {
+      const verified = await verifyShippingLines({
+        slug, tenantName: access.tenant.name, lines: shipping.lines, cityId: shipping.cityId, cityHint: shipping.cityName ?? "",
+        items: data.items.map((it, i) => ({ id: String(i), itemType: "product", itemId: it.productId, name: "", quantity: it.qty })),
+        tokoSettings, requireLines: false,
+      });
+      if (!verified.ok) return { success: false, error: verified.error };
+      shipping = { ...shipping, cityName: verified.cityName, lines: verified.lines };
+    }
+
     type TxResult =
       | { error: string }
       | { invoiceId: string; invoiceNumber: string; total: number; uniqueCode: number; dueDate: string; isFullyPaid: boolean; customerName: string };
@@ -806,9 +819,9 @@ export async function createOrderAction(
         freeShippingDiscount?: string | null;
       };
       const shippingLineValues: ShippingLineInsert[] = [];
-      if (data.shipping && data.shipping.lines.length > 0) {
+      if (shipping && shipping.lines.length > 0) {
         const mitraSellerIds = [...new Set(
-          data.shipping.lines.filter(l => l.sellerType === "mitra" && l.sellerId).map(l => l.sellerId!)
+          shipping.lines.filter(l => l.sellerType === "mitra" && l.sellerId).map(l => l.sellerId!)
         )];
         const mitraRows = mitraSellerIds.length > 0
           ? await tx
@@ -820,13 +833,13 @@ export async function createOrderAction(
 
         // Produsen tiap baris = produsen yang sungguh memiliki barang tenant di pesanan ini (ADR-0005); selain itu tolak.
         const lineProducers = resolveLineProducers(
-          data.shipping.lines,
+          shipping.lines,
           resolvedItems.filter(it => !it.mitraId).map(it => it.producerId),
         );
         if (!lineProducers.ok) return { error: lineProducers.error };
         // Kurir pilihan produsen (§ 25): kurir terpilih harus ada di daftar produsennya
         const courierErr = validateLineCouriers(
-          data.shipping.lines, lineProducers.producerIds,
+          shipping.lines, lineProducers.producerIds,
           await loadProducerCouriers(tenantClient, lineProducers.producerIds),
           tokoSettings.pickupEnabled,
           await loadTenantCouriers(slug),
@@ -837,7 +850,7 @@ export async function createOrderAction(
           tenantClient, lineProducers.producerIds.filter((x): x is string => !!x),
         );
 
-        for (const [lineIdx, line] of data.shipping.lines.entries()) {
+        for (const [lineIdx, line] of shipping.lines.entries()) {
           const sellerConfig = line.sellerType === "mitra" && line.sellerId
             ? mitraConfigMap.get(line.sellerId)
             : { codEnabled: tokoSettings.codEnabled, pickupEnabled: tokoSettings.pickupEnabled };

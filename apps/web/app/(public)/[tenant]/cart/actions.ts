@@ -1,6 +1,7 @@
 "use server";
 
 import { validateLineCouriers } from "@/lib/producer-couriers";
+import { verifyShippingLines, cartFingerprint } from "@/lib/shipping-verify.server";
 import { loadProducerCouriers, loadTenantCouriers } from "@/lib/producer-couriers.server";
 import { cookies, headers } from "next/headers";
 import { checkRateLimit, getClientIpFromHeaders } from "@/lib/rate-limit";
@@ -660,6 +661,31 @@ export async function checkoutAction(
     // jangan percaya boolean deliveryMethod/paymentMethod yang dikirim client apa adanya.
     const tokoSettings      = await getTokoSettings(slug);
 
+    // ── Ongkir DIHITUNG ULANG server (docs/arsitektur-portal-produsen.md § 26) — SEBELUM transaksi (panggilan jaringan tak boleh di dalamnya).
+    // Klien hanya memilih kurir+layanan+kota tujuan; berat/asal/harga/etd/diskon gratis-ongkir diturunkan server dan menimpa kiriman klien.
+    // Sidik jari isi keranjang dibandingkan lagi di dalam transaksi: keranjang berubah sesudah verifikasi → tolak.
+    let shippingFingerprint: string | null = null;
+    {
+      const [cartRow] = await tdb.select({ id: schema.carts.id }).from(schema.carts).where(eq(schema.carts.sessionToken, token)).limit(1);
+      if (!cartRow) return { success: false, error: "Keranjang tidak ditemukan atau sudah kadaluarsa." };
+      const preItems = await tdb.select().from(schema.cartItems).where(eq(schema.cartItems.cartId, cartRow.id));
+      // Sidik jari SELALU dihitung (juga untuk keranjang tanpa produk): produk yang ditambahkan sesudah pre-cek tidak boleh lolos tanpa verifikasi
+      shippingFingerprint = cartFingerprint(preItems);
+      if (preItems.some((it) => it.itemType === "product")) {
+        // Tanpa `shipping` pun diverifikasi: keranjang berisi barang fisik berbobot + ongkir aktif WAJIB membawa pilihan pengiriman
+        const [tenantRow] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.slug, slug)).limit(1);
+        const verified = await verifyShippingLines({
+          slug, tenantName: tenantRow?.name ?? slug, lines: shipping?.lines ?? [], cityId: shipping?.cityId ?? 0, cityHint: shipping?.cityName ?? "",
+          items: preItems.map((it) => ({ id: it.id, itemType: it.itemType, itemId: it.itemId, name: it.name, quantity: it.quantity })),
+          tokoSettings, requireLines: true,
+        });
+        if (!verified.ok) return { success: false, error: verified.error };
+        if (shipping) shipping = { ...shipping, cityName: verified.cityName, lines: verified.lines };
+      } else {
+        shipping = undefined; // tanpa produk fisik tidak ada ongkir — abaikan kiriman klien (tidak ada baris pengiriman hantu)
+      }
+    }
+
     // ── Transaction: lock cart FOR UPDATE mencegah double-checkout dari klik ganda /
     // double-tap / retry jaringan. Request kedua yang datang hampir bersamaan akan
     // menunggu lock cart ini, lalu menemukan cart_items sudah kosong (sudah diproses
@@ -690,6 +716,9 @@ export async function checkoutAction(
         .orderBy(schema.cartItems.sortOrder);
 
       if (!cartItems.length) return { error: "Keranjang kosong atau sudah diproses." };
+      if (shippingFingerprint !== null && cartFingerprint(cartItems) !== shippingFingerprint) { // selalu terisi bila lolos pre-cek
+        return { error: "Isi keranjang berubah saat checkout. Muat ulang halaman checkout lalu coba lagi." };
+      }
 
       // ── Deteksi duplikat registrasi tiket event ─────────────────────────────
       // Kasus nyata: customer checkout tiket, ragu berhasil, checkout ulang tiket yang
@@ -901,10 +930,8 @@ export async function checkoutAction(
         const lineTotal = Math.max(0, it.unitPrice * it.quantity - discount);
         return s + lineTotal;
       }, 0);
-      // Math.max(0, ...) — cost dari client TIDAK divalidasi ulang ke RajaOngkir (gap
-      // pre-existing, dicatat docs/arsitektur-addon-ongkir.md), tapi minimal cegah cost negatif
-      // dipakai untuk mengurangi total invoice di bawah subtotal. Lihat docs/lessons-learned.md
-      // [2026-09-15].
+      // `shipping.lines` sudah DIHITUNG ULANG server (verifyShippingLines, § 26) — cost bukan lagi kiriman klien.
+      // Math.max(0, ...) dipertahankan sebagai pertahanan berlapis (lessons-learned [2026-09-15]).
       const shippingTotal  = shipping?.lines.reduce((s, l) => s + Math.max(0, l.cost), 0) ?? 0;
       const total          = subtotal + shippingTotal;
       // Voucher 100% (atau kombinasi diskon+ongkir Rp 0) → invoice langsung lunas tanpa

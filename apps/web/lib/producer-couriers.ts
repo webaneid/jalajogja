@@ -23,7 +23,7 @@ export function resolveCouriersForGroup(
  * produsen mengatur, selain itu daftar kurir admin tenant (add-on RajaOngkir). Mengembalikan pesan error atau null.
  */
 export function validateLineCouriers(
-  lines: { deliveryMethod: "courier" | "pickup"; courier?: string | null }[],
+  lines: { deliveryMethod: "courier" | "pickup"; courier?: string | null; sellerType?: "tenant" | "mitra" }[],
   producerIds: (string | null)[],
   producerCouriers: Map<string, string[]>,
   /** Ambil-sendiri penjual tenant aktif? Server memperlakukan "pickup" dari klien sebagai kurir bila tidak aktif — jadi tidak boleh dilewati. */
@@ -32,7 +32,8 @@ export function validateLineCouriers(
   tenantCouriers: string[],
 ): string | null {
   for (const [i, line] of lines.entries()) {
-    if (line.deliveryMethod === "pickup" && tenantPickupEnabled) continue; // benar-benar ambil sendiri (identik logika aksi)
+    // Ambil-sendiri sah dilewati: penjual tenant → bila pickup toko aktif (logika aksi); mitra → pickup-nya sudah dijamin verifikasi ongkir
+    if (line.deliveryMethod === "pickup" && (tenantPickupEnabled || line.sellerType === "mitra")) continue;
     const pid = producerIds[i];
     const allowed = (pid ? producerCouriers.get(pid) : undefined) ?? tenantCouriers;
     if ((!line.courier || !allowed.includes(line.courier))) {

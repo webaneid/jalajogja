@@ -16,7 +16,7 @@ import {
 import { PhoneInput } from "@/components/ui/phone-input";
 import { normalizePhone } from "@/lib/phone";
 import { isSafeExternalUrl } from "@/lib/safe-url";
-import { isFreeShippingMatch } from "@/lib/free-shipping-match";
+import { isFreeShippingMatch, freeShippingRatio, applyFreeShipping } from "@/lib/free-shipping-match";
 
 // ─── Tipe kurir ───────────────────────────────────────────────────────────────
 
@@ -30,15 +30,6 @@ type CourierOption = {
   // `cost` di atas SUDAH final/terdiskon, dipakai apa adanya untuk total & submit.
   rawCost?:    number;
 };
-
-// Diskon proporsional-berat — bukan hard Rp0 per grup. Kalau SEMUA item grup gratis-ongkir,
-// hasilnya otomatis 1 (ongkir jadi Rp0) dari rumus yang sama, tanpa cabang logic terpisah.
-function freeShippingRatio(group: SellerGroup, dest: { provinceName: string; cityName: string }): number {
-  if (group.totalWeightGram <= 0) return 0;
-  const freeWeight = group.items.reduce((s, it) =>
-    s + (isFreeShippingMatch(it, dest) ? it.weightGram * it.quantity : 0), 0);
-  return freeWeight / group.totalWeightGram;
-}
 
 // RajaOngkir v2 response sudah flat — tidak ada nested costs[]
 type FlatCourierResult = {
@@ -303,7 +294,7 @@ export function CheckoutForm({
       const rawOptions = flattenCourierOptions(data.costs);
       const ratio       = freeShippingRatio(group, dest);
       const options: CourierOption[] = ratio > 0
-        ? rawOptions.map(o => ({ ...o, rawCost: o.cost, cost: Math.round(o.cost * (1 - ratio)) }))
+        ? rawOptions.map(o => ({ ...o, rawCost: o.cost, cost: applyFreeShipping(o.cost, ratio).cost }))
         : rawOptions;
       setGroupStates(prev => ({
         ...prev,
