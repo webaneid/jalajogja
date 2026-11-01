@@ -5,7 +5,8 @@ import "server-only";
 import type { CheckoutShippingLine, SellerGroup } from "@/app/(public)/[tenant]/cart/actions";
 import type { TokoSettings } from "@/lib/toko-settings";
 import { buildSellerGroups, loadRajaOngkirConfig, type ShippingCartItem } from "@/lib/shipping-groups.server";
-import { fetchDomesticCost, resolveDestination, RajaOngkirError } from "@/lib/rajaongkir.server";
+import { fetchDomesticCost, RajaOngkirError } from "@/lib/rajaongkir.server";
+import { resolveDestination } from "@/lib/ro-destinations.server";
 import { freeShippingRatio, applyFreeShipping } from "@/lib/free-shipping-match";
 import { RAJAONGKIR_COURIER_CODES } from "@/lib/rajaongkir-couriers";
 

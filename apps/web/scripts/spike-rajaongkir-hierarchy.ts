@@ -1,8 +1,9 @@
 // SPIKE P0 (docs/arsitektur-alamat.md § 7): verifikasi struktur data RajaOngkir/Komerce sebelum membuat tabel lokal.
 // Read-only, ±15 panggilan API. Jalankan di VPS:  cd apps/web && bun run scripts/spike-rajaongkir-hierarchy.ts
 // Mencetak BENTUK respons (item pertama) — tidak mencetak API key.
+export {}; // jadikan modul (top-level await)
 const BASE = "https://rajaongkir.komerce.id/api/v1";
-const key = process.env.RAJAONGKIR_PLATFORM_KEY;
+const key: string = process.env.RAJAONGKIR_PLATFORM_KEY ?? "";
 if (!key) { console.error("RAJAONGKIR_PLATFORM_KEY tidak ada di env"); process.exit(1); }
 
 let calls = 0;

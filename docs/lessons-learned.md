@@ -8,6 +8,13 @@
 
 ---
 
+## [2026-11-02] Cache "tercakup" dari API eksternal: jawaban KOSONG karena galat ≠ jawaban kosong yang sah
+**Masalah:** Pencarian tujuan RajaOngkir lokal-dulu (`ro_search_log`) mencatat query yang sudah diambil agar tak diulang. `searchDestinations` mengembalikan `[]` untuk SEMUA respons non-OK. Galat sesaat upstream (500/401/key salah) jadi "0 hasil, tidak terpotong" dan, untuk query satu-kata, membuat semua perpanjangannya dianggap tercakup 90 hari → lokasi sah tak pernah ditemukan. Ditemukan audit sebelum deploy.
+**Fix:** hanya 404 yang berarti "tidak ada hasil"; galat lain DILEMPAR (alur degraded). Jawaban 0 hasil hanya dipercaya 24 jam. Smoke test (`scripts/smoke-ro-destinations.ts` skenario 10) menjaganya.
+**Pencegahan:** setiap cache/log "sudah diambil" atas API eksternal WAJIB membedakan kosong-sah dari galat; jangan pernah menyimpan hasil dari jalur galat. Pelajaran sampingan: skrip di `apps/web/scripts/` ikut `tsc` — jalankan `type-check` SEBELUM commit/push walau hanya menambah skrip (commit 3104ec6 sempat merusak type-check).
+
+---
+
 ## [2026-11-01] `return { error }` di dalam `db.transaction(...)` Drizzle MENG-COMMIT — validasi baru WAJIB sebelum penulisan pertama
 **Masalah:** Saat menambah validasi baris pengiriman (`resolveLineProducers`) ke `checkoutAction`, validasi itu saya taruh di blok "insert shipping lines" yang berada SETELAH insert invoice, invoice_items, pengurangan stok, dan pemakaian voucher di transaksi yang sama. Penolakannya berbentuk `return { error }`; callback transaksi tidak melempar, sehingga Drizzle COMMIT semuanya. Hasilnya (untuk klien basi/tab lama): invoice `pending` yatim tanpa baris pengiriman, voucher terpakai (`usedCount` naik) dan checkout ulang memakainya dua kali, invoice Rp 0 jadi `paid` + stok berkurang padahal pelanggan melihat error. Ditemukan audit, sebelum deploy.
 **Root cause:** semua `return { error }` lain di transaksi itu sengaja diletakkan SEBELUM penulisan pertama — itu satu-satunya yang membuat pola "return error" aman; konvensi tak tertulis ini mudah dilanggar saat menambah validasi di titik yang kebetulan sudah punya data yang dibutuhkan.

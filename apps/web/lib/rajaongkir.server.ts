@@ -1,6 +1,7 @@
 // SATU-SATUNYA pintu panggilan RajaOngkir (Komerce v2) untuk ongkir & pencarian tujuan. Dipakai route /api/ongkir/{cost,cities}
 // DAN verifikasi ongkir server saat checkout. API key dari ENV, tidak pernah ke browser. Doc: docs/arsitektur-portal-produsen.md § 26.
 import "server-only";
+import { tryConsumeApiBudget, markBudgetExhausted } from "@/lib/ro-budget.server";
 
 const BASE = "https://rajaongkir.komerce.id/api/v1";
 
@@ -30,9 +31,7 @@ export class RajaOngkirError extends Error {
 
 // Cache memori proses (TTL pendek) — mengurangi panggilan upstream & kuota key platform. Hanya menyimpan JAWABAN upstream
 // (tidak pernah input klien), jadi tidak bisa diracuni. Multi-proses: tiap proses punya cache sendiri (aman, hanya kurang efisien).
-const cityCache = new Map<number, { at: number; city: OngkirCity }>();
 const costCache = new Map<string, { at: number; options: FlatCourierOption[] }>();
-const CITY_TTL = 30 * 60_000;
 const COST_TTL = 3 * 60_000;
 const CACHE_MAX = 5000;
 function put<K, V>(m: Map<K, V>, k: K, v: V) { if (m.size >= CACHE_MAX) m.clear(); m.set(k, v); }
@@ -52,6 +51,8 @@ export async function fetchDomesticCost(p: { origin: number; destination: number
   const hit = costCache.get(ck);
   if (hit && Date.now() - hit.at < COST_TTL) return hit.options;
   const key = apiKey();
+  // Anggaran harian ongkir (ro_api_usage) — cache miss = 1 panggilan upstream. Habis → jangan memanggil (kuota pencarian ikut terlindungi)
+  if (!(await tryConsumeApiBudget("cost"))) throw new RajaOngkirError("Layanan ongkir sedang dibatasi", 429);
   // v2: POST multipart form-data, bukan URLSearchParams
   const form = new FormData();
   form.append("origin", String(p.origin));
@@ -65,6 +66,7 @@ export async function fetchDomesticCost(p: { origin: number; destination: number
   } catch {
     throw new RajaOngkirError("Gagal menghubungi RajaOngkir", 502);
   }
+  if (res.status === 429) { await markBudgetExhausted("cost"); throw new RajaOngkirError("Layanan ongkir sedang dibatasi", 429); }
   if (!res.ok) {
     console.error("[rajaongkir] cost HTTP error:", res.status, await res.text().catch(() => ""));
     throw new RajaOngkirError("Gagal menghubungi RajaOngkir", 502);
@@ -95,9 +97,12 @@ export async function searchDestinations(q: string, limit = 15): Promise<OngkirC
   } catch {
     throw new RajaOngkirError("Gagal menghubungi RajaOngkir", 502);
   }
+  if (res.status === 429) throw new RajaOngkirError("Layanan ongkir sedang dibatasi", 429);
   const data = await res.json().catch(() => null) as { meta?: { code: number; message?: string }; data?: V2Destination[] | null } | null;
-  if (!data?.meta) throw new RajaOngkirError("Gagal menghubungi RajaOngkir", 502);
-  if (!res.ok || data.meta.code === 404) return [];
+  // HANYA 404 yang berarti "tidak ada hasil". Galat lain (key salah, upstream mati) HARUS dilempar — kalau tidak, jawaban kosong
+  // palsu tercatat sebagai "tercakup" di ro_search_log dan menyembunyikan lokasi sah.
+  if (res.status === 404 || data?.meta?.code === 404) return [];
+  if (!res.ok || !data?.meta) throw new RajaOngkirError("Gagal menghubungi RajaOngkir", 502);
   if (data.meta.code !== 200) {
     console.error("[rajaongkir] search error:", data.meta.code, data.meta.message);
     throw new RajaOngkirError("RajaOngkir error", 502);
@@ -106,23 +111,5 @@ export async function searchDestinations(q: string, limit = 15): Promise<OngkirC
     id: d.id, label: d.label, cityName: d.city_name, districtName: d.district_name,
     subdistrictName: d.subdistrict_name, provinceName: d.province_name, zipCode: d.zip_code,
   }));
-  for (const c of cities) put(cityCache, c.id, { at: Date.now(), city: c }); // hasil yang sama dilihat pembeli saat memilih tujuan
   return cities;
-}
-
-/**
- * Tujuan OTORITATIF dari id yang dikirim klien: label dari klien hanya petunjuk pencarian; data yang dikembalikan
- * (nama kota/provinsi untuk gratis-ongkir) berasal dari RajaOngkir. null = id tidak ditemukan.
- */
-export async function resolveDestination(id: number, labelHint: string): Promise<OngkirCity | null> {
-  const cached = cityCache.get(id);
-  if (cached && Date.now() - cached.at < CITY_TTL) return cached.city;
-  // Coba dari yang paling spesifik (label penuh) ke bagian label (kelurahan, kode pos) — pencarian RajaOngkir longgar soal format
-  const parts = labelHint.split(",").map((s) => s.trim()).filter((s) => s.length >= 2);
-  const queries = [...new Set([labelHint.trim(), parts[0], parts[parts.length - 1], parts[1]].filter((q): q is string => !!q && q.length >= 2))];
-  for (const q of queries) {
-    const found = (await searchDestinations(q, 30)).find((c) => c.id === id);
-    if (found) return found;
-  }
-  return null;
 }

@@ -1,11 +1,12 @@
 export const dynamic = "force-dynamic";
-// GET /api/ongkir/cities?q=&limit= — proxy ke RajaOngkir v2 (search-based)
+// GET /api/ongkir/cities?q=&limit= — pencarian tujuan LOKAL-DULU (public.ro_destinations), API RajaOngkir hanya bila belum tercakup
 // API key tetap di server — tidak pernah sampai ke browser
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { searchDestinations, RajaOngkirError } from "@/lib/rajaongkir.server";
-import { rateLimitGuard } from "@/lib/rate-limit";
+import { RajaOngkirError } from "@/lib/rajaongkir.server";
+import { searchDestinationsLocalFirst } from "@/lib/ro-destinations.server";
+import { rateLimitGuard, getClientIp, checkRateLimit } from "@/lib/rate-limit";
 export type { OngkirCity } from "@/lib/rajaongkir.server";
 
 export async function GET(req: NextRequest) {
@@ -21,8 +22,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const cities = await searchDestinations(q, limit);
-    return NextResponse.json({ cities });
+    // Jalur yang benar-benar memanggil API berkuota dibatasi jauh lebih ketat per IP (hasil lokal tidak terkena)
+    const ip = getClientIp(req);
+    const { cities, notice } = await searchDestinationsLocalFirst(q, limit, {
+      gate: () => checkRateLimit(`${ip}:ongkir-cities-api`, 4, 60_000).allowed && checkRateLimit(`${ip}:ongkir-cities-api-h`, 20, 3_600_000).allowed,
+    });
+    return NextResponse.json({ cities, ...(notice ? { notice } : {}) });
   } catch (err) {
     if (err instanceof RajaOngkirError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error("[ongkir/cities]", err);
