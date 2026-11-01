@@ -13,11 +13,12 @@ import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import type { ProducerSourceKind } from "@/lib/producer-resolve";
+import { CourierForm } from "@/components/producer/courier-form";
 import { ProducerCard } from "@/components/toko/producer-card";
 import type { ProducerView } from "@/lib/producer.server";
 import {
   createMemberProducerAction, createCustomProducerAction, updateProducerAction,
-  toggleProducerActiveAction, deleteProducerAction, grantProducerLoginAction, revokeProducerLoginAction, type CustomProducerInput,
+  toggleProducerActiveAction, deleteProducerAction, grantProducerLoginAction, revokeProducerLoginAction, setProducerCouriersAction, type CustomProducerInput,
 } from "@/app/(dashboard)/app/[tenant]/toko/produsen/actions";
 
 export type ProducerItem = {
@@ -25,6 +26,8 @@ export type ProducerItem = {
   productCount: number;
   // Akses Portal Produsen (hanya produsen anggota; custom = null). Doc: docs/arsitektur-portal-produsen.md
   portal: { granted: boolean; ownerHasAccount: boolean } | null;
+  /** Kurir pilihan produsen (§ 25); null = ikut pengaturan admin */
+  couriers: string[] | null;
   edit: { name: string; whatsapp: string; addressDetail: string; provinceId?: number; regencyId?: number; districtId?: number; villageId?: number; postalCode: string; notes: string };
 };
 
@@ -74,6 +77,7 @@ export function ProducerManageClient({ slug, internal, internalProductCount, ite
   const [error, setError] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<ProducerItem | null>(null);
+  const [courierFor, setCourierFor] = useState<ProducerItem | null>(null);
 
   // Tambah dari anggota
   const [sourceType, setSourceType] = useState<ProducerSourceKind>("usaha");
@@ -126,6 +130,9 @@ export function ProducerManageClient({ slug, internal, internalProductCount, ite
         <ProducerCard key={it.view.id} v={it.view} productCount={it.productCount} actions={
           <div className="flex gap-2 pt-1 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => { setError(""); setEditing(it); }}>Ubah</Button>
+            <Button size="sm" variant="outline" onClick={() => setCourierFor(it)}>
+              Kurir{it.couriers ? ` (${it.couriers.length})` : ""}
+            </Button>
             <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => toggleProducerActiveAction(slug, it.view.id as string))}>
               {it.view.isActive ? "Nonaktifkan" : "Aktifkan"}
             </Button>
@@ -182,6 +189,25 @@ export function ProducerManageClient({ slug, internal, internalProductCount, ite
                 onSubmit={(input) => run(() => createCustomProducerAction(slug, input), () => setAddOpen(false))} />
             </TabsContent>
           </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      {/* Kurir pilihan produsen (§ 25) */}
+      <Dialog open={!!courierFor} onOpenChange={(o) => !o && setCourierFor(null)}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          {courierFor && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Kurir: {courierFor.view.name}</DialogTitle>
+                <DialogDescription>
+                  Hanya kurir yang dicentang yang ditawarkan ke pembeli untuk paket produsen ini. Kosong = ikut daftar kurir di pengaturan add-on RajaOngkir.
+                </DialogDescription>
+              </DialogHeader>
+              <CourierForm key={courierFor.view.id as string} initial={courierFor.couriers}
+                onSave={(c) => setProducerCouriersAction(slug, courierFor.view.id as string, c)}
+                onDone={() => setCourierFor(null)} />
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

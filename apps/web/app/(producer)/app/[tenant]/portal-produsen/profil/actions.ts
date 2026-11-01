@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
 import { getProducerAccess } from "@/lib/producer-access.server";
+import { parseCouriersInput } from "@/lib/producer-couriers";
 
 type Result = { success: true } | { success: false; error: string };
 
@@ -61,5 +62,23 @@ export async function saveWarehouseAction(
       console.error("[producer-warehouse] simpan gagal:", e);
     }
     return { success: false, error: "Gagal menyimpan gudang." };
+  }
+}
+
+/** Simpan kurir pilihan produsen (§ 25). null = ikut pengaturan admin. producerId dari sesi, bukan input. */
+export async function saveProducerCouriersAction(slug: string, couriers: string[] | null): Promise<Result> {
+  const access = await getProducerAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  const parsed = parseCouriersInput(couriers);
+  if (!parsed.ok) return { success: false, error: parsed.error };
+  try {
+    const { db, schema } = createTenantDb(access.tenant.slug);
+    await db.update(schema.producers).set({ couriers: parsed.value, updatedAt: new Date() })
+      .where(eq(schema.producers.id, access.producer.id));
+    revalidatePath(`/app/${slug}/portal-produsen/profil`);
+    return { success: true };
+  } catch (e) {
+    console.error("[producer-couriers] simpan gagal:", e);
+    return { success: false, error: "Gagal menyimpan kurir." };
   }
 }

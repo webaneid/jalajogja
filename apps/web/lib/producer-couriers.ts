@@ -26,9 +26,11 @@ export function validateLineCouriers(
   lines: { deliveryMethod: "courier" | "pickup"; courier?: string | null }[],
   producerIds: (string | null)[],
   producerCouriers: Map<string, string[]>,
+  /** Ambil-sendiri penjual tenant aktif? Server memperlakukan "pickup" dari klien sebagai kurir bila tidak aktif — jadi tidak boleh dilewati. */
+  tenantPickupEnabled: boolean,
 ): string | null {
   for (const [i, line] of lines.entries()) {
-    if (line.deliveryMethod !== "courier") continue;
+    if (line.deliveryMethod === "pickup" && tenantPickupEnabled) continue; // benar-benar ambil sendiri (identik logika aksi)
     const pid = producerIds[i];
     const allowed = pid ? producerCouriers.get(pid) : undefined;
     if (allowed && (!line.courier || !allowed.includes(line.courier))) {
@@ -36,4 +38,19 @@ export function validateLineCouriers(
     }
   }
   return null;
+}
+
+export type CouriersInputResult = { ok: true; value: string[] | null } | { ok: false; error: string };
+
+/**
+ * Validasi input simpan pilihan kurir (dari klien). `null` = kembali ikut pengaturan admin.
+ * Array: minimal 1, semua kode harus ada di daftar 16 kurir (kode asing ditolak, tidak dibuang diam-diam).
+ */
+export function parseCouriersInput(v: unknown): CouriersInputResult {
+  if (v === null) return { ok: true, value: null };
+  if (!Array.isArray(v) || v.length > RAJAONGKIR_COURIER_CODES.length * 2) return { ok: false, error: "Pilihan kurir tidak valid." };
+  if (!v.every((x) => typeof x === "string" && RAJAONGKIR_COURIER_CODES.includes(x))) return { ok: false, error: "Ada kurir yang tidak dikenal." };
+  const unique = [...new Set(v as string[])];
+  if (unique.length === 0) return { ok: false, error: "Pilih minimal satu kurir, atau pilih \"Ikuti pengaturan admin\"." };
+  return { ok: true, value: unique };
 }

@@ -6,6 +6,9 @@ import { createTenantDb } from "@jalajogja/db";
 import { getProducerAccess } from "@/lib/producer-access.server";
 import { resolveProducers } from "@/lib/producer.server";
 import { WarehouseForm } from "@/components/producer/warehouse-form";
+import { CourierForm } from "@/components/producer/courier-form";
+import { sanitizeCouriers } from "@/lib/producer-couriers";
+import { saveProducerCouriersAction } from "./actions";
 
 const SOURCE_LABEL: Record<string, string> = { usaha: "Usaha", pesantren: "Pesantren", profesional: "Profesional" };
 
@@ -16,11 +19,14 @@ export default async function ProducerProfilePage({ params }: { params: Promise<
 
   const tenantClient = createTenantDb(access.tenant.slug);
   const { db, schema } = tenantClient;
-  const [views, [wh]] = await Promise.all([
+  const [views, [wh], [prodRow]] = await Promise.all([
     resolveProducers(tenantClient, access.tenant, [access.producer.id]),
     db.select().from(schema.producerWarehouses)
       .where(and(eq(schema.producerWarehouses.producerId, access.producer.id), eq(schema.producerWarehouses.isDefault, true))).limit(1),
+    db.select({ couriers: schema.producers.couriers }).from(schema.producers)
+      .where(eq(schema.producers.id, access.producer.id)).limit(1),
   ]);
+  const couriers = sanitizeCouriers(prodRow?.couriers);
   const view = views.get(access.producer.id);
 
   const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -70,6 +76,23 @@ export default async function ProducerProfilePage({ params }: { params: Promise<
             label: wh?.label ?? "", addressDetail: wh?.addressDetail ?? "", cityId: wh?.rajaongkirCityId ?? null,
             cityLabel: wh?.rajaongkirCityLabel ?? "", postalCode: wh?.postalCode ?? "",
           }} />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold">Kurir Pengiriman</h2>
+          <p className="text-xs text-muted-foreground">
+            Pilih kurir yang Anda pakai (mis. yang terdekat dari gudang). Hanya kurir ini yang ditawarkan ke pembeli untuk paket Anda.
+          </p>
+        </div>
+        {couriers === null && (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Belum diatur — saat ini memakai daftar kurir dari admin.
+          </p>
+        )}
+        <div className="rounded-lg border border-border bg-card p-4">
+          <CourierForm initial={couriers} onSave={saveProducerCouriersAction.bind(null, slug)} />
         </div>
       </section>
     </div>

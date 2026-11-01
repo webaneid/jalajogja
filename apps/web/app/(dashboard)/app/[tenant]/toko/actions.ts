@@ -828,6 +828,7 @@ export async function createOrderAction(
         const courierErr = validateLineCouriers(
           data.shipping.lines, lineProducers.producerIds,
           await loadProducerCouriers(tenantClient, lineProducers.producerIds),
+          tokoSettings.pickupEnabled,
         );
         if (courierErr) return { error: courierErr };
         // Alamat/nama ambil-di-tempat untuk baris ber-produsen diturunkan SERVER dari gudang produsen (bukan dari klien)

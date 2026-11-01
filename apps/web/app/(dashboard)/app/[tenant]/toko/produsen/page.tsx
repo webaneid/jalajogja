@@ -5,6 +5,7 @@ import { desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db as publicDb, createTenantDb, members, producerLogins } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
+import { sanitizeCouriers } from "@/lib/producer-couriers";
 import { resolveProducers, resolveInternalProducer } from "@/lib/producer.server";
 import { ProducerManageClient, type ProducerItem } from "@/components/toko/producer-manage-client";
 
@@ -55,6 +56,7 @@ export default async function ProdusenPage({ params }: { params: Promise<{ tenan
     return [{
       view,
       productCount: countMap.get(r.id) ?? 0,
+      couriers: sanitizeCouriers(r.couriers),
       portal: r.type === "member" ? { granted: grantedSet.has(r.id), ownerHasAccount: !!r.memberId && hasAccount.has(r.memberId) } : null,
       edit: {
         name: r.customName ?? "", whatsapp: r.customWhatsapp ?? "", addressDetail: r.customAddressDetail ?? "",

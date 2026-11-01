@@ -5,6 +5,7 @@
 //    WAJIB anggota sah tenant ini (lib/tenant-membership.server.ts) — kalau tidak, admin tenant A bisa
 //    memasukkan usaha anggota tenant B (IDOR lintas-tenant).
 //  - Produsen yang dipakai produk tidak boleh dihapus (hanya dinonaktifkan).
+import { parseCouriersInput } from "@/lib/producer-couriers";
 import { revalidatePath } from "next/cache";
 import { eq, and, count, sql } from "drizzle-orm";
 import { db as publicDb, createTenantDb, memberBusinesses, memberOwnedPesantren, memberProfessionals, members, producerLogins } from "@jalajogja/db";
@@ -298,5 +299,25 @@ export async function revokeProducerLoginAction(slug: string, producerId: string
   } catch (err) {
     console.error("[revokeProducerLoginAction]", err);
     return { success: false, error: "Gagal mencabut akses login." };
+  }
+}
+
+/** Admin mengatur kurir pilihan produsen atas namanya (§ 25). null = ikut pengaturan admin. */
+export async function setProducerCouriersAction(slug: string, producerId: string, couriers: string[] | null): Promise<ActionResult> {
+  const g = await guard(slug);
+  if (!g.access) return { success: false, error: g.error ?? "Akses ditolak." };
+  if (!isValidUuid(producerId)) return { success: false, error: "Produsen tidak ditemukan." };
+  const parsed = parseCouriersInput(couriers);
+  if (!parsed.ok) return { success: false, error: parsed.error };
+  try {
+    const { db, schema } = createTenantDb(slug);
+    const updated = await db.update(schema.producers).set({ couriers: parsed.value, updatedAt: new Date() })
+      .where(eq(schema.producers.id, producerId)).returning({ id: schema.producers.id });
+    if (updated.length === 0) return { success: false, error: "Produsen tidak ditemukan." };
+    refresh(slug);
+    return { success: true, data: undefined };
+  } catch (err) {
+    console.error("[setProducerCouriersAction]", err);
+    return { success: false, error: "Gagal menyimpan kurir." };
   }
 }

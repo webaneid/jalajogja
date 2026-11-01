@@ -700,3 +700,17 @@ Urutan deploy F2+F3: `git pull` → migration `0082` → `bun install && bun run
 
 ### 25.5 Langkah (K1–K4)
 **K1 ✅ KODE SELESAI 2026-11-01** (migration `0083_producer_couriers.sql`, DDL `create-tenant-schema.ts`, Drizzle `producers.couriers`; type-check bersih; migration BELUM dijalankan di VPS — wajib SEBELUM deploy kode K2+. Admin memakai `config.couriers` add-on RajaOngkir, tanpa tabel baru) · **K2 ✅ KODE SELESAI 2026-11-01** (`lib/producer-couriers.ts` murni: sanitize/resolve/validate + `producer-couriers.server.ts` loader; checkout publik & pesanan manual kirim `producerCouriers` per paket, paket tanpa entri ikut `addonCouriers`; validasi server di `checkoutAction` & `createOrderAction`: kurir harus ada di daftar produsen bila diatur. CATATAN: validasi hanya membatasi paket ber-produsen yang sudah memilih kurir; paket tenant/produsen NULL tetap tidak divalidasi terhadap daftar admin (celah pra-eksisting, ongkir juga masih dari klien). Migration 0083 WAJIB jalan SEBELUM deploy kode ini — kalau tidak, query producers (checkout) gagal) · K2 resolver + checkout publik & pesanan manual per paket + validasi server · K3 UI Profil produsen + jalur admin · K4 Logo Kurir + audit `security-auditor` + dokumen.
+
+### 25.6 Rancangan K3 (UI + aksi simpan) — 2026-11-01
+- **Komponen bersama** `components/producer/courier-form.tsx` (satu komponen, dua pemakai — Profil produsen & dialog admin): checkbox 16 kurir (`RAJAONGKIR_COURIER_OPTIONS`), tombol Simpan (minimal 1 dipilih) dan "Ikuti pengaturan admin" (kembali ke `NULL`).
+- **Validasi bersama** `parseCouriersInput()` di `lib/producer-couriers.ts`: `null` → NULL; array → kode unik, SEMUA harus ∈ 16 kode (kode asing ditolak, bukan diam-diam dibuang), minimal 1.
+- **Aksi produsen** `saveProducerCouriersAction(slug, couriers)` di `portal-produsen/profil/actions.ts` — `getProducerAccess(slug)`; producerId dari sesi, TIDAK dari input.
+- **Aksi admin** `setProducerCouriersAction(slug, producerId, couriers)` di `toko/produsen/actions.ts` — `guard` (`getTenantAccess` + `hasFullAccess(toko)`) + `isValidUuid`; update dibatasi ke baris produsen di schema tenant sendiri.
+- **UI admin:** tombol "Kurir" per produsen di `/toko/produsen` → dialog berisi komponen yang sama.
+- Tidak ada migration baru (kolom dari K1).
+
+### 25.7 Status K3 + audit (2026-11-01)
+**K3 ✅ KODE SELESAI** (type-check + build bersih). Audit `security-auditor`: 0 Critical/High, 1 Medium, 2 Low.
+- **Medium DIPERBAIKI:** `validateLineCouriers` dulu melewati baris berlabel `pickup` dari klien, padahal server memperlakukannya sebagai kurir bila ambil-sendiri tenant tidak aktif → pembatasan kurir produsen bisa dilewati. Kini validator menerima `tenantPickupEnabled` dan hanya melewati baris `pickup` bila pickup benar-benar aktif (logika sama dengan aksi).
+- **Low (diketahui, tidak diubah):** produsen tanpa pilihan (NULL) & paket tenant tidak divalidasi terhadap daftar admin di server (pra-eksisting, ongkir/kurir tetap dari klien); `saveProducerCouriersAction` tidak menolak produsen nonaktif (mengikuti `getProducerAccess`).
+- **Belum diuji di browser.** Sisa: K4 (Logo Kurir menampilkan semua kurir yang dipakai + audit akhir + dokumen).

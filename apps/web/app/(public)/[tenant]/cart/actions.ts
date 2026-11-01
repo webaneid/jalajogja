@@ -841,6 +841,7 @@ export async function checkoutAction(
       const courierErr = validateLineCouriers(
         shipping?.lines ?? [], lineProducers.producerIds,
         await loadProducerCouriers(tenantDb, lineProducers.producerIds),
+        tokoSettings.pickupEnabled,
       );
       if (courierErr) return { error: courierErr };
 
