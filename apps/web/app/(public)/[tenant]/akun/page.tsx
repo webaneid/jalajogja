@@ -15,10 +15,11 @@ import { MembershipEligibilityOverlay } from "@/components/akun/membership-eligi
 import { notifyMembershipActivated } from "@/lib/membership-activated.server";
 import { WhatsappGroupCard } from "@/components/akun/whatsapp-group-card";
 import { isValidWhatsappGroupUrl, WHATSAPP_GROUP_SETTING_KEY } from "@/lib/whatsapp-group";
+import { getProducerAccess } from "@/lib/producer-access.server";
 import { resolveForumJoinProgress, type ForumJoinStage } from "@/lib/forum-join-progress.server";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
-  ShoppingBag, AlertCircle, Building2, BookOpen, ImageIcon, Briefcase, ClipboardList,
+  ShoppingBag, AlertCircle, Building2, BookOpen, ImageIcon, Briefcase, ClipboardList, Factory,
 } from "lucide-react";
 
 type Params = Promise<{ tenant: string }>;
@@ -245,9 +246,12 @@ export default async function AkunPage({ params }: { params: Params }) {
 
   // Link ke 3 modul ekosistem + Foto Saya — item ber-moduleKey hilang kalau modul itu
   // dimatikan admin di tenant ini (Foto Saya tidak punya moduleKey, selalu tampil).
+  // Kartu Produsen: hanya bila akun ini produsen aktif di tenant ini (pemeriksaan penuh yang sama dengan portal).
+  const isProducer = !!(await getProducerAccess(slug));
   const directoryLinks = (
     [
       { href: `${baseUrl}/akun/pesantren`,   icon: BookOpen,   label: resolveEkosistemModuleLabel("pesantren", moduleLabels),   desc: "Data keterlibatan pesantren", moduleKey: "pesantren" },
+      ...(isProducer ? [{ href: `/app/${slug}/portal-produsen`, icon: Factory, label: "Produsen", desc: "Dashboard produsen" }] : []),
       { href: `${baseUrl}/akun/usaha`,       icon: Building2,  label: resolveEkosistemModuleLabel("usaha", moduleLabels),       desc: "Data usaha & bisnis",         moduleKey: "usaha" },
       { href: `${baseUrl}/akun/profesional`, icon: Briefcase,  label: resolveEkosistemModuleLabel("profesional", moduleLabels), desc: "Data profesi & kredensial",   moduleKey: "profesional" },
       { href: `${baseUrl}/akun/media`,       icon: ImageIcon,  label: "Foto Saya",   desc: "Kelola foto yang Anda upload" },

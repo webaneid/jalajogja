@@ -28,14 +28,15 @@ type Props = {
   isMember: boolean;
   enabledModules?: EkosistemModulesConfig;
   moduleLabels?:   EkosistemModuleLabels;
+  producerPortalHref?: string | null;
 };
 
-export function AkunBottomNav({ baseUrl, isMember, enabledModules, moduleLabels }: Props) {
+export function AkunBottomNav({ baseUrl, isMember, enabledModules, moduleLabels, producerPortalHref }: Props) {
   const pathname    = usePathname();
   const [open, setOpen] = useState(false);
   const base         = `${baseUrl}/akun`;
 
-  const items: NavItem[] = filterNavItemsByModules(isMember ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS, enabledModules);
+  const items: NavItem[] = filterNavItemsByModules(isMember ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS, enabledModules, producerPortalHref);
   const mainItems    = items.filter((i) => MAIN_HREFS.has(i.href));
   const extraItems   = items.filter((i) => !MAIN_HREFS.has(i.href));
 
@@ -92,7 +93,7 @@ export function AkunBottomNav({ baseUrl, isMember, enabledModules, moduleLabels 
               {extraItems.map((item) => (
                 <a
                   key={item.href}
-                  href={`${base}${item.href}`}
+                  href={item.externalHref ?? `${base}${item.href}`}
                   onClick={() => setOpen(false)}
                   className="flex items-center gap-3 rounded-lg px-2 py-3 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
                 >

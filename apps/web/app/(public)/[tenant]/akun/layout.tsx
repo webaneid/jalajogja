@@ -12,6 +12,7 @@ import { AkunBottomNav }    from "@/components/akun/mobile/akun-bottom-nav";
 import { BadgeCheck } from "lucide-react";
 import { resolveAkunBranding } from "@/lib/resolve-akun-branding";
 import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { getProducerAccess } from "@/lib/producer-access.server";
 
 type Props = {
   children: React.ReactNode;
@@ -68,6 +69,10 @@ export default async function AkunLayout({ children, params }: Props) {
   // "Profesional" bisa diganti admin tenant, lihat /ekosistem/pengaturan.
   const moduleLabels   = await getEkosistemModuleLabels(tenantDbForModules);
 
+  // Menu Produsen hanya untuk akun yang LOLOS akses produsen penuh di tenant ini (bukan sekadar baris login) —
+  // pemeriksaan yang sama dengan penjaga portal, jadi tautan tidak pernah mengarah ke penolakan.
+  const producerPortalHref = (await getProducerAccess(slug)) ? `/app/${slug}/portal-produsen` : null;
+
   // Label keanggotaan — bukan selalu tenant yang sedang dibrowsing, lihat
   // docs/arsitektur-akun.md § Resolusi Branding Kartu Anggota. `memberVerified=false`
   // → label = "Lengkapi Data" (profil belum lolos checkMemberEligibility) — checkmark
@@ -113,7 +118,7 @@ export default async function AkunLayout({ children, params }: Props) {
             </div>
 
             {/* Nav */}
-            <AkunNav slug={slug} isMember={isMember} baseUrl={baseUrl} enabledModules={enabledModules} moduleLabels={moduleLabels} />
+            <AkunNav slug={slug} isMember={isMember} baseUrl={baseUrl} enabledModules={enabledModules} moduleLabels={moduleLabels} producerPortalHref={producerPortalHref} />
           </aside>
 
           {/* ── Konten ── */}
@@ -137,7 +142,7 @@ export default async function AkunLayout({ children, params }: Props) {
         <div className="px-4 py-4">
           {children}
         </div>
-        <AkunBottomNav slug={slug} baseUrl={baseUrl} isMember={isMember} enabledModules={enabledModules} moduleLabels={moduleLabels} />
+        <AkunBottomNav slug={slug} baseUrl={baseUrl} isMember={isMember} enabledModules={enabledModules} moduleLabels={moduleLabels} producerPortalHref={producerPortalHref} />
       </div>
     </>
   );

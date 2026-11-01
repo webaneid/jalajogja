@@ -761,3 +761,12 @@ Audit `security-auditor` 2 putaran. Putaran 1 (1 High, 4 Medium, 4 Low) — DIPE
 - **L1 sisa:** `resolveDestination` mencari lewat teks; kota dengan nama sangat umum bisa tak ketemu saat cache miss (cache terisi saat pembeli memilih kota lewat `/api/ongkir/cities`, jadi kasus nyata jarang). Perlu dicek bila Komerce punya lookup per id.
 - Pengelompokan sisi klien form pesanan manual admin (`order-create-client`) tetap terpisah dari `buildSellerGroups` (produk dipilih interaktif); server memverifikasinya — selisih = pesanan ditolak "muat ulang".
 - **BELUM DIUJI browser/API asli:** checkout publik (kurir saja, ambil-sendiri saja, campuran, dua produsen, gratis-ongkir wilayah), pesanan manual admin, RajaOngkir down. Risiko regresi tertinggi: `MISMATCH` pada checkout sah bila klien & server berbeda pengelompokan.
+
+## 27. Pintasan ke Portal dari halaman /akun (2026-11-02)
+
+- Akun yang berstatus produsen **aktif** di tenant itu melihat: (a) kartu **Produsen** ("Dashboard produsen") di beranda `/akun`, tepat
+  setelah kartu Pesantren (desktop = grid kartu, mobile = Menu Cepat); (b) item menu **Produsen** di sidebar/bottom-nav akun, di atas **Mitra**.
+- Penentu tampil = `getProducerAccess(slug)` (pemeriksaan penuh yang sama dengan penjaga portal, bukan sekadar baris `producer_logins`),
+  jadi tautan tidak pernah berujung penolakan. Bukan produsen → kartu & menu tidak dirender sama sekali.
+- Tujuan: `/app/{slug}/portal-produsen`. Item nav memakai `NavItem.producerOnly` + `externalHref` (diisi `filterNavItemsByModules`).
+- Berkas: `components/akun/akun-nav.tsx`, `components/akun/mobile/akun-bottom-nav.tsx`, `app/(public)/[tenant]/akun/{layout,page}.tsx`.

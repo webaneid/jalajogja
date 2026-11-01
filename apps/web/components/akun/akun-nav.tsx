@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, User, Receipt, ClipboardList,
-  BookOpen, Building2, Briefcase, Store, CalendarDays, MapPin, LogOut,
+  BookOpen, Building2, Briefcase, Store, Factory, CalendarDays, MapPin, LogOut,
 } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 import type { EkosistemModule, EkosistemModulesConfig, EkosistemModuleLabels } from "@/lib/ekosistem-modules";
@@ -16,6 +16,10 @@ export type NavItem = {
   // Kalau diisi, item ini cuma tampil kalau modul ekosistem itu aktif untuk tenant ini
   // (lib/ekosistem-modules.ts) — lihat docs/arsitektur-ekosistem.md § toggle per-tenant.
   moduleKey?: EkosistemModule;
+  // Item khusus akun yang berstatus produsen — disaring oleh filterNavItemsByModules (butuh producerPortalHref).
+  producerOnly?: boolean;
+  // Tujuan absolut (di luar /akun), mis. portal produsen. Diisi oleh filterNavItemsByModules.
+  externalHref?: string;
 };
 
 // Di-export — dipakai ulang oleh AkunBottomNav (components/akun/mobile/akun-bottom-nav.tsx)
@@ -35,14 +39,21 @@ export const MEMBER_NAV_ITEMS: NavItem[] = [
   { href: "/pesantren",   label: "Pesantren",   icon: BookOpen,   memberOnly: false, moduleKey: "pesantren" },
   { href: "/usaha",       label: "Usaha",       icon: Building2,  memberOnly: false, moduleKey: "usaha" },
   { href: "/profesional", label: "Profesional", icon: Briefcase,  memberOnly: false, moduleKey: "profesional" },
+  { href: "/produsen",    label: "Produsen",    icon: Factory,    memberOnly: false, producerOnly: true },
   { href: "/mitra",       label: "Mitra",       icon: Store,      memberOnly: false },
 ];
 
 // Filter item nav berdasarkan modul yang aktif untuk tenant ini — item tanpa `moduleKey`
 // (Beranda, Info Login, dst) selalu tampil, tidak terpengaruh toggle ekosistem.
-export function filterNavItemsByModules(items: NavItem[], enabledModules?: EkosistemModulesConfig): NavItem[] {
-  if (!enabledModules) return items;
-  return items.filter((item) => !item.moduleKey || enabledModules[item.moduleKey]);
+// Item `producerOnly` (menu Produsen) hanya muncul bila `producerPortalHref` diberikan — yaitu akun ini
+// terbukti produsen aktif (getProducerAccess di layout). Tautannya menuju portal, bukan halaman /akun.
+export function filterNavItemsByModules(
+  items: NavItem[], enabledModules?: EkosistemModulesConfig, producerPortalHref?: string | null,
+): NavItem[] {
+  return items
+    .filter((item) => !item.producerOnly || !!producerPortalHref)
+    .filter((item) => !enabledModules || !item.moduleKey || enabledModules[item.moduleKey])
+    .map((item) => (item.producerOnly ? { ...item, externalHref: producerPortalHref! } : item));
 }
 
 // Resolve label item nav — item dengan `moduleKey` (Usaha/Pesantren/Profesional) pakai label
@@ -69,21 +80,22 @@ type Props = {
   baseUrl:  string;
   enabledModules?: EkosistemModulesConfig;
   moduleLabels?:   EkosistemModuleLabels;
+  producerPortalHref?: string | null;
 };
 
-export function AkunNav({ slug, isMember, baseUrl, enabledModules, moduleLabels }: Props) {
+export function AkunNav({ slug, isMember, baseUrl, enabledModules, moduleLabels, producerPortalHref }: Props) {
   const pathname = usePathname();
   const base     = `${baseUrl}/akun`;
 
-  const items = filterNavItemsByModules(isMember ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS, enabledModules);
+  const items = filterNavItemsByModules(isMember ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS, enabledModules, producerPortalHref);
 
   return (
     <nav className="space-y-0.5">
       {items.map((item) => {
         const { href, icon: Icon } = item;
         const label     = resolveNavItemLabel(item, moduleLabels);
-        const fullHref  = `${base}${href}`;
-        const isActive  = href === ""
+        const fullHref  = item.externalHref ?? `${base}${href}`;
+        const isActive  = item.externalHref ? false : href === ""
           ? pathname === base
           : pathname.startsWith(fullHref);
 
