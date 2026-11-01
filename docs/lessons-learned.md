@@ -8,6 +8,13 @@
 
 ---
 
+## [2026-11-02] Edit file besar lewat skrip: `str.index(penanda)` yang tidak unik MENGGANDAKAN isi file
+**Masalah:** Memindahkan satu blok di `cart/actions.ts` (±1.200 baris) lewat skrip Python: `end = s.index("  try {\n    const token = ...")` ternyata mengembalikan kemunculan PERTAMA (di fungsi lain, sebelum blok yang dipindah). `s[:a] + s[end:]` dengan `end < a` menggandakan ±350 baris; `tsc` langsung gagal (identifier ganda), tetapi pemulihan "matematis" dari file rusak tidak berhasil.
+**Fix/pemulihan:** ambil versi bersih dari git (`git show HEAD:path`), terapkan ulang tiap perubahan dengan penunjuk yang DIVERIFIKASI unik (`assert s.count(old) == 1`), cek `git diff --stat` kecil.
+**Pencegahan:** untuk edit multi-baris lewat skrip, wajib `assert count == 1` pada setiap penunjuk dan hitung indeks akhir SETELAH indeks awal (`s.index(x, awal)`); lebih baik pakai alat Edit untuk perubahan yang dapat ditempatkan persis. Commit kerja yang sudah baik SEBELUM operasi pemindahan besar supaya ada titik pulih.
+
+---
+
 ## [2026-11-02] Cache "tercakup" dari API eksternal: jawaban KOSONG karena galat ≠ jawaban kosong yang sah
 **Masalah:** Pencarian tujuan RajaOngkir lokal-dulu (`ro_search_log`) mencatat query yang sudah diambil agar tak diulang. `searchDestinations` mengembalikan `[]` untuk SEMUA respons non-OK. Galat sesaat upstream (500/401/key salah) jadi "0 hasil, tidak terpotong" dan, untuk query satu-kata, membuat semua perpanjangannya dianggap tercakup 90 hari → lokasi sah tak pernah ditemukan. Ditemukan audit sebelum deploy.
 **Fix:** hanya 404 yang berarti "tidak ada hasil"; galat lain DILEMPAR (alur degraded). Jawaban 0 hasil hanya dipercaya 24 jam. Smoke test (`scripts/smoke-ro-destinations.ts` skenario 10) menjaganya.

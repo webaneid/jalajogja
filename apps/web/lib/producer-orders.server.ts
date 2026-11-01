@@ -64,7 +64,9 @@ function lineSelect(schema: TenantDb["schema"]) {
   const L = schema.invoiceShippingLines, I = schema.invoices;
   return {
     lineId: L.id, invoiceId: I.id, invoiceNumber: I.invoiceNumber, createdAt: I.createdAt,
-    customerName: I.customerName, customerPhone: I.customerPhone,
+    // Produsen hanya mengirim: tampilkan PENERIMA paket (snapshot buku alamat) bila ada, selain itu pembeli. Pencarian tetap pada nama pembeli.
+    customerName: sql<string>`COALESCE(${I.shippingRecipientName}, ${I.customerName})`,
+    customerPhone: sql<string | null>`COALESCE(${I.shippingRecipientPhone}, ${I.customerPhone})`,
     lineProducerId: L.producerId, deliveryMethod: L.deliveryMethod, courier: L.courier, service: L.service, paymentMethod: L.paymentMethod,
     status: L.status, trackingNumber: L.trackingNumber, trackingProofPath: L.trackingProofPath, shippedAt: L.shippedAt,
   };

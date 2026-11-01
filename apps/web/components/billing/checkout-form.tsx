@@ -1,6 +1,8 @@
 "use client";
 
 import { resolveCouriersForGroup } from "@/lib/producer-couriers";
+import { AddressPicker } from "@/components/address/address-picker";
+import type { AddressDTO } from "@/lib/address-book";
 import { useState, useEffect, useTransition, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Truck } from "lucide-react";
@@ -87,6 +89,8 @@ type Props = {
   addonCouriers?: string[];
   /** producerId → kurir pilihan produsen (§ 25); tanpa entri = ikut addonCouriers */
   producerCouriers?: Record<string, string[]>;
+  /** Alamat kirim tersimpan milik pembeli yang login (null = tamu / tanpa identitas → form manual seperti biasa). Doc: arsitektur-alamat.md § 18 */
+  savedAddresses?: AddressDTO[] | null;
 };
 
 // ─── Komponen ─────────────────────────────────────────────────────────────────
@@ -98,6 +102,7 @@ export function CheckoutForm({
   sellerGroups = [],
   addonCouriers = [],
   producerCouriers = {},
+  savedAddresses: initialAddresses = null,
 }: Props) {
   const router                     = useRouter();
   const [pending, startTransition] = useTransition();
@@ -222,6 +227,23 @@ export function CheckoutForm({
   // gratis-ongkir per-produk — lihat freeShippingRatio() di atas.
   const [destCity, setDestCity] = useState<{ id: number; name: string; provinceName: string; cityName: string } | null>(null);
   const [address,      setAddress]      = useState("");
+  // Alamat tersimpan (hanya pembeli login): pilihan default = alamat utama. `manual` = ketik alamat sekali pakai.
+  const hasAddressBook = initialAddresses !== null;
+  const [savedAddresses, setSavedAddresses] = useState<AddressDTO[]>(initialAddresses ?? []);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
+    () => (initialAddresses ?? []).find((a) => a.isDefault)?.id ?? (initialAddresses ?? [])[0]?.id ?? null,
+  );
+  const [manualAddress, setManualAddress] = useState(false);
+  const usingSavedAddress = hasAddressBook && !manualAddress && !!savedAddresses.find((a) => a.id === selectedAddressId);
+
+  // Memilih alamat tersimpan mengisi tujuan + detail (server tetap menurunkan ulang dari addressId — ini hanya untuk tampilan/ongkir)
+  useEffect(() => {
+    if (!usingSavedAddress) return;
+    const a = savedAddresses.find((x) => x.id === selectedAddressId);
+    if (!a) return;
+    setDestCity({ id: a.destination.id, name: a.destination.label, provinceName: a.destination.provinceName, cityName: a.destination.cityName });
+    setAddress(a.detail);
+  }, [usingSavedAddress, selectedAddressId, savedAddresses]);
   const [citySearch,   setCitySearch]   = useState("");
   const [cityResults,  setCityResults]  = useState<CityResult[]>([]);
   const [cityLoading,  setCityLoading]  = useState(false);
@@ -343,6 +365,13 @@ export function CheckoutForm({
       );
       if (res.success) {
         router.push(`/${slug}/invoice/${res.data.invoiceId}`);
+      } else if (res.code === "address_not_found") {
+        // Alamat tersimpan sudah dihapus (mis. di tab lain) → buang dari daftar & kosongkan pilihan, jangan buntu
+        setSavedAddresses((list) => list.filter((a) => a.id !== selectedAddressId));
+        setSelectedAddressId(null);
+        setDestCity(null);
+        setStep(2);
+        setError(res.error);
       } else if (res.code === "otp_required") {
         // Server menuntut OTP (nomor cocok data existing) — balik ke Step 1 dan buka kolom OTP,
         // kirim kode baru supaya user tidak buntu tanpa tahu harus apa.
@@ -450,6 +479,8 @@ export function CheckoutForm({
       cityId:   destCity?.id ?? 0,
       cityName: destCity?.name ?? "",
       address:  address.trim() || undefined,
+      // Alamat tersimpan: server menurunkan tujuan/detail/penerima dari buku alamat pembeli (sesi) — nilai di atas hanya cadangan tampilan
+      addressId: usingSavedAddress && anyCourierGroup ? (selectedAddressId ?? undefined) : undefined,
       lines,
     } : undefined);
   }
@@ -674,6 +705,20 @@ export function CheckoutForm({
           <div className="rounded-lg border border-border p-5 space-y-4">
             <p className="font-semibold text-sm">Alamat Pengiriman</p>
 
+            {hasAddressBook && (
+              <AddressPicker
+                slug={slug}
+                addresses={savedAddresses}
+                selectedId={selectedAddressId}
+                manual={manualAddress}
+                prefill={{ name, phone }}
+                onChange={(list, id) => { setSavedAddresses(list); setSelectedAddressId(id); setManualAddress(false); }}
+                onManual={(m) => { setManualAddress(m); if (m) { setDestCity(null); setAddress(""); setCitySearch(""); } }}
+              />
+            )}
+
+            {(!hasAddressBook || manualAddress) && (
+              <>
             <div>
               <label className={labelCls}>Kelurahan / Desa Tujuan</label>
               {destCity ? (
@@ -743,6 +788,8 @@ export function CheckoutForm({
                 className={inputCls}
               />
             </div>
+              </>
+            )}
 
             <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-1.5">
               <p className="font-medium text-foreground">Paket dikirim dari:</p>

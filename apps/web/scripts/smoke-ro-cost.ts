@@ -1,5 +1,7 @@
 // Uji cache ongkir P5 (docs/arsitektur-alamat.md § 14) dengan DB lokal + API RajaOngkir PALSU (tanpa kuota asli).
 // Jalankan: cd apps/web && bun run --preload ./scripts/stub-server-only.ts scripts/smoke-ro-cost.ts
+// Pengaman: skrip uji MENGHAPUS data — hanya boleh di DB lokal.
+if (!/@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL ?? "")) { console.error("Ditolak: skrip uji hanya untuk DATABASE_URL lokal."); process.exit(2); }
 import { sql } from "drizzle-orm";
 import { db } from "@jalajogja/db";
 process.env.RAJAONGKIR_PLATFORM_KEY = "test-key";

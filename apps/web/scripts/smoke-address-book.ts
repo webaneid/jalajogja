@@ -1,9 +1,11 @@
 // Uji buku alamat P2 dengan DB lokal (data nyata: profil sementara + tujuan sementara; dibersihkan di akhir).
 // Jalankan: cd apps/web && bun run --preload ./scripts/stub-server-only.ts scripts/smoke-address-book.ts
+// Pengaman: skrip uji MENGHAPUS data — hanya boleh di DB lokal.
+if (!/@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL ?? "")) { console.error("Ditolak: skrip uji hanya untuk DATABASE_URL lokal."); process.exit(2); }
 import { sql } from "drizzle-orm";
 import { db } from "@jalajogja/db";
 import { parseAddressInput, MAX_ADDRESSES_PER_OWNER } from "../lib/address-book";
-const { saveAddress, deleteAddress, setDefaultAddress, listAddresses } = await import("../lib/address-book-store.server");
+const { saveAddress, deleteAddress, setDefaultAddress, listAddresses, getAddress } = await import("../lib/address-book-store.server");
 
 let fails = 0;
 const check = (name: string, ok: boolean, extra = "") => { console.log(`${ok ? "OK  " : "GAGAL"}  ${name} ${extra}`); if (!ok) fails++; };
@@ -53,6 +55,13 @@ try {
   const stillThere = await listAddresses(A);
   check("3a. pemilik lain TIDAK bisa hapus/utama/ubah alamat orang lain", !idor1.ok && !idor2.ok && !idor3.ok && stillThere.some((a) => a.id === firstId && a.label !== "Diretas"));
   check("3b. daftar B kosong (tidak melihat milik A)", (await listAddresses(B)).length === 0);
+
+  // --- getAddress (dipakai checkout untuk menurunkan alamat di SERVER) ---
+  const own = await getAddress(A, firstId);
+  const foreign = await getAddress(B, firstId);
+  check("3c. getAddress: pemilik mendapat alamatnya lengkap (penerima, HP E.164, detail, tujuan)", !!own && own.recipientName === "Budi Santoso" && own.phone === "+6281234567890" && own.destination.id === 1999000001 && own.destination.cityName === "YOGYAKARTA");
+  check("3d. getAddress: pemilik lain TIDAK bisa memuat alamat (null) — checkout menolak addressId orang lain", foreign === null);
+  check("3e. getAddress: id tak ada → null", (await getAddress(A, "00000000-0000-4000-8000-000000000000")) === null);
 
   // --- tujuan & batas ---
   const badDest = await saveAddress(A, ok({ ...base, destinationId: 1999999998 }));

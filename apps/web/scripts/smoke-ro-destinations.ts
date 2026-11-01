@@ -1,5 +1,7 @@
 // Uji logika lokal-dulu P1 dengan DB lokal + API RajaOngkir PALSU (tidak memakai kuota asli).
 // Jalankan: cd apps/web && bun run --preload ./scripts/stub-server-only.ts scripts/smoke-ro-destinations.ts
+// Pengaman: skrip uji MENGHAPUS data — hanya boleh di DB lokal.
+if (!/@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL ?? "")) { console.error("Ditolak: skrip uji hanya untuk DATABASE_URL lokal."); process.exit(2); }
 import { sql } from "drizzle-orm";
 import { db } from "@jalajogja/db";
 process.env.RAJAONGKIR_PLATFORM_KEY = "test-key";
@@ -29,10 +31,17 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
 const { searchDestinationsLocalFirst, resolveDestination, SEARCH_PAGE } = await import("../lib/ro-destinations.server");
 const { RO_DAILY_LIMITS } = await import("../lib/ro-budget.server");
 
+
+// Bersihkan data uji tanpa TRUNCATE (ro_destinations dirujuk FK address_book) dan tanpa multi-statement
+const clearAll = async () => {
+  await db.execute(sql`DELETE FROM public.ro_search_log`);
+  await db.execute(sql`DELETE FROM public.ro_api_usage`);
+  await db.execute(sql`DELETE FROM public.ro_destinations WHERE id NOT IN (SELECT destination_id FROM public.address_book)`);
+};
 let fails = 0;
 const check = (name: string, ok: boolean, extra = "") => { console.log(`${ok ? "OK  " : "GAGAL"}  ${name} ${extra}`); if (!ok) fails++; };
 
-await db.execute(sql`TRUNCATE public.ro_destinations, public.ro_search_log, public.ro_api_usage`);
+await clearAll();
 
 let r = await searchDestinationsLocalFirst("Bener", 15);
 check("1. query baru → panggil API 1x, 3 hasil", apiCalls === 1 && r.source === "api" && r.cities.length === 3, `(calls=${apiCalls}, src=${r.source})`);
@@ -75,7 +84,8 @@ const e2 = await searchDestinationsLocalFirst("depok", 5);
 check("9. 429 → berhenti memanggil API sesudahnya", apiCalls === 1 && e2.source === "local-degraded", `(calls=${apiCalls}, pertama=${e1})`);
 
 // --- Perbaikan audit P1 ---
-await db.execute(sql`TRUNCATE public.ro_search_log, public.ro_api_usage`);
+await db.execute(sql`DELETE FROM public.ro_search_log`);
+await db.execute(sql`DELETE FROM public.ro_api_usage`);
 mode = "500"; apiCalls = 0;
 await searchDestinationsLocalFirst("yogya", 5).catch(() => null);
 mode = "ok";
@@ -95,7 +105,7 @@ const [p1, p2, p3] = await Promise.all([1, 2, 3].map(() => searchDestinationsLoc
 check("13. permintaan bersamaan query sama → 1 panggilan (single-flight)", apiCalls === 1 && p1.cities.length > 0 && p2.cities.length > 0 && p3.cities.length > 0, `(calls=${apiCalls})`);
 
 // jatah 'resolve' terpisah dari 'search'
-await db.execute(sql`TRUNCATE public.ro_destinations, public.ro_search_log, public.ro_api_usage`);
+await clearAll();
 const { tryConsumeApiBudget } = await import("../lib/ro-budget.server");
 for (let i = 0; i < RO_DAILY_LIMITS.search; i++) await tryConsumeApiBudget("search");
 apiCalls = 0;
@@ -103,7 +113,7 @@ const rv = await resolveDestination(31397, "BENER, TEGALREJO, YOGYAKARTA, DI YOG
 check("14. pencarian publik habis, resolve masih punya jatah sendiri (kode pos lalu kelurahan)", rv?.id === 31397 && apiCalls === 2, `(calls=${apiCalls})`);
 
 // Audit ronde 3: jangkar terpotong → naik ke kata berikutnya; kata terpotong tak diambil ulang tiap ketukan
-await db.execute(sql`TRUNCATE public.ro_destinations, public.ro_search_log, public.ro_api_usage`);
+await clearAll();
 apiCalls = 0;
 await searchDestinationsLocalFirst("jakarta", 5);                       // terpotong (250)
 const before = apiCalls;

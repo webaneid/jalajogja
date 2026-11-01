@@ -79,6 +79,9 @@ export type PublicInvoiceData = {
   createdAt:        string;
   shippingCityName: string | null;
   shippingAddress:  string | null;
+  // Penerima paket bila berbeda dari pembeli (snapshot buku alamat)
+  shippingRecipientName:  string | null;
+  shippingRecipientPhone: string | null;
   submittedProofUrl:    string | null;
   rejectedPaymentNote:  string | null;
   items: Array<{
@@ -680,6 +683,11 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
             <p className="text-xs text-muted-foreground">
               Tujuan: {invoice.shippingCityName}
               {invoice.shippingAddress && ` — ${invoice.shippingAddress}`}
+            </p>
+          )}
+          {invoice.shippingRecipientName && (
+            <p className="text-xs text-muted-foreground">
+              Penerima: {invoice.shippingRecipientName}{invoice.shippingRecipientPhone ? ` · ${displayPhone(invoice.shippingRecipientPhone)}` : ""}
             </p>
           )}
           {invoice.shippingLines.map(line => {

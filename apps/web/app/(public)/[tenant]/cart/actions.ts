@@ -2,6 +2,8 @@
 
 import { validateLineCouriers } from "@/lib/producer-couriers";
 import { verifyShippingLines, cartFingerprint } from "@/lib/shipping-verify.server";
+import { resolveAddressOwner, getAddress } from "@/lib/address-book.server";
+import { isUuid } from "@/lib/address-book";
 import { loadProducerCouriers, loadTenantCouriers } from "@/lib/producer-couriers.server";
 import { cookies, headers } from "next/headers";
 import { checkRateLimit, getClientIpFromHeaders } from "@/lib/rate-limit";
@@ -35,7 +37,7 @@ import { createEventRegistrationsFromInvoiceTickets } from "@/lib/event-registra
 
 type ActionResult<T = void> =
   | { success: true; data: T }
-  | { success: false; error: string; code?: "otp_required" };
+  | { success: false; error: string; code?: "otp_required" | "address_not_found" };
 
 export type CartItemType = "product" | "ticket" | "donation" | "custom";
 
@@ -151,6 +153,8 @@ export type CheckoutShippingData = {
   cityId:    number;
   cityName:  string;
   address?:  string;
+  /** Alamat dari buku alamat pembeli (login). Bila ada, SERVER menurunkan cityId/cityName/address/penerima dari sana dan mengabaikan kiriman klien. */
+  addressId?: string;
   lines:     CheckoutShippingLine[];
 };
 
@@ -536,14 +540,6 @@ export async function checkoutAction(
   if (!customer.name?.trim()) {
     return { success: false, error: "Nama wajib diisi." };
   }
-  // Alamat detail wajib kalau ADA baris pengiriman kurir (bukan Ambil Sendiri semua) — server
-  // TIDAK PERNAH percaya validasi client saja, checkoutAction bisa dipanggil langsung tanpa
-  // lewat form. Lihat docs/arsitektur-billing.md § 16.
-  const hasCourierLine = shipping?.lines.some((l) => l.deliveryMethod === "courier") ?? false;
-  if (hasCourierLine && !shipping?.address?.trim()) {
-    return { success: false, error: "Alamat detail wajib diisi." };
-  }
-
   // Pembatas per IP — checkoutAction bisa dipanggil langsung (bukan hanya dari form) dan menjawab
   // `otp_required` hanya bila nomor terdaftar, jadi tanpa batas ia bisa dipakai menebak nomor anggota.
   // Batas umum longgar; batas khusus jawaban "terdaftar" lebih ketat. Angka sengaja tidak terlalu kecil:
@@ -552,6 +548,25 @@ export async function checkoutAction(
   const clientIp = getClientIpFromHeaders(await headers());
   if (!checkRateLimit(`checkout:${clientIp}`, 120, 10 * 60_000).allowed) {
     return { success: false, error: "Terlalu banyak percobaan. Coba lagi beberapa menit lagi." };
+  }
+
+  // Alamat dari BUKU ALAMAT pembeli: server yang menurunkan tujuan, detail, dan penerima (pemilik dari sesi, query terikat pemilik) —
+  // kiriman klien untuk field-field itu diabaikan. addressId milik orang lain / tak ada → ditolak. Doc: docs/arsitektur-alamat.md § 18.
+  let addressSnapshot: { recipientName: string; recipientPhone: string } | null = null;
+  if (shipping?.addressId) {
+    const owner = await resolveAddressOwner();
+    const saved = owner && isUuid(shipping.addressId) ? await getAddress(owner, shipping.addressId) : null;
+    if (!saved) return { success: false, code: "address_not_found", error: "Alamat tersimpan tidak ditemukan. Pilih ulang alamat pengiriman." };
+    shipping = { ...shipping, cityId: saved.destination.id, cityName: saved.destination.label, address: saved.detail };
+    addressSnapshot = { recipientName: saved.recipientName, recipientPhone: saved.phone };
+  }
+
+  // Alamat detail wajib kalau ADA baris pengiriman kurir (bukan Ambil Sendiri semua) — server
+  // TIDAK PERNAH percaya validasi client saja, checkoutAction bisa dipanggil langsung tanpa
+  // lewat form. Lihat docs/arsitektur-billing.md § 16.
+  const hasCourierLine = shipping?.lines.some((l) => l.deliveryMethod === "courier") ?? false;
+  if (hasCourierLine && !shipping?.address?.trim()) {
+    return { success: false, error: "Alamat detail wajib diisi." };
   }
 
   try {
@@ -969,6 +984,9 @@ export async function checkoutAction(
           shippingCityId:   shipping?.cityId    ?? null,
           shippingCityName: shipping?.cityName  ?? null,
           shippingAddress:  shipping?.address   ?? null,
+          // Penerima paket snapshot dari buku alamat (NULL = penerima sama dengan pembeli)
+          shippingRecipientName:  addressSnapshot?.recipientName  ?? null,
+          shippingRecipientPhone: addressSnapshot?.recipientPhone ?? null,
           status:           isFullyPaid ? "paid" : "pending",
           dueDate,
           notes:            customer.notes?.trim() ?? null,

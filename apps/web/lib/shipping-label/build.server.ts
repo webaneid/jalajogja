@@ -38,7 +38,8 @@ export async function buildLabelData(
   // 1) Pengiriman (baris penjual tenant) dari invoice LUNAS yang diminta — satuan label = satu pengiriman (ADR-0005)
   const lines = await db.select({
     line: L, invoiceNumber: schema.invoices.invoiceNumber,
-    customerName: schema.invoices.customerName, customerPhone: schema.invoices.customerPhone,
+    customerName: sql<string>`COALESCE(${schema.invoices.shippingRecipientName}, ${schema.invoices.customerName})`,   // penerima paket (snapshot buku alamat) ?? pembeli
+    customerPhone: sql<string | null>`COALESCE(${schema.invoices.shippingRecipientPhone}, ${schema.invoices.customerPhone})`,
     shippingAddress: schema.invoices.shippingAddress, shippingCityName: schema.invoices.shippingCityName, notes: schema.invoices.notes,
   }).from(L).innerJoin(schema.invoices, eq(schema.invoices.id, L.invoiceId))
     .where(and(inArray(L.id, shipmentIds), eq(L.sellerType, "tenant"), eq(schema.invoices.status, "paid")));

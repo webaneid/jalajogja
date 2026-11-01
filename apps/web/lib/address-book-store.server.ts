@@ -28,13 +28,20 @@ export async function listAddresses(owner: AddressOwner): Promise<AddressDTO[]> 
   return rows.map(toDto);
 }
 
-export type AddressResult = { ok: true; addresses: AddressDTO[] } | { ok: false; error: string };
+/** Satu alamat milik pemilik (terikat pemilik — alamat orang lain = null). Dipakai checkout untuk menurunkan alamat di SERVER. */
+export async function getAddress(owner: AddressOwner, id: string): Promise<AddressDTO | null> {
+  const [row] = await selectDto().where(and(eq(addressBook.id, id), ownerEq(owner))).limit(1);
+  return row ? toDto(row) : null;
+}
+
+export type AddressResult = { ok: true; addresses: AddressDTO[]; savedId?: string } | { ok: false; error: string };
 
 export async function saveAddress(owner: AddressOwner, input: ParsedAddressInput): Promise<AddressResult> {
   // Tujuan harus ADA di tabel lokal (hasil pencarian kita) — nol panggilan API
   const [dest] = await db.select({ id: roDestinations.id }).from(roDestinations).where(eq(roDestinations.id, input.destinationId)).limit(1);
   if (!dest) return { ok: false, error: "Lokasi tidak ditemukan. Cari dan pilih ulang lokasi dari daftar." };
 
+  let savedId = input.id ?? "";
   const error = await db.transaction(async (tx): Promise<string | null> => {
     // Kunci baris pemilik agar penghitungan batas & pergantian "utama" tidak berlomba (dua tab bersamaan)
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"address_book:" + owner.id}))`);
@@ -58,12 +65,13 @@ export async function saveAddress(owner: AddressOwner, input: ParsedAddressInput
     if (input.id) {
       await tx.update(addressBook).set({ ...values, updatedAt: new Date() }).where(and(eq(addressBook.id, input.id), ownerEq(owner)));
     } else {
-      await tx.insert(addressBook).values({ ...values, ...(owner.kind === "member" ? { memberId: owner.id } : { profileId: owner.id }) });
+      const [ins] = await tx.insert(addressBook).values({ ...values, ...(owner.kind === "member" ? { memberId: owner.id } : { profileId: owner.id }) }).returning({ id: addressBook.id });
+      savedId = ins.id;
     }
     return null;
   });
   if (error) return { ok: false, error };
-  return { ok: true, addresses: await listAddresses(owner) };
+  return { ok: true, addresses: await listAddresses(owner), savedId };
 }
 
 export async function deleteAddress(owner: AddressOwner, id: string): Promise<AddressResult> {

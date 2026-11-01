@@ -1270,6 +1270,8 @@ export async function createTenantSchemaInDb(
         shipping_address  TEXT,
         shipping_city_id  INTEGER,
         shipping_city_name TEXT,
+        shipping_recipient_name  TEXT,   -- penerima paket (snapshot dari buku alamat); NULL = penerima = pembeli (0087)
+        shipping_recipient_phone TEXT,
         status          TEXT           NOT NULL DEFAULT 'pending'
                                        CHECK (status IN ('draft','pending','waiting_verification','partial','paid','cancelled','overdue')),
         due_date        DATE,

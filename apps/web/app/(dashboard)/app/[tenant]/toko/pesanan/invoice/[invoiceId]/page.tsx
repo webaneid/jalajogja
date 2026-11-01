@@ -48,6 +48,8 @@ export default async function FulfillmentPage({
       status:        schema.invoices.status,
       shippingAddress:  schema.invoices.shippingAddress,
       shippingCityName: schema.invoices.shippingCityName,
+      shippingRecipientName:  schema.invoices.shippingRecipientName,
+      shippingRecipientPhone: schema.invoices.shippingRecipientPhone,
       notes:         schema.invoices.notes,
       createdAt:     schema.invoices.createdAt,
     })
@@ -140,6 +142,7 @@ export default async function FulfillmentPage({
     info: [
       ["Telepon",       displayPhone(inv.customerPhone)],
       ["Email",         inv.customerEmail ?? "—"],
+      ...(inv.shippingRecipientName ? [["Penerima Paket", `${inv.shippingRecipientName} · ${displayPhone(inv.shippingRecipientPhone)}`] as [string, string]] : []),
       ["Alamat Kirim",  [inv.shippingAddress, inv.shippingCityName].filter(Boolean).join(", ") || "—"],
       ...(inv.notes ? [["Catatan", inv.notes] as [string, string]] : []),
       ...(batchNames.length ? [["Batch Pengiriman", batchNames.join(", ")] as [string, string]] : []),

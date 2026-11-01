@@ -2,46 +2,34 @@
 
 import { useState, useTransition } from "react";
 import { MapPin, Plus, Pencil, Trash2, Star } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { AddressFields, EMPTY_ADDRESS, type AddressFieldsValue } from "@/components/address/address-fields";
+import { AddressFormDialog, addressToForm, newAddressDraft, type AddressEditing } from "@/components/address/address-form-dialog";
 import { displayPhone } from "@/lib/phone";
 import { MAX_ADDRESSES_PER_OWNER, type AddressDTO } from "@/lib/address-book";
-import { saveAddressAction, deleteAddressAction, setDefaultAddressAction } from "./actions";
-
-const toForm = (a: AddressDTO): AddressFieldsValue => ({
-  label: a.label, recipientName: a.recipientName, phone: a.phone, destinationId: a.destination.id,
-  destinationLabel: a.destination.label, detail: a.detail, isDefault: a.isDefault,
-});
+import { deleteAddressAction, setDefaultAddressAction } from "./actions";
 
 export function AlamatClient({ slug, initial }: { slug: string; initial: AddressDTO[] }) {
   const [addresses, setAddresses] = useState(initial);
-  const [editing, setEditing] = useState<{ id?: string; form: AddressFieldsValue } | null>(null);
+  const [editing, setEditing] = useState<AddressEditing>(null);
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
 
-  const apply = (r: { success: true; addresses: AddressDTO[] } | { success: false; error: string }, after?: () => void) => {
+  const apply = (r: { success: true; addresses: AddressDTO[] } | { success: false; error: string }) => {
     if (!r.success) { setError(r.error); return; }
-    setError(""); setAddresses(r.addresses); after?.();
+    setError(""); setAddresses(r.addresses);
   };
-
-  const submit = () => {
-    if (!editing) return;
-    const f = editing.form;
-    if (!f.destinationId) { setError("Pilih lokasi dari daftar pencarian."); return; }
-    start(async () => apply(await saveAddressAction(slug, { ...f, id: editing.id }), () => setEditing(null)));
-  };
+  const editingIsDefault = !!editing?.id && addresses.find((x) => x.id === editing.id)?.isDefault === true;
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Alamat Saya</h1>
+          <h1 className="text-xl font-semibold">Alamat Kirim</h1>
           <p className="text-sm text-muted-foreground">
             Simpan alamat kirim sekali, pakai berkali-kali saat berbelanja di organisasi mana pun.
           </p>
         </div>
         <button type="button" disabled={addresses.length >= MAX_ADDRESSES_PER_OWNER}
-          onClick={() => { setError(""); setEditing({ form: { ...EMPTY_ADDRESS, isDefault: addresses.length === 0 } }); }}
+          onClick={() => { setError(""); setEditing(newAddressDraft({ isFirst: addresses.length === 0 })); }}
           className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-50">
           <Plus className="h-4 w-4" /> Tambah Alamat
         </button>
@@ -70,7 +58,7 @@ export function AlamatClient({ slug, initial }: { slug: string; initial: Address
               <p className="text-sm text-muted-foreground">{a.detail}</p>
               <p className="text-xs text-muted-foreground">{a.destination.label}</p>
               <div className="flex flex-wrap gap-2 pt-1">
-                <button type="button" onClick={() => { setError(""); setEditing({ id: a.id, form: toForm(a) }); }}
+                <button type="button" onClick={() => { setError(""); setEditing({ id: a.id, form: addressToForm(a) }); }}
                   className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted">
                   <Pencil className="h-3.5 w-3.5" /> Ubah
                 </button>
@@ -92,28 +80,9 @@ export function AlamatClient({ slug, initial }: { slug: string; initial: Address
         </ul>
       )}
 
-      <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null); }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editing?.id ? "Ubah Alamat" : "Tambah Alamat"}</DialogTitle>
-            <DialogDescription>Alamat ini hanya bisa dilihat oleh Anda; penjual hanya menerima salinannya saat Anda memesan.</DialogDescription>
-          </DialogHeader>
-          {editing && (
-            <div className="space-y-4">
-              <AddressFields value={editing.form} onChange={(form) => setEditing({ ...editing, form })}
-                lockDefault={addresses.length === 0 || addresses.find((x) => x.id === editing.id)?.isDefault === true} />
-              {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setEditing(null)} className="h-9 rounded-md border border-border px-3 text-sm">Batal</button>
-                <button type="button" onClick={submit} disabled={pending}
-                  className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">
-                  {pending ? "Menyimpan…" : "Simpan"}
-                </button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <AddressFormDialog slug={slug} editing={editing} onClose={() => setEditing(null)}
+        isOnlyOrDefault={addresses.length === 0 || editingIsDefault}
+        onSaved={(list) => { setAddresses(list); setError(""); setEditing(null); }} />
     </div>
   );
 }

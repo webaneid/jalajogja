@@ -1,5 +1,6 @@
 import { cookies, headers } from "next/headers";
 import { loadProducerCouriers } from "@/lib/producer-couriers.server";
+import { resolveAddressOwner, listAddresses } from "@/lib/address-book.server";
 import { notFound, redirect } from "next/navigation";
 import { db, tenants, tenantAddonInstallations, addons } from "@jalajogja/db";
 import { eq, and } from "drizzle-orm";
@@ -168,6 +169,10 @@ export default async function CheckoutPage({ params }: Props) {
     ? Object.fromEntries(await loadProducerCouriers(createTenantDb(slug), sellerGroups.map(g => g.producerId)))
     : {};
 
+  // Alamat kirim tersimpan — HANYA milik pembeli yang login (pemilik dari sesi); tamu/tanpa identitas = null (form manual)
+  const addressOwner = sellerGroups.length > 0 ? await resolveAddressOwner() : null;
+  const savedAddresses = addressOwner ? await listAddresses(addressOwner) : null;
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-10">
       <div className="mb-6">
@@ -183,6 +188,7 @@ export default async function CheckoutPage({ params }: Props) {
         sellerGroups={sellerGroups}
         addonCouriers={addonCouriers}
         producerCouriers={producerCouriers}
+        savedAddresses={savedAddresses}
       />
     </div>
   );

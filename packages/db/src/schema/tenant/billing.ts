@@ -117,6 +117,9 @@ export function createInvoicesTable(s: ReturnType<typeof pgSchema>) {
     shippingAddress:    text("shipping_address"),
     shippingCityId:     integer("shipping_city_id"),
     shippingCityName:   text("shipping_city_name"),
+    // Penerima paket (snapshot dari buku alamat saat checkout). NULL = penerima sama dengan pembeli (customer_*). Migration 0087.
+    shippingRecipientName:  text("shipping_recipient_name"),
+    shippingRecipientPhone: text("shipping_recipient_phone"),
 
     // Status & tanggal
     status:  text("status", { enum: INVOICE_STATUSES }).notNull().default("pending"),

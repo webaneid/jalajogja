@@ -5,7 +5,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { parseAddressInput, isUuid, type AddressDTO } from "@/lib/address-book";
 import { resolveAddressOwner, saveAddress, deleteAddress, setDefaultAddress } from "@/lib/address-book.server";
 
-type Result = { success: true; addresses: AddressDTO[] } | { success: false; error: string };
+type Result = { success: true; addresses: AddressDTO[]; savedId?: string } | { success: false; error: string };
 
 async function guard() {
   const owner = await resolveAddressOwner();
@@ -24,7 +24,7 @@ export async function saveAddressAction(_slug: string, input: unknown): Promise<
   if (!parsed.ok) return { success: false, error: parsed.error };
   try {
     const r = await saveAddress(g.owner, parsed.value);
-    return r.ok ? { success: true, addresses: r.addresses } : { success: false, error: r.error };
+    return r.ok ? { success: true, addresses: r.addresses, savedId: r.savedId } : { success: false, error: r.error };
   } catch (e) {
     console.error("[saveAddressAction]", e);
     return { success: false, error: "Gagal menyimpan alamat." };

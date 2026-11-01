@@ -172,6 +172,8 @@ export default async function PublicInvoicePage({ params }: Props) {
     createdAt:        inv.createdAt.toISOString(),
     shippingCityName: inv.shippingCityName ?? null,
     shippingAddress:  inv.shippingAddress ?? null,
+    shippingRecipientName:  inv.shippingRecipientName ?? null,
+    shippingRecipientPhone: inv.shippingRecipientPhone ?? null,
     submittedProofUrl,
     rejectedPaymentNote: rejectedPayment?.rejectionNote ?? null,
     items: items.map((it) => ({

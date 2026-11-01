@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { db, members, createTenantDb } from "@jalajogja/db";
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { ShoppingBag } from "lucide-react";
 import { MitraPesananClient, type MitraOrder } from "./pesanan-client";
 
@@ -63,7 +63,7 @@ export default async function MitraPesananPage({ params }: { params: Params }) {
     .select({
       id:               schema.invoices.id,
       invoiceNumber:    schema.invoices.invoiceNumber,
-      customerName:     schema.invoices.customerName,
+      customerName:     sql<string>`COALESCE(${schema.invoices.shippingRecipientName}, ${schema.invoices.customerName})`, // penerima paket ?? pembeli
       shippingCityName: schema.invoices.shippingCityName,
       shippingAddress:  schema.invoices.shippingAddress,
       status:           schema.invoices.status,
