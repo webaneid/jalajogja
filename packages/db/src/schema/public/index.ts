@@ -57,3 +57,4 @@ export * from "./import-batches";
 export * from "./content-import";
 export * from "./pj-verification";
 export * from "./ro-destinations";
+export * from "./address-book";

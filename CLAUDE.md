@@ -239,7 +239,7 @@ pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
 | Koneksi Instagram otomatis (Graph API) | `docs/arsitektur-instagram-embed.md` |
 | Integrasi KBLI (klasifikasi usaha) — perencanaan, belum dieksekusi | `docs/arsitektur-integrasi-kbli.md` |
 | Mobile shell (header global, sticky bar, aturan spacer) | `docs/arsitektur-mobile-shell.md` |
-| Alamat: buku alamat per orang + data tujuan RajaOngkir lokal (read-through, anggaran 100 panggilan/hari) — P1 kode selesai 2026-11-02 | `docs/arsitektur-alamat.md` |
+| Alamat: buku alamat per orang + data tujuan RajaOngkir lokal (read-through, anggaran 100 panggilan/hari) + cache ongkir DB — P1, P5, P2 kode selesai 2026-11-02 (belum push/deploy; migration 0084–0086; P3 checkout, P4 asal-kirim tenant belum) | `docs/arsitektur-alamat.md` |
 | Notifikasi Email (paritas WA, fallback SMTP platform, preset Gmail/Resend, From per domain) — SELESAI + deployed 2026-10-30 | `docs/arsitektur-notifikasi-email.md` |
 | Notifikasi PJ modul (digest + verifikasi bendahara via tautan) — keuangan+keanggotaan+toko+donasi+event SELESAI KODE 2026-10-10, belum deploy | `docs/arsitektur-notifikasi-pengurus.md` |
 | Produsen produk (admin-only: internal/anggota/custom) — deployed 2026-10-09 | `docs/arsitektur-produsen.md` |

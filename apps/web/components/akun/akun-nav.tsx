@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, User, Receipt, ClipboardList,
-  BookOpen, Building2, Briefcase, Store, CalendarDays, LogOut,
+  BookOpen, Building2, Briefcase, Store, CalendarDays, MapPin, LogOut,
 } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 import type { EkosistemModule, EkosistemModulesConfig, EkosistemModuleLabels } from "@/lib/ekosistem-modules";
@@ -31,6 +31,7 @@ export const MEMBER_NAV_ITEMS: NavItem[] = [
   { href: "/transaksi", label: "Transaksi",   icon: Receipt,         memberOnly: false },
   { href: "/event",     label: "Event",       icon: CalendarDays,    memberOnly: false },
   { href: "/lengkapi",  label: "Edit Profil", icon: ClipboardList,   memberOnly: false },
+  { href: "/alamat",    label: "Alamat",      icon: MapPin,          memberOnly: false },
   { href: "/pesantren",   label: "Pesantren",   icon: BookOpen,   memberOnly: false, moduleKey: "pesantren" },
   { href: "/usaha",       label: "Usaha",       icon: Building2,  memberOnly: false, moduleKey: "usaha" },
   { href: "/profesional", label: "Profesional", icon: Briefcase,  memberOnly: false, moduleKey: "profesional" },
@@ -59,6 +60,7 @@ export const PUBLIC_NAV_ITEMS: NavItem[] = [
   { href: "/transaksi", label: "Transaksi",   icon: Receipt,         memberOnly: false },
   { href: "/event",     label: "Event",       icon: CalendarDays,    memberOnly: false },
   { href: "/data",      label: "Edit Profil", icon: ClipboardList,   memberOnly: false },
+  { href: "/alamat",    label: "Alamat",      icon: MapPin,          memberOnly: false },
 ];
 
 type Props = {

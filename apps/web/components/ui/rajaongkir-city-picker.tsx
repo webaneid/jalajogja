@@ -38,6 +38,8 @@ export function RajaOngkirCityPicker({ value, valueLabel, onChange, placeholder,
   const [citySearch,  setCitySearch]  = useState(valueLabel);
   const [cityResults, setCityResults] = useState<RajaOngkirCity[]>([]);
   const [cityOpen,    setCityOpen]    = useState(false);
+  // Pesan dari pencarian lokal-dulu (mis. pencarian baru dibatasi hari ini / hasil belum lengkap)
+  const [notice,      setNotice]      = useState<string | null>(null);
   // Cegah fetch saat mount kalau sudah ada nilai awal (dari DB) — fetch hanya dipicu user mengetik.
   const userTypedRef = useRef(false);
 
@@ -46,9 +48,10 @@ export function RajaOngkirCityPicker({ value, valueLabel, onChange, placeholder,
     if (citySearch.length < 2) { setCityResults([]); return; }
     const timer = setTimeout(async () => {
       const res  = await fetch(`/api/ongkir/cities?q=${encodeURIComponent(citySearch)}&limit=15`);
-      const data = await res.json() as { cities: RajaOngkirCity[] };
+      const data = await res.json() as { cities: RajaOngkirCity[]; notice?: string };
       const cities = data.cities ?? [];
       setCityResults(cities);
+      setNotice(data.notice ?? null);
       if (cities.length > 0) setCityOpen(true);
     }, 300);
     return () => clearTimeout(timer);
@@ -88,6 +91,7 @@ export function RajaOngkirCityPicker({ value, valueLabel, onChange, placeholder,
           </ul>
         )}
       </div>
+      {notice && <p className="text-xs text-amber-600">{notice}</p>}
       {value && <p className="text-xs text-green-600">✓ {valueLabel} (ID: {value})</p>}
       {helperText && <p className="text-xs text-muted-foreground">{helperText}</p>}
     </div>
