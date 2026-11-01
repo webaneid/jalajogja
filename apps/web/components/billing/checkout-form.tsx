@@ -2,6 +2,7 @@
 
 import { resolveCouriersForGroup } from "@/lib/producer-couriers";
 import { AddressPicker } from "@/components/address/address-picker";
+import { publicCityLabel } from "@/lib/city-label";
 import type { AddressDTO } from "@/lib/address-book";
 import { useState, useEffect, useTransition, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -343,6 +344,16 @@ export function CheckoutForm({
   // pilih Ambil Sendiri, Step 2 tidak perlu tanya kota tujuan sama sekali.
   const anyCourierGroup     = sellerGroups.some(g => getChoice(g.key).deliveryMethod === "courier");
 
+  // Beberapa paket (multi penjual/produsen): pembeli harus tahu PRODUK APA dikirim dari MANA. Judul paket = "<produk> dikirim dari
+  // <kota - provinsi>" (label wilayah AMAN — tanpa kelurahan/kode pos). Satu paket saja: judul lama (nama penjual) tak berubah.
+  const isMultiPackage = sellerGroups.length > 1;
+  const packageProducts = (g: SellerGroup) => {
+    const names = [...new Set(g.items.map((it) => it.name))];
+    return names.length > 3 ? `${names.slice(0, 3).join(", ")} +${names.length - 3} produk lain` : names.join(", ");
+  };
+  const packageOrigin = (g: SellerGroup) => publicCityLabel(g.originCityName).replace(/,\s*/g, " - ");
+  const packageTitle = (g: SellerGroup) => (isMultiPackage ? `${packageProducts(g)} dikirim dari ${packageOrigin(g)}` : g.sellerName);
+
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   function doCheckout(shippingData?: CheckoutShippingData) {
@@ -658,7 +669,7 @@ export function CheckoutForm({
                   const choice = getChoice(group.key);
                   return (
                     <div key={group.key} className="space-y-1.5">
-                      <p className="text-xs font-medium text-muted-foreground">{group.sellerName}</p>
+                      <p className="text-xs font-medium text-muted-foreground">{packageTitle(group)}</p>
                       <div className="grid grid-cols-2 gap-2">
                         <label className={`flex items-center gap-2 p-2.5 rounded-md border cursor-pointer text-sm ${
                           choice.deliveryMethod === "courier" ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
@@ -803,8 +814,8 @@ export function CheckoutForm({
                 return (
                   <div key={g.key} className="space-y-1">
                     <p>
-                      • {g.sellerName} — {g.originCityName} · {(g.totalWeightGram / 1000).toFixed(g.totalWeightGram >= 1000 ? 1 : 0)}
-                      {g.totalWeightGram >= 1000 ? " kg" : ` g`} · {g.items.length} produk
+                      • {isMultiPackage ? `${packageProducts(g)} — dari ${packageOrigin(g)}` : `${g.sellerName} — ${g.originCityName}`} · {(g.totalWeightGram / 1000).toFixed(g.totalWeightGram >= 1000 ? 1 : 0)}
+                      {g.totalWeightGram >= 1000 ? " kg" : ` g`}{isMultiPackage ? "" : ` · ${g.items.length} produk`}
                     </p>
                     {(hasAllFree || regionsMatch) && (
                       <div className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[10px] font-semibold text-primary-foreground">
@@ -830,7 +841,7 @@ export function CheckoutForm({
               if (choice.deliveryMethod === "pickup") {
                 return (
                   <div key={group.key} className="rounded-lg border border-border p-5 space-y-2">
-                    <p className="font-semibold text-sm">Ambil Sendiri — {group.sellerName}</p>
+                    <p className="font-semibold text-sm">Ambil Sendiri — {isMultiPackage ? packageTitle(group) : group.sellerName}</p>
                     <div className="rounded-md bg-muted/50 p-3 text-sm space-y-1">
                       <p className="font-medium">{group.pickupLocationName}</p>
                       <p className="text-xs text-muted-foreground">{group.pickupAddress}</p>
@@ -849,9 +860,9 @@ export function CheckoutForm({
               return (
                 <div key={group.key} className="rounded-lg border border-border p-5 space-y-3">
                   <div>
-                    <p className="font-semibold text-sm">Pengiriman dari {group.sellerName}</p>
+                    <p className="font-semibold text-sm">{isMultiPackage ? packageTitle(group) : `Pengiriman dari ${group.sellerName}`}</p>
                     <p className="text-xs text-muted-foreground">
-                      {group.originCityName} → {destCity?.name} · {group.totalWeightGram}g
+                      {isMultiPackage ? packageOrigin(group) : group.originCityName} → {destCity?.name} · {group.totalWeightGram}g
                     </p>
                   </div>
 
@@ -1095,7 +1106,7 @@ export function CheckoutForm({
           if (choice.deliveryMethod === "pickup") {
             return (
               <div key={g.key} className="flex justify-between text-sm">
-                <span className="text-muted-foreground truncate">Ambil Sendiri — {g.sellerName}</span>
+                <span className="text-muted-foreground truncate">Ambil Sendiri — {isMultiPackage ? packageProducts(g) : g.sellerName}</span>
                 <span className="tabular-nums shrink-0">Gratis</span>
               </div>
             );
@@ -1104,7 +1115,7 @@ export function CheckoutForm({
           return (
             <div key={g.key} className="flex justify-between text-sm">
               <span className="text-muted-foreground truncate">
-                Ongkir {g.sellerName}{choice.paymentMethod === "cod" ? " (COD)" : ""}
+                Ongkir {isMultiPackage ? `${packageProducts(g)} (dari ${packageOrigin(g)})` : g.sellerName}{choice.paymentMethod === "cod" ? " (COD)" : ""}
               </span>
               <span className="tabular-nums shrink-0">{sel ? formatRp(sel.cost) : "—"}</span>
             </div>
