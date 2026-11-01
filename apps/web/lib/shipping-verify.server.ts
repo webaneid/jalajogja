@@ -112,7 +112,7 @@ export async function verifyShippingLines(a: {
   try {
     const results = await Promise.all(courierPairs.map(async ({ line, group }) => {
       if (!line.courier || !line.service) throw new RajaOngkirError(MISMATCH, 400);
-      const options = await fetchDomesticCost({ origin: group.originCityId, destination: dest.id, weight: group.totalWeightGram, courier: line.courier });
+      const options = await fetchDomesticCost({ origin: group.originCityId, destination: dest.id, weight: group.totalWeightGram, courier: line.courier, budget: "costverify" });
       const opt = options.find((o) => o.code === line.courier && o.service === line.service);
       if (!opt) throw new RajaOngkirError("Layanan pengiriman yang dipilih tidak tersedia. Pilih ulang kurir.", 400);
       const { cost, discount } = applyFreeShipping(opt.cost, freeShippingRatio(group, dest));

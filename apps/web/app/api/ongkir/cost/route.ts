@@ -11,7 +11,7 @@ import { db, tenants, tenantAddonInstallations, addons } from "@jalajogja/db";
 import { eq, and } from "drizzle-orm";
 import { fetchDomesticCost, RajaOngkirError } from "@/lib/rajaongkir.server";
 import { RAJAONGKIR_COURIER_CODES } from "@/lib/rajaongkir-couriers";
-import { rateLimitGuard } from "@/lib/rate-limit";
+import { rateLimitGuard, getClientIp, checkRateLimit } from "@/lib/rate-limit";
 
 export type { FlatCourierOption } from "@/lib/rajaongkir.server";
 
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   // Validasi tipe & rentang — nilai ini diteruskan ke upstream berkuota (key platform bersama)
   const isId = (n: unknown) => Number.isInteger(n) && (n as number) > 0 && (n as number) < 2_000_000_000;
   const codes = typeof courier === "string" ? courier.split(":") : [];
-  if (!isId(origin) || !isId(destination) || !Number.isInteger(weight) || weight < 1 || weight > 100_000_000
+  if (!isId(origin) || !isId(destination) || !Number.isInteger(weight) || weight < 1 || weight > 200_000
       || codes.length < 1 || codes.length > RAJAONGKIR_COURIER_CODES.length || !codes.every((c) => RAJAONGKIR_COURIER_CODES.includes(c))) {
     return NextResponse.json({ error: "Parameter tidak valid" }, { status: 400 });
   }
@@ -72,7 +72,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Add-on RajaOngkir tidak aktif" }, { status: 403 });
     }
 
-    const costs = await fetchDomesticCost({ origin, destination, weight, courier });
+    // Jalur yang benar-benar memanggil API berkuota (cache miss) dibatasi jauh lebih ketat per IP daripada cache hit
+    const ip = getClientIp(req);
+    const costs = await fetchDomesticCost({
+      origin, destination, weight, courier,
+      gate: () => checkRateLimit(`${ip}:ongkir-cost-api`, 4, 60_000).allowed && checkRateLimit(`${ip}:ongkir-cost-api-h`, 20, 3_600_000).allowed,
+    });
     return NextResponse.json({ costs });
   } catch (err) {
     if (err instanceof RajaOngkirError) return NextResponse.json({ error: err.message }, { status: err.status });

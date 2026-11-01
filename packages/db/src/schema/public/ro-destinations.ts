@@ -1,4 +1,4 @@
-import { pgTable, integer, text, boolean, timestamp, primaryKey, index } from "drizzle-orm/pg-core";
+import { pgTable, integer, text, boolean, timestamp, jsonb, primaryKey, index } from "drizzle-orm/pg-core";
 
 // Salinan lokal data tujuan RajaOngkir (Komerce) — PUBLIK, dibagi semua tenant (seperti ref_*). Terisi HANYA dari permintaan
 // pengunjung (read-through), TIDAK ada crawl massal (kuota gratis 100/hari). Doc: docs/arsitektur-alamat.md § 11.
@@ -32,3 +32,17 @@ export const roApiUsage = pgTable("ro_api_usage", {
 }));
 
 export type RoDestination = typeof roDestinations.$inferSelect;
+
+// Cache tarif ongkir — PUBLIK, dibagi semua tenant. Satu baris per (asal, tujuan, berat gram persis, SATU kode kurir).
+// payload = array opsi layanan dari API untuk kurir itu ([] = kurir tidak melayani rute ini). Doc: docs/arsitektur-alamat.md § 14.
+export const roCostCache = pgTable("ro_cost_cache", {
+  originId:      integer("origin_id").notNull(),
+  destinationId: integer("destination_id").notNull(),
+  weight:        integer("weight").notNull(),
+  courier:       text("courier").notNull(),
+  payload:       jsonb("payload").$type<unknown[]>().notNull(),
+  fetchedAt:     timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.originId, t.destinationId, t.weight, t.courier] }),
+  fetchedIdx: index("ro_cost_cache_fetched_idx").on(t.fetchedAt),
+}));

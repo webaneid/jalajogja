@@ -4,8 +4,12 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@jalajogja/db";
 
-/** Pencarian publik ≤ 20, pemulihan tujuan saat checkout ≤ 10 (terpisah supaya tak bisa dihabiskan pencarian publik), ongkir ≤ 60, sisanya (10) cadangan. */
-export const RO_DAILY_LIMITS = { search: 20, resolve: 10, cost: 60 } as const;
+/**
+ * Pencarian publik ≤ 20, pemulihan tujuan saat checkout ≤ 10 (terpisah supaya tak bisa dihabiskan pencarian publik),
+ * ongkir untuk form publik (`cost`) ≤ 35, ongkir untuk verifikasi checkout (`costverify`) ≤ 25 — terpisah supaya berat/tujuan acak
+ * lewat endpoint publik tak bisa menghabiskan jatah pembeli yang sudah sampai tahap bayar — sisanya (10) cadangan.
+ */
+export const RO_DAILY_LIMITS = { search: 20, resolve: 10, cost: 35, costverify: 25 } as const;
 export type RoKind = keyof typeof RO_DAILY_LIMITS;
 
 /** Tanggal hari ini di WIB ('YYYY-MM-DD'). */
