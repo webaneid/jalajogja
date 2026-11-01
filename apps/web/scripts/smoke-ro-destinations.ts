@@ -18,13 +18,15 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
   const q = decodeURIComponent(new URL(url).searchParams.get("search") ?? "").toLowerCase();
   let rows: ReturnType<typeof mk>[] = [];
   if (q === "bener") rows = [mk(31397, "BENER"), mk(31398, "BENER UTARA"), mk(31399, "BENERAN")];
-  else if (q === "bener tegalrejo") rows = [mk(31397, "BENER")];
-  else if (q === "jakarta") rows = Array.from({ length: 30 }, (_, i) => mk(40000 + i, `JAKARTA${i}`)); // terpotong
+  else if (q === "kebon") rows = [{ ...mk(50001, "KEBON JERUK"), label: "KEBON JERUK, KEBON JERUK, JAKARTA BARAT, DKI JAKARTA, 11530", city_name: "JAKARTA BARAT" }];
+  else if (q === "tegalrejo") rows = [mk(31400, "TEGALREJO"), mk(31397, "BENER"), mk(31398, "KARANGWARU"), mk(31399, "KRICAK")];
+  else if (q === "karangwaru") rows = [mk(31398, "KARANGWARU")];
+  else if (q === "jakarta") rows = Array.from({ length: 250 }, (_, i) => mk(40000 + i, `JAKARTA${i}`)); // terpotong
   else rows = [];
   return new Response(JSON.stringify({ meta: { code: rows.length ? 200 : 404 }, data: rows.length ? rows : null }), { status: 200 });
 }) as typeof fetch;
 
-const { searchDestinationsLocalFirst, resolveDestination } = await import("../lib/ro-destinations.server");
+const { searchDestinationsLocalFirst, resolveDestination, SEARCH_PAGE } = await import("../lib/ro-destinations.server");
 const { RO_DAILY_LIMITS } = await import("../lib/ro-budget.server");
 
 let fails = 0;
@@ -39,9 +41,15 @@ check("2. query sama → lokal, tanpa API", apiCalls === 1 && r.source === "loca
 r = await searchDestinationsLocalFirst("benera", 15);
 check("3. perpanjangan satu kata dari induk tak terpotong → lokal", apiCalls === 1 && r.source === "local" && r.cities.map((c) => c.id).join() === "31399", `(calls=${apiCalls}, ids=${r.cities.map((c) => c.id)})`);
 r = await searchDestinationsLocalFirst("bener tegalrejo", 15);
-check("4. query multi-kata baru → API", apiCalls === 2 && r.source === "api", `(calls=${apiCalls})`);
+check("4a. multi-kata: salah satu kata ('bener') lengkap → lokal, saring DAN", apiCalls === 1 && r.source === "local" && r.cities.map((c) => c.id).sort().join() === "31397,31398,31399", `(calls=${apiCalls}, ids=${r.cities.map((c) => c.id)})`); // ketiga baris "bener*" memang berkecamatan TEGALREJO
+r = await searchDestinationsLocalFirst("kricak karangwaru", 15);
+check("4b. multi-kata tanpa kata tercakup → API untuk SATU kata (yang paling sedikit cocok lokal; seri → urutan ketik), berhenti setelah ada yang lengkap", apiCalls === 2 && r.cities.length === 0, `(calls=${apiCalls})`);
+const lg = Array.from(await db.execute(sql`SELECT query_norm FROM public.ro_search_log WHERE query_norm IN ('kricak','karangwaru','kricak karangwaru') ORDER BY 1`)).map((x) => (x as { query_norm: string }).query_norm).join("|");
+check("4c. jangkar & query asli sama-sama dicatat", lg === "kricak|kricak karangwaru", `(${lg})`);
+r = await searchDestinationsLocalFirst("kricak karangwaru", 15);
+check("4d. ulang query multi-kata → lokal", apiCalls === 2 && r.source === "local", `(calls=${apiCalls})`);
 r = await searchDestinationsLocalFirst("jakarta", 15);
-check("5a. hasil terpotong (30) → disimpan, kembali 15", apiCalls === 3 && r.cities.length === 15, `(calls=${apiCalls})`);
+check("5a. hasil terpotong (250) → disimpan, kembali 15", apiCalls === 3 && r.cities.length === 15, `(calls=${apiCalls})`);
 r = await searchDestinationsLocalFirst("jakartax", 15);
 check("5b. perpanjangan dari induk TERPOTONG → tetap API", apiCalls === 4 && r.source === "api" && r.cities.length === 0, `(calls=${apiCalls})`);
 const d = await resolveDestination(31397, "BENER, TEGALREJO, YOGYAKARTA, DI YOGYAKARTA, 55243");
@@ -80,7 +88,7 @@ const g = await searchDestinationsLocalFirst("surabaya", 5, { gate: () => false 
 check("11. gerbang per-IP menolak → tanpa API, degraded", apiCalls === 0 && g.source === "local-degraded");
 
 const short = await searchDestinationsLocalFirst("ab", 5);
-check("12. query 2 huruf tak memicu API", apiCalls === 0 && short.source === "local-degraded");
+check("12. query 2 huruf tak memicu API & tanpa notice 'dibatasi'", apiCalls === 0 && short.source === "local" && !short.notice);
 
 apiCalls = 0;
 const [p1, p2, p3] = await Promise.all([1, 2, 3].map(() => searchDestinationsLocalFirst("bener", 5)));
@@ -92,7 +100,21 @@ const { tryConsumeApiBudget } = await import("../lib/ro-budget.server");
 for (let i = 0; i < RO_DAILY_LIMITS.search; i++) await tryConsumeApiBudget("search");
 apiCalls = 0;
 const rv = await resolveDestination(31397, "BENER, TEGALREJO, YOGYAKARTA, DI YOGYAKARTA, 55243");
-check("14. pencarian publik habis, resolve masih punya jatah sendiri", rv?.id === 31397 && apiCalls === 1, `(calls=${apiCalls})`);
+check("14. pencarian publik habis, resolve masih punya jatah sendiri (kode pos lalu kelurahan)", rv?.id === 31397 && apiCalls === 2, `(calls=${apiCalls})`);
+
+// Audit ronde 3: jangkar terpotong → naik ke kata berikutnya; kata terpotong tak diambil ulang tiap ketukan
+await db.execute(sql`TRUNCATE public.ro_destinations, public.ro_search_log, public.ro_api_usage`);
+apiCalls = 0;
+await searchDestinationsLocalFirst("jakarta", 5);                       // terpotong (250)
+const before = apiCalls;
+const k1 = await searchDestinationsLocalFirst("jakarta pu", 5);          // 'pu' terlalu pendek, 'jakarta' sudah diambil
+const k2 = await searchDestinationsLocalFirst("jakarta pus", 5);         // 'pus' baru → hanya 'pus' yang boleh diambil
+check("15a. kata terpotong yang sudah diambil TIDAK diambil ulang tiap ketukan", before === 1 && k1.source === "local" && !!k1.notice && apiCalls === 2, `(calls=${apiCalls}, src=${k1.source})`);
+apiCalls = 0;
+const e = await searchDestinationsLocalFirst("kebon jakarta", 5);        // 'jakarta' sudah terpotong → ambil 'kebon' → lengkap
+check("15b. jangkar lain yang LENGKAP membuat hasil eksak (kebon + jakarta)", apiCalls === 1 && e.source === "api" && !e.notice && e.cities.map((c) => c.id).join() === "50001", `(calls=${apiCalls}, ids=${e.cities.map((c) => c.id)})`);
+const again = await searchDestinationsLocalFirst("kebon jakarta", 5);
+check("15c. ulang → lokal", apiCalls === 1 && again.source === "local");
 
 console.log(fails === 0 ? "\nSEMUA LULUS" : `\n${fails} GAGAL`);
 process.exit(fails === 0 ? 0 : 1);
