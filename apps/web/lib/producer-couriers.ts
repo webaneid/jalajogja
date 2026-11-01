@@ -19,8 +19,8 @@ export function resolveCouriersForGroup(
 }
 
 /**
- * Validasi server: kurir terpilih sebuah baris pengiriman harus ada di daftar pilihan produsennya (bila produsen mengatur).
- * Baris tanpa produsen / produsen yang belum mengatur → tidak dibatasi di sini (perilaku lama). Mengembalikan pesan error atau null.
+ * Validasi server: kurir terpilih sebuah baris pengiriman harus ada di daftar yang berlaku untuknya — pilihan produsen bila
+ * produsen mengatur, selain itu daftar kurir admin tenant (add-on RajaOngkir). Mengembalikan pesan error atau null.
  */
 export function validateLineCouriers(
   lines: { deliveryMethod: "courier" | "pickup"; courier?: string | null }[],
@@ -28,12 +28,14 @@ export function validateLineCouriers(
   producerCouriers: Map<string, string[]>,
   /** Ambil-sendiri penjual tenant aktif? Server memperlakukan "pickup" dari klien sebagai kurir bila tidak aktif — jadi tidak boleh dilewati. */
   tenantPickupEnabled: boolean,
+  /** Daftar kurir admin (add-on RajaOngkir config.couriers); kosong = tidak ada kurir yang sah */
+  tenantCouriers: string[],
 ): string | null {
   for (const [i, line] of lines.entries()) {
     if (line.deliveryMethod === "pickup" && tenantPickupEnabled) continue; // benar-benar ambil sendiri (identik logika aksi)
     const pid = producerIds[i];
-    const allowed = pid ? producerCouriers.get(pid) : undefined;
-    if (allowed && (!line.courier || !allowed.includes(line.courier))) {
+    const allowed = (pid ? producerCouriers.get(pid) : undefined) ?? tenantCouriers;
+    if ((!line.courier || !allowed.includes(line.courier))) {
       return "Kurir yang dipilih tidak tersedia untuk pengirim ini. Muat ulang halaman checkout lalu coba lagi.";
     }
   }

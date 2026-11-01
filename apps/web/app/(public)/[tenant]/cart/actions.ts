@@ -1,7 +1,7 @@
 "use server";
 
 import { validateLineCouriers } from "@/lib/producer-couriers";
-import { loadProducerCouriers } from "@/lib/producer-couriers.server";
+import { loadProducerCouriers, loadTenantCouriers } from "@/lib/producer-couriers.server";
 import { cookies, headers } from "next/headers";
 import { checkRateLimit, getClientIpFromHeaders } from "@/lib/rate-limit";
 import { isWaOtpAvailable, isEmailOtpSendable } from "@/lib/checkout-otp-channel.server";
@@ -842,6 +842,7 @@ export async function checkoutAction(
         shipping?.lines ?? [], lineProducers.producerIds,
         await loadProducerCouriers(tenantDb, lineProducers.producerIds),
         tokoSettings.pickupEnabled,
+        await loadTenantCouriers(slug),
       );
       if (courierErr) return { error: courierErr };
 
