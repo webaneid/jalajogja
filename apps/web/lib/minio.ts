@@ -106,7 +106,7 @@ export function resolveMediaUrl(
 }
 
 // Cek apakah bucket ada, kalau belum buat baru
-import { CreateBucketCommand, HeadBucketCommand, PutBucketPolicyCommand } from "@aws-sdk/client-s3";
+import { CreateBucketCommand, HeadBucketCommand, PutBucketPolicyCommand, GetBucketPolicyCommand } from "@aws-sdk/client-s3";
 
 export async function ensureBucket(slug: string): Promise<void> {
   const bucket = tenantBucket(slug);
@@ -128,6 +128,55 @@ export async function ensureBucket(slug: string): Promise<void> {
     });
     await s3.send(new PutBucketPolicyCommand({ Bucket: bucket, Policy: policy }));
   }
+}
+
+// ── Bucket PRIVAT per tenant ─────────────────────────────────────────────────────────────────────
+// Bucket publik `tenant-{slug}` dibaca siapa pun yang tahu URL-nya (kebijakan s3:GetObject untuk "*"). Berkas pengajuan produsen
+// (foto contoh, dokumen legalitas, PDF dari pihak tak tepercaya) TIDAK boleh begitu: disimpan di `private-{slug}`
+// TANPA kebijakan publik dan hanya disajikan oleh route berotorisasi (app/api/produsen/pengajuan/berkas).
+// Doc: docs/arsitektur-pengajuan-produsen.md § 13.
+// Prefiks `private-` (BUKAN akhiran `-private` pada nama bucket tenant): slug tenant `foo-private` punya bucket publik
+// `tenant-foo-private`, yang akan bertabrakan dengan bucket privat tenant `foo` bila memakai pola `tenant-{slug}-private`.
+export function privateBucket(slug: string) {
+  return `private-${slug}`;
+}
+
+export async function ensurePrivateBucket(slug: string): Promise<void> {
+  const bucket = privateBucket(slug);
+  let exists = true;
+  try {
+    await s3.send(new HeadBucketCommand({ Bucket: bucket }));
+  } catch {
+    exists = false;
+  }
+  if (!exists) {
+    await s3.send(new CreateBucketCommand({ Bucket: bucket })); // sengaja TANPA PutBucketPolicy → privat
+    return;
+  }
+  // Bucket sudah ada: FAIL-CLOSED bila ternyata punya kebijakan (mis. dipasang manual/salah konfigurasi). Bucket privat tidak
+  // boleh punya kebijakan akses sama sekali; "tidak ada kebijakan" muncul sebagai galat NoSuchBucketPolicy.
+  try {
+    await s3.send(new GetBucketPolicyCommand({ Bucket: bucket }));
+  } catch (e) {
+    if ((e as { name?: string }).name === "NoSuchBucketPolicy") return;
+    throw e;
+  }
+  throw new Error(`Bucket privat ${bucket} memiliki kebijakan akses — ditolak (fail-closed).`);
+}
+
+export async function uploadPrivate(slug: string, key: string, body: Buffer | Uint8Array, contentType: string): Promise<void> {
+  await s3.send(new PutObjectCommand({ Bucket: privateBucket(slug), Key: key, Body: body, ContentType: contentType }));
+}
+
+export async function getPrivate(slug: string, key: string): Promise<Buffer> {
+  const res = await s3.send(new GetObjectCommand({ Bucket: privateBucket(slug), Key: key }));
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of res.Body as AsyncIterable<Uint8Array>) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
+export async function deletePrivate(slug: string, key: string): Promise<void> {
+  await s3.send(new DeleteObjectCommand({ Bucket: privateBucket(slug), Key: key }));
 }
 
 // ── Aset platform-level (bukan per-tenant) ───────────────────────────────────

@@ -136,9 +136,9 @@ team_size        integer
 process_days     integer                   -- 1..3
 origin_regency_id integer                  -- ref_regencies
 offered_share_percent numeric(5,2)          -- tawaran bagi hasil pemohon (0<p<100)
-sample_products  jsonb  NOT NULL DEFAULT '[]'   -- [{name, estPriceUmum|null, estPriceAnggota|null, mediaId}]
-process_media    jsonb  NOT NULL DEFAULT '[]'   -- [mediaId]
-document_media   jsonb  NOT NULL DEFAULT '[]'   -- [{kind, note|null, mediaId}]  (gambar → member_media; PDF → lihat § 13)
+sample_products  jsonb  NOT NULL DEFAULT '[]'   -- [{id, name, estPriceUmum|null, estPriceAnggota|null, file:{id,key,mime}|null}]
+process_media    jsonb  NOT NULL DEFAULT '[]'   -- [{id,key,mime}]
+document_media   jsonb  NOT NULL DEFAULT '[]'   -- [{id, kind, note|null, file:{id,key,mime}}]  (gambar & PDF; bucket PRIVAT — § 13)
 links            jsonb  NOT NULL DEFAULT '[]'   -- [https url]
 submitted_at     timestamptz
 reviewed_at      timestamptz
@@ -150,7 +150,7 @@ created_at / updated_at
 UNIQUE INDEX (member_id) WHERE status IN ('draft','pending')      -- satu pengajuan terbuka per anggota
 INDEX (status), INDEX (member_id)
 ```
-`mediaId` merujuk `public.member_media.id` (purpose `producer_application`). Referensi disimpan sebagai JSON (maks ±10) — bukan tabel anak — karena selalu dibaca bersama dan dibersihkan bersama.
+Berkas dirujuk lewat `{id, key, mime}`: `key` = path di bucket MinIO PRIVAT `private-{slug}` (`pengajuan-produsen/{applicationId}/{fileId}.webp|pdf`), TIDAK pernah dikirim ke klien; klien hanya memakai `id`. **Perubahan dari rencana awal (dicatat saat P4):** semula berkas direncanakan di `public.member_media` (Media Library anggota) — dibatalkan karena bucket tenant publik-baca (siapa pun yang tahu URL bisa membaca) sedangkan dokumen legalitas bersifat sensitif, dan agar Media Library anggota tidak tercemar. Referensi disimpan sebagai JSON (maks 10) — bukan tabel anak — karena selalu dibaca bersama dan dibersihkan bersama.
 
 ### 8.2 Tambahan `tenant_{slug}.producers` (kolom nullable, aditif)
 ```
@@ -211,15 +211,18 @@ Alamat tujuan = email akun login pemohon (selalu ada) — bukan kontak yang dike
 
 ## 13. Penyimpanan, pembersihan, retensi
 
-- Unggah gambar lewat route handler `POST /api/produsen/pengajuan/upload` (bukan Server Action — batas body 1 MB), pola `resi/route.ts`: cek `Content-Length` sebelum membaca body, Origin/Referer, `getSessionMember`, `isTenantMember`, kepemilikan draf, **batas jumlah berkas per draf (≤14: 4 contoh + 3 proses + 3 dokumen + cadangan)**, Sharp (format dari isi file, buang EXIF, maks 1600 px, WebP q80, `limitInputPixels`), nama berkas `randomUUID()`, `member_media.purpose = 'producer_application'` (tersembunyi dari picker), rate limit per anggota.
-- **PDF (K13), hanya untuk dokumen legalitas:** disimpan APA ADANYA (tidak diproses ulang), maksimal 5 MB, divalidasi dari ISI (header `%PDF-` dan penutup `%%EOF`, bukan `file.type` klien), nama acak, jumlah dibatasi. Karena PDF dari pihak tak tepercaya dibuka peninjau, berkas **tidak** disajikan lewat URL publik MinIO: disajikan oleh route handler berotorisasi (izin `anggota` read atau pemilik pengajuan) dengan `Content-Type: application/pdf`, `X-Content-Type-Options: nosniff` dan `Content-Security-Policy: sandbox` (PDF dibuka di penampil bawaan peramban yang ber-sandbox; tanpa menjalankan skrip halaman kita). Risiko sisa: kerentanan penampil PDF peramban peninjau — diterima, didokumentasikan; pemindaian antivirus tidak ada di infrastruktur saat ini.
-- Perkiraan: gambar ±150–250 KB setelah WebP; PDF sampai 5 MB (batas keras 3 per pengajuan → ≤15 MB terburuk, wajar karena dihapus sesuai retensi).
-- **Cron baru** `GET /api/cron/cleanup-pengajuan-produsen` (harian, `x-cron-secret`, pola `cleanup-resi`):
-  - `draft` > 7 hari → hapus berkas (MinIO + `member_media`) dan barisnya.
-  - `rejected`/`cancelled` > **7 hari** sejak keputusan → hapus **semua** berkas (K14).
-  - `approved` > **30 hari** → hapus foto contoh & foto proses (pengurus masih memakainya saat mengunggah produk pada masa peralihan); **dokumen legalitas dipertahankan** sebagai catatan.
-  - Rujukan di JSON dikosongkan; respons melaporkan `deleted/failed/tenantsSkipped` (kegagalan tidak boleh senyap).
-- Retensi baris teks pengajuan: disimpan (kecil; jejak audit). Tidak ada penghapusan otomatis di v1.
+- **Bucket privat** `private-{slug}` (dibuat otomatis, TANPA kebijakan publik; `lib/minio.ts`: `ensurePrivateBucket/uploadPrivate/getPrivate/deletePrivate`). Terverifikasi: URL langsung ke objek dijawab 403 oleh MinIO. **Nama sengaja berprefiks `private-`**, bukan akhiran `-private` pada nama bucket tenant (temuan audit M1): slug `foo-private` punya bucket PUBLIK `tenant-foo-private` yang akan bertabrakan dengan bucket privat tenant `foo`. `ensurePrivateBucket` juga FAIL-CLOSED: bucket yang sudah ada tetapi memiliki kebijakan akses ditolak. Bucket publik `tenant-{slug}` TIDAK dipakai untuk berkas pengajuan.
+- Unggah lewat route handler `POST /api/produsen/pengajuan/upload?tenant={slug}` (bukan Server Action — batas body 1 MB). Urutan jaminan: Origin/Referer → sesi + anggota + keanggotaan tenant (`resolveApplicant`, SEBELUM body dibaca) → saklar hidup & belum jadi produsen → rate limit (30/jam/anggota) → Content-Length → validasi dari ISI berkas → simpan ke bucket privat → lampirkan ke draf dalam transaksi + kunci advisory per anggota (batas jumlah dicek DI DALAM transaksi) → bila lampiran gagal, objek baru dihapus lagi.
+- **Pemrosesan** (`lib/producer-application-file.server.ts`): gambar (JPG/PNG/WebP/HEIC) diproses ulang Sharp → WebP, EXIF dibuang, maks 1600 px, `limitInputPixels`; SVG/HTML/teks/format lain ditolak. **PDF hanya slot dokumen**, disimpan APA ADANYA: header `%PDF-` + penutup `%%EOF`, maks 5 MB. Nama berkas `randomUUID()` buatan server. Batas: 4 contoh + 3 proses + 3 dokumen = 10 berkas per draf.
+- **Penyaji berkas** `GET /api/produsen/pengajuan/berkas?tenant&app&f`: `key` dicari dari JSON pengajuan itu sendiri (tidak ada path dari klien); boleh untuk pemilik pengajuan ATAU pengurus `hasReadAccess(anggota)`; selain itu 404 (tidak membedakan "tidak ada" dari "bukan hakmu"). Header: `Content-Type` dari catatan server, `nosniff`, `X-Frame-Options: DENY`, `Cache-Control: private, no-store`, `Referrer-Policy: no-referrer`, `inline`; gambar tambahan `Content-Security-Policy: default-src 'none'; sandbox`. Peninjau (`hasReadAccess(anggota)`) hanya boleh membuka berkas pengajuan yang SUDAH dikirim (bukan `draft`).
+  **Koreksi atas rencana awal:** rencana semula menyebut `Content-Security-Policy: sandbox` untuk PDF. TIDAK dipakai — yang diketahui, CSP sandbox pada dokumen PDF top-level dapat memblokir penampil PDF bawaan peramban (belum diuji di sini). PDF dibuka inline di penampil peramban peneliti; risiko sisa (celah penampil PDF peramban) diterima dan tidak ada pemindaian antivirus di infrastruktur ini.
+- **Cron pembersihan** `GET /api/cron/cleanup-pengajuan-produsen` (harian, `x-cron-secret`, pola `cleanup-resi`) — **BELUM dibuat (P7)**:
+  - `draft` > 7 hari → hapus objek privat + baris.
+  - `rejected`/`cancelled` > **7 hari** sejak keputusan → hapus semua berkas (K14).
+  - `approved` > **30 hari** → hapus foto contoh & foto proses; **dokumen legalitas dipertahankan**.
+  - Rujukan di JSON dikosongkan; respons melaporkan `deleted/failed/tenantsSkipped`.
+  Sampai cron ada, berkas pengajuan final tetap di bucket privat (tidak tampil ke siapa pun kecuali pemilik/pengurus).
+- Retensi baris teks pengajuan: disimpan (kecil; jejak audit).
 
 ## 14. Keamanan (kategori Critical khusus proyek ini diberi tanda ★)
 
@@ -312,4 +315,21 @@ Sudah dijawab user (putaran 2): izin (K10), sumber (K11), contoh produk (K12), P
   DDL tenant baru (`create-tenant-schema.ts`), migration **`0092_producer_applications.sql`** (idempotent, diuji dua kali jalan di DB lokal).
   Uji data nyata (transaksi di-rollback): satu pengajuan terbuka per anggota (draft/pending kedua ditolak; sesudah `rejected` boleh baris baru), CHECK persentase (0 dan 100 ditolak, 7,5 diterima), status/process_days di luar rentang ditolak, nama kolom Drizzle cocok dengan DB.
   Tidak mengubah perilaku apa pun (belum ada kode yang membaca tabel). Deploy: jalankan **0091 lalu 0092** di VPS sebelum kode P4+.
-- P4–P7 belum dimulai.
+- **P4 SELESAI KODE (2026-11-03; type-check + build bersih; audit `security-auditor` selesai & temuan diperbaiki; belum di-push/deploy):**
+  `lib/producer-application.ts` (batas + `parseDraftInput(unknown)` + `validateForSubmit` + `DraftView`), `lib/producer-application.server.ts` (`resolveApplicant`, draf/berkas/kirim/batal/buang),
+  `lib/producer-application-file.server.ts`, route unggah + penyaji berkas, `akun/produsen/{actions.ts,page.tsx,producer-application-client.tsx}`, kartu "Jadi Produsen" di beranda `/akun`
+  (hanya bila saklar hidup & bukan produsen), bucket privat di `lib/minio.ts`.
+  **Audit (0 Critical, 0 High, 2 Medium, 5 Low; tanpa celah lintas-tenant/IDOR) — semua yang menyangkut P4 sudah diperbaiki:**
+  M1 nama bucket privat bertabrakan dengan bucket publik tenant bersluk `*-private` → `private-{slug}` + fail-closed bila bucket punya kebijakan;
+  L contoh produk digabung per POSISI (autosave basi bisa menghapus foto baru) → kini per ID server, contoh yang tak ada di kiriman klien DIPERTAHANKAN, unggah memakai `sampleId`;
+  L payload Server Action aneh melempar TypeError → `parseDraftInput(unknown)` menyaring tipe, angka ketat (tanpa `0x10`/`1e1`), seluruh aksi simpan dalam try;
+  L Sharp berjalan sebelum cek status draf → draf/status dicek lebih dulu, `MAX_PIXELS` 25→16 MP, batas konkurensi global 2 (sisanya 503 "sibuk");
+  L cache berkas sensitif → `private, no-store`; peninjau tak boleh membaca draf; gambar diberi CSP; tautan berkredensial (`https://user:pass@…`) ditolak.
+  **M2 (cron pembersihan belum ada) = fase P7 dan MENJADI SYARAT sebelum saklar pengajuan dihidupkan di production** (draf ditinggalkan & berkas pengajuan final belum terhapus otomatis).
+  Tidak dikerjakan: PDF disajikan inline tanpa CSP (keputusan § 13, risiko diterima); pemindaian antivirus.
+  **Uji data nyata (DB + MinIO lokal; data uji dihapus):** 50 pengecekan lib + 17 pengecekan ulang pasca-audit (nama bucket, fail-closed kebijakan publik, akses anonim 403, payload aneh, 6 pemrosesan bersamaan → 2 selesai/4 sibuk lalu normal kembali,
+  klien basi/urutan terbalik/id ngawur/hapus lewat removeDraftItem). Uji HTTP (dev server + akun uji sementara): form tampil; tanpa Origin / Origin asing = 403; tanpa sesi = 401; unggah sah 200; PDF di slot contoh 400; HTML menyamar PNG 400;
+  `sampleId` hilang 400 / ngawur 409; penyaji berkas pemilik 200 (header `no-store`, `nosniff`, CSP gambar), anonim 404, akun lain 404, traversal/tenant palsu/id lain 404; unggah saat pending 409, saat saklar mati 403; kartu beranda tak tampil saat saklar mati.
+  **Belum diuji:** tampilan/gesture formulir di browser sungguhan (terutama HP); jalur pengurus membuka berkas (`hasReadAccess(anggota)`, perlu akun pengurus); perilaku Origin/Host di belakang Nginx & custom domain.
+  **CATATAN DEPLOY P4:** (1) Nginx: `client_max_body_size 10m;` untuk `location /api/produsen/pengajuan/upload` (default 1 MB menolak unggahan sebelum sampai ke aplikasi); (2) jalankan migration 0091 lalu 0092 SEBELUM kode; (3) saklar biarkan MATI di production sampai P7 (cron) selesai; (4) bucket `private-{slug}` dibuat otomatis saat unggahan pertama — pastikan kredensial MinIO aplikasi boleh membuat bucket.
+- P5–P7 belum dimulai.
