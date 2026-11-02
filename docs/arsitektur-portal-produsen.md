@@ -140,7 +140,7 @@ Query tetap memakai `select` kolom eksplisit dengan syarat `producer_id = <produ
 | # | Keputusan |
 |---|---|
 | D1 | Produsen = **status** pada akun anggota (tabel `public.producer_logins`), bukan role pengurus. Pintu terpisah ke dashboard dengan satu menu: Produk |
-| D2 | Hanya anggota berstatus produsen; terikat **satu tenant saja** (`UNIQUE(user_id)`). Produsen custom belum |
+| D2 | Hanya anggota berstatus produsen; terikat **satu tenant saja** (`UNIQUE(user_id)`). Produsen custom belum — **bagian "satu tenant saja" DIGANTIKAN 2026-11-03** (user: produsen di tenant A boleh juga jadi produsen di tenant B); lihat `docs/arsitektur-pengajuan-produsen.md` § 9. "Hanya anggota" dan "custom belum" tetap berlaku |
 | D3 | Semua data produknya sendiri terbuka, tetap baca-saja untuk sementara |
 | D4 | Rute `/app/{slug}/portal-produsen/produk` (grup rute `(producer)` terpisah dari `(dashboard)`) |
 | D5 | Keluar keanggotaan → data tetap, akses hilang. Produsen dinonaktifkan → portal tertutup **dan** produknya tidak bisa dipesan |

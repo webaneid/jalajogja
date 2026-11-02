@@ -244,6 +244,7 @@ pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
 | Notifikasi PJ modul (digest + verifikasi bendahara via tautan) — keuangan+keanggotaan+toko+donasi+event SELESAI KODE 2026-10-10, belum deploy | `docs/arsitektur-notifikasi-pengurus.md` |
 | Produsen produk (admin-only: internal/anggota/custom) — deployed 2026-10-09 | `docs/arsitektur-produsen.md` |
 | Portal Produsen + Profil/Gudang + Cetak Label + Buat Batch masal + Pengiriman per Produsen (F1–F5) + **Syarat & Ketentuan Produsen + TTD digital (§ 28, kode SELESAI 2026-11-03)** — baca "PETA STATUS" di bagian atas dokumen (deploy: sampai § 24 F3, 2026-11-01; uji browser F2–F3 belum); definisi fitur terkunci § 18 | `docs/arsitektur-portal-produsen.md` |
+| Pengajuan Produsen (anggota mengajukan, kurasi pengurus, batas produk, produsen multi-tenant) — **RENCANA 2026-11-03, belum ada kode; asumsi terbuka di § 19** | `docs/arsitektur-pengajuan-produsen.md` |
 | Penulis & Editor Post (byline system) | `docs/arsitektur-penulis-post.md` |
 | Data Pesantren anggota | `docs/arsitektur-pesantren.md` |
 | Data Profesional anggota — perencanaan, belum dieksekusi | `docs/arsitektur-profesional.md` |
