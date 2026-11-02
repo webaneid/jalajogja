@@ -6,7 +6,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { db, createTenantDb, tenants } from "@jalajogja/db";
 import { getCurrentSession } from "@/lib/tenant";
-import { findProducerPortal } from "@/lib/producer-access.server";
+import { listProducerPortals } from "@/lib/producer-access.server";
 
 export type UserContext = { kind: "pengurus" | "produsen"; slug: string; name: string; href: string };
 
@@ -32,10 +32,10 @@ export async function listUserContexts(): Promise<UserContext[]> {
     }
   }))).filter((t): t is { slug: string; name: string } => !!t);
 
-  const producer = await findProducerPortal();
+  const producers = await listProducerPortals();
 
   return [
     ...pengurus.map((t): UserContext => ({ kind: "pengurus", slug: t.slug, name: t.name, href: `/app/${t.slug}/dashboard` })),
-    ...(producer ? [{ kind: "produsen", slug: producer.slug, name: producer.name, href: `/app/${producer.slug}/portal-produsen` } as UserContext] : []),
+    ...producers.map((p): UserContext => ({ kind: "produsen", slug: p.slug, name: p.name, href: `/app/${p.slug}/portal-produsen` })),
   ].sort((a, b) => a.name.localeCompare(b.name, "id") || a.kind.localeCompare(b.kind));
 }

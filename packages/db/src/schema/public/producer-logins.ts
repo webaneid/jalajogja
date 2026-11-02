@@ -7,8 +7,8 @@ import { user } from "./auth";
 // untuk akun ini tetap null sehingga seluruh rute admin yang ada otomatis menolak (fail-closed).
 // Doc: docs/arsitektur-portal-produsen.md § 3.
 //
-//  - UNIQUE(user_id): satu akun hanya bisa jadi produsen di SATU tenant. Harus di tabel public — tabel
-//    tenant terpisah per schema sehingga aturan lintas-tenant tidak bisa ditegakkan di sana.
+//  - UNIQUE(user_id, tenant_id): satu akun paling banyak satu baris per tenant, tetapi BOLEH jadi produsen di banyak tenant
+//    (keputusan user 2026-11-03, migration 0091; sebelumnya UNIQUE(user_id) = satu tenant saja). Tetap di tabel public.
 //  - UNIQUE(tenant_id, producer_id): satu produsen = satu akun (produsen anggota = satu pemilik).
 //  - producer_id merujuk tenant_{slug}.producers.id — FK lintas-schema tidak bisa dibuat; baris ini
 //    DIHAPUS oleh aplikasi saat produsen dihapus (deleteProducerAction), dan portal memeriksa
@@ -21,7 +21,7 @@ export const producerLogins = pgTable("producer_logins", {
   grantedBy:  uuid("granted_by"),                 // tenant_{slug}.users.id admin pemberi akses (jejak audit)
   grantedAt:  timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
-  userUniq:     uniqueIndex("producer_logins_user_uniq").on(t.userId),
+  userTenantUniq: uniqueIndex("producer_logins_user_tenant_uniq").on(t.userId, t.tenantId),
   producerUniq: uniqueIndex("producer_logins_producer_uniq").on(t.tenantId, t.producerId),
   tenantIdx:    index("producer_logins_tenant_idx").on(t.tenantId),
 }));

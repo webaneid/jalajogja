@@ -243,8 +243,8 @@ export async function deleteProducerAction(slug: string, producerId: string): Pr
 
 // ─── Portal Produsen: beri / cabut akses login (docs/arsitektur-portal-produsen.md § 3–4, P3) ──────────
 // Produsen = STATUS pada akun anggota (public.producer_logins), bukan role pengurus. Syarat memberi akses:
-// produsen ANGGOTA & aktif, pemilik punya akun Better Auth, pemilik anggota sah tenant ini, dan akun itu belum
-// menjadi produsen di tempat lain (UNIQUE(user_id) — satu akun = satu tenant).
+// produsen ANGGOTA & aktif, pemilik punya akun Better Auth, dan pemilik anggota sah tenant ini. Satu akun BOLEH menjadi
+// produsen di banyak tenant (UNIQUE(user_id, tenant_id), migration 0091); di tenant ini paling banyak satu produsen per akun.
 export async function grantProducerLoginAction(slug: string, producerId: string): Promise<ActionResult> {
   const g = await guard(slug);
   if (!g.access) return { success: false, error: g.error ?? "Akses ditolak." };
@@ -276,14 +276,13 @@ export async function grantProducerLoginAction(slug: string, producerId: string)
     refresh(slug);
     return { success: true, data: undefined };
   } catch (err) {
-    // UNIQUE(user_id): akun ini sudah berstatus produsen (di tenant ini untuk produsen lain, atau di tenant lain).
-    // Sengaja TIDAK menyebut tenant mana — admin satu tenant tidak boleh tahu data tenant lain.
+    // 23505: UNIQUE(tenant_id, producer_id) = dua klik bersamaan untuk produsen yang SAMA; atau UNIQUE(user_id, tenant_id) =
+    // akun ini sudah menjadi produsen LAIN di tenant ini. Dibedakan dengan membaca ulang baris produsen ini.
     if (pgErrorCode(err) === "23505") {
-      // Dua sumber 23505: UNIQUE(tenant_id, producer_id) = dua klik bersamaan untuk produsen yang SAMA (bukan konflik akun).
       const [now] = await publicDb.select({ id: producerLogins.id }).from(producerLogins)
         .where(and(eq(producerLogins.tenantId, access.tenant.id), eq(producerLogins.producerId, producerId))).limit(1);
       if (now) return { success: false, error: "Produsen ini sudah punya akses login." };
-      return { success: false, error: "Akun anggota ini sudah terdaftar sebagai produsen di tempat lain, jadi tidak bisa ditambahkan di sini." };
+      return { success: false, error: "Akun anggota ini sudah terdaftar sebagai produsen lain di tenant ini." };
     }
     console.error("[grantProducerLoginAction]", err);
     return { success: false, error: "Gagal memberi akses login." };

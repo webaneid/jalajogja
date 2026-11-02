@@ -51,6 +51,7 @@ Arah jauhnya (user, 2026-11-03): produsen adalah tangga pertama; **Mitra adalah 
 | K13 | Dokumen legalitas boleh **gambar dan/atau PDF**, dengan keterangan opsional. |
 | K14 | Retensi berkas: **1 minggu** setelah keputusan ditolak/dibatalkan; **30 hari** untuk yang disetujui (pengurus masih mengunggah produknya pada masa peralihan). |
 | K15 | **Ada saklar** buka/tutup pengajuan per tenant (Pengaturan Toko). |
+| K17 | **Pemohon sendiri mengajukan persentase bagi hasil** dalam form; tawaran itu salah satu penilaian menarik-tidaknya bagi tenant. Penyetuju melihatnya berdampingan dengan harga jual contoh dan boleh menyetujui pada angka tawaran atau menyesuaikannya. |
 | K16 | Notifikasi **hanya email**; kelengkapan kanal dibahas di rapat. Penyetuju melihat lencana + digest PJ yang sudah ada. |
 
 ## 4. Temuan kode (fakta yang menentukan rancangan, dibaca 2026-11-03)
@@ -104,6 +105,7 @@ Aturan status:
 | | Deskripsi singkat usaha & produk | wajib, 20–1000 karakter |
 | | Pernyataan: "produk ini dibuat/dimiliki sendiri, bukan jual-beli ulang" | centang wajib |
 | Contoh produk | **Minimal 1, maksimal 4** slot: nama + foto + harga jual umum & harga jual anggota (perkiraan, opsional) | K12 |
+| Penawaran | **Persentase bagi hasil yang ditawarkan** ke tenant (dari harga jual) | wajib; angka 0 < p < 100 (satu desimal); menjadi **bahan penilaian kurasi** (K17) — mis. tawaran 3% kurang menarik bagi tenant |
 | Operasional | Penanggung jawab pesanan: nama + WhatsApp (`PhoneInput`, `normalizePhone`) | wajib |
 | | Jumlah orang di tim | angka 1–999 |
 | | Kesanggupan proses pesanan | pilihan 1×24 / 2×24 / 3×24 jam |
@@ -116,7 +118,7 @@ Standar UI proyek: semua dropdown Combobox, telepon `PhoneInput`, wilayah `Wilay
 
 ## 8. Model data
 
-### 8.1 `tenant_{slug}.producer_applications` (tabel baru; migration `0091`)
+### 8.1 `tenant_{slug}.producer_applications` (tabel baru; migration `0092`)
 ```
 id               uuid pk
 member_id        uuid  NOT NULL            -- FK public.members via aplikasi (lintas schema)
@@ -133,7 +135,8 @@ ops_whatsapp     text                      -- E.164
 team_size        integer
 process_days     integer                   -- 1..3
 origin_regency_id integer                  -- ref_regencies
-sample_products  jsonb  NOT NULL DEFAULT '[]'   -- [{name, estPrice|null, mediaId}]
+offered_share_percent numeric(5,2)          -- tawaran bagi hasil pemohon (0<p<100)
+sample_products  jsonb  NOT NULL DEFAULT '[]'   -- [{name, estPriceUmum|null, estPriceAnggota|null, mediaId}]
 process_media    jsonb  NOT NULL DEFAULT '[]'   -- [mediaId]
 document_media   jsonb  NOT NULL DEFAULT '[]'   -- [{kind, note|null, mediaId}]  (gambar → member_media; PDF → lihat § 13)
 links            jsonb  NOT NULL DEFAULT '[]'   -- [https url]
@@ -152,12 +155,13 @@ INDEX (status), INDEX (member_id)
 ### 8.2 Tambahan `tenant_{slug}.producers` (kolom nullable, aditif)
 ```
 brand_name     text            -- dari pengajuan (bahan awal entitas brand kelak)
+revenue_share_percent numeric(5,2) NULL  -- bagi hasil yang DISEPAKATI saat persetujuan (default = tawaran pemohon; penyetuju boleh menyesuaikan). Dipakai tahap produk/pesanan, lihat § 17
 product_limit  integer NULL    -- NULL = tanpa batas (produsen lama buatan admin); produsen hasil pengajuan = 3
 application_id uuid NULL       -- jejak asal
 ```
 Produsen lama tidak berubah perilaku (NULL = tanpa batas). Batas hanya ditegakkan pada produk yang dibuat produsen sendiri (tahap produk); produk yang dibuat admin tidak diblokir (admin yang menaikkan batas bila perlu). Aturan hitung (usulan): produk berstatus draf + aktif dihitung, diarsipkan tidak.
 
-### 8.3 `public.producer_logins` — pelonggaran (migration `0092`, schema public)
+### 8.3 `public.producer_logins` — pelonggaran (migration `0091`, schema public)
 Hapus `UNIQUE(user_id)` (`producer_logins_user_uniq`), ganti `UNIQUE(user_id, tenant_id)`. `UNIQUE(tenant_id, producer_id)` tetap. Aman diulang (`IF EXISTS`/`IF NOT EXISTS`).
 
 ### 8.4 Penyiapan tenant baru & lama
@@ -166,7 +170,7 @@ DDL ditambahkan ke `packages/db/src/helpers/create-tenant-schema.ts` (tenant bar
 ## 9. Pelonggaran "satu akun satu tenant" (K7) — dampak kode
 
 Keputusan D2 (`arsitektur-portal-produsen.md` § 9, 2026-10-31) ditandai **DIGANTIKAN 2026-11-03**. Yang berubah:
-- `producerLogins` (schema) + migration 0092 seperti § 8.3.
+- `producerLogins` (schema) + migration 0091 seperti § 8.3.
 - `grantProducerLoginAction`: hapus pesan/penanganan "tempat lain"; 23505 hanya berarti "produsen ini sudah punya akses".
 - `findProducerPortal()` → `listProducerPortals()` mengembalikan **semua** tenant tempat akun berstatus produsen yang lolos akses penuh; `listUserContexts()` memasukkan semuanya; `dashboard-redirect` otomatis (sudah mendukung banyak konteks lewat `/pilih-tujuan`).
 - Tidak berubah: `getProducerAccess*` sudah per `slug`; gerbang Syarat & Ketentuan sudah per tenant+produsen; kartu/menu Produsen di `/akun` sudah per `slug`.
@@ -182,7 +186,7 @@ Keputusan D2 (`arsitektur-portal-produsen.md` § 9, 2026-10-31) ditandai **DIGAN
 - **Setujui** — Server Action; langkah (semua dari DB, tidak ada nilai kepercayaan dari klien):
   1. `getTenantAccess` + izin penyetuju (§ 11); kunci advisory per `application_id`; muat pengajuan; status harus `pending`.
   2. **Periksa ulang**: pemohon masih `isTenantMember`; punya akun Better Auth terklaim; baris sumber masih milik pemohon & aktif; belum ada produsen untuk sumber itu.
-  3. Buat `producers` (type `member`, sumber, `member_id`, `brand_name`, `product_limit=3`, `application_id`, `name_cache`) di schema tenant.
+  3. Buat `producers` (type `member`, sumber, `member_id`, `brand_name`, `product_limit=3`, `revenue_share_percent` = angka yang DISEPAKATI penyetuju [bawaan = tawaran pemohon, divalidasi 0<p<100], `application_id`, `name_cache`) di schema tenant.
   4. Buat `public.producer_logins` (dengan `granted_by`). Dua schema berbeda → **tidak satu transaksi**: bila langkah 4 gagal, produsen yang baru dibuat dihapus (kompensasi, pola `createFirstOwnerAction`); status pengajuan menjadi `approved` **terakhir**. Kegagalan di tengah tidak boleh meninggalkan produsen yatim tanpa tercatat.
   5. Tulis `reviewed_*`, `producer_id`; kirim notifikasi (fire-and-forget; kegagalan kirim tidak membatalkan persetujuan).
 - **Tolak** — alasan wajib (min. 10 karakter), tampil ke pemohon; `review_note` internal terpisah.
@@ -262,20 +266,20 @@ Produsen cukup menulis **harga jual umum** dan **harga jual anggota**. Tenant me
 
 ### 17.4 Pertanyaan yang menunggu user
 a. **Varian A atau B?** (rekomendasi A.)
-b. **Siapa menetapkan persentase?** Rekomendasi: bawaan per tenant (mis. 10%) di Pengaturan Toko + penyetuju boleh menyesuaikan per produsen saat menyetujui pengajuan (dengan batas bawah kebijakan, mis. 5%), disimpan di produsen (`revenue_share_percent`); berlaku untuk pesanan BARU; tercantum di email persetujuan dan Profil portal (read-only). Bukan diisi pemohon. Alternatif: per produk.
+b. **Persentase (K17, diputuskan user 2026-11-03):** pemohon **menawarkan** persentase di form pengajuan; penyetuju menilai menarik-tidaknya, boleh menyetujui pada angka tawaran atau menyesuaikannya; angka yang disepakati disimpan di produsen (`revenue_share_percent`), berlaku untuk pesanan BARU, tercantum di email persetujuan dan Profil portal (read-only). Masih terbuka: apakah tenant perlu **batas bawah** (mis. 5%) yang menolak tawaran di bawahnya otomatis di form — usulan, belum diminta; tanpa batas bawah, penilaian sepenuhnya oleh penyetuju.
 c. **Voucher:** persentase dihitung dari harga **sebelum** voucher (voucher = promo tenant, ditanggung tenant) atau **sesudah** (produsen ikut menanggung)? Rekomendasi: sebelum voucher.
 d. **Ongkir:** siapa membayar kurir pada pengiriman oleh produsen — dibahas bersama fitur pencairan.
 
 ### 17.5 Dampak pada pengajuan (sudah diakomodasi)
-Contoh produk di form pengajuan meminta **harga jual umum** dan **harga jual anggota** (perkiraan, opsional) — cocok dengan model ini apa pun varian yang dipilih. Persentase TIDAK ditanyakan ke pemohon. Pada tahap produk: validasi Harga Anggota ≤ Harga Umum (sudah ada) ditambah persentase 0 < p < 100 dan, untuk varian B, Harga Anggota ≥ bagian produsen.
+Form pengajuan meminta **persentase bagi hasil yang ditawarkan** (wajib, K17) serta, per contoh produk, **harga jual umum** dan **harga jual anggota** (perkiraan, opsional) — penyetuju dapat langsung menghitung bagian tenant dari tawaran itu. Cocok dengan model ini apa pun varian yang dipilih. Pada tahap produk: validasi Harga Anggota ≤ Harga Umum (sudah ada) ditambah persentase 0 < p < 100 dan, untuk varian B, Harga Anggota ≥ bagian produsen.
 
 ## 18. Fase eksekusi (tiap fase: tsc → skill security-review → commit; push hanya bila diminta; deploy: migration DULU)
 
 | Fase | Isi | Catatan |
 |---|---|---|
-| **P1** | Pelonggaran multi-tenant: migration 0092 + `producerLogins` + `listProducerPortals` + `listUserContexts` + pesan `grantProducerLoginAction`; tandai D2 digantikan | berdiri sendiri; bisa di-deploy lebih dulu |
+| **P1** | Pelonggaran multi-tenant: migration 0091 + `producerLogins` + `listProducerPortals` + `listUserContexts` + pesan `grantProducerLoginAction`; tandai D2 digantikan | berdiri sendiri; bisa di-deploy lebih dulu |
 | **P2** | Saklar `producer_applications_enabled` di Pengaturan Toko (tanpa role/modul baru — K10) | kecil |
-| **P3** | Schema `producer_applications` + kolom `producers` + DDL tenant baru + migration 0091 | tanpa perubahan perilaku |
+| **P3** | Schema `producer_applications` + kolom `producers` + DDL tenant baru + migration 0092 | tanpa perubahan perilaku |
 | **P4** | Upload route + aksi draf/kirim/batal + form publik `/akun/produsen` | audit keamanan wajib (unggah + kepemilikan) |
 | **P5** | Antrean admin + setujui/tolak (atomik + kompensasi) + lencana + dashboard | audit keamanan wajib (alur uang-identitas) |
 | **P6** | Email disetujui/ditolak + baris digest PJ toko | email saja (K16) |
@@ -286,11 +290,19 @@ Uji wajib sebelum selesai: dua penyetuju menyetujui bersamaan; keluar keanggotaa
 ## 19. Yang MASIH terbuka
 
 Sudah dijawab user (putaran 2): izin (K10), sumber (K11), contoh produk (K12), PDF (K13), retensi (K14), saklar (K15), notifikasi (K16). Tersisa:
-1. **Model harga/bagi hasil** — pertanyaan di § 17 (varian A/B, siapa menetapkan persentase, dasar perhitungan setelah voucher). **Tidak memblokir P1–P5** (pengajuan hanya mengumpulkan harga perkiraan); memblokir tahap produk & pencairan.
+1. **Model harga/bagi hasil** — pertanyaan di § 17 (varian A/B, dasar perhitungan setelah voucher, batas bawah persentase; siapa mengajukan persentase sudah diputuskan = pemohon, K17). **Tidak memblokir P1–P5** (pengajuan hanya mengumpulkan harga perkiraan); memblokir tahap produk & pencairan.
 2. Aturan hitung batas produk (usulan: draf + aktif; arsip tidak) dan produsen lama buatan admin = tanpa batas — usulan, belum dikonfirmasi.
 3. Kategori/"jenis" produk tambahan di luar kategori yang sudah ada (jenis digital/jasa sudah dicatat sebagai tahap sendiri).
 4. Apakah penyetuju perlu email seketika saat pengajuan masuk (sekarang: lencana + digest PJ) — dibahas di rapat.
 
 ## 20. Status
 
-Rencana saja (2026-11-03). Belum ada kode, migration, atau perubahan skema.
+- Rencana ditulis 2026-11-03 (dua putaran keputusan user: K1–K17).
+- **P1 SELESAI KODE (2026-11-03; type-check bersih; uji data nyata di DB lokal lulus; belum di-push/deploy):**
+  migration `0091_producer_logins_multi_tenant.sql` (tambah `UNIQUE(user_id, tenant_id)`, hapus `UNIQUE(user_id)`; idempotent; diuji dua kali jalan),
+  `schema/public/producer-logins.ts`, `grantProducerLoginAction` (pesan "tempat lain" diganti; 23505 dibedakan: produsen sama vs akun sudah jadi produsen lain di tenant ini),
+  `findProducerPortal` → **`listProducerPortals`** (semua tenant, tiap tenant lolos akses penuh), `listUserContexts` memakainya (`/pilih-tujuan` + `dashboard-redirect` sudah mendukung banyak konteks).
+  Uji: akun sama di tenant 1 & 2 diterima; dua produsen untuk satu akun di satu tenant ditolak; satu produsen = satu akun tetap berlaku.
+  **Belum diuji di browser:** akun produsen di dua tenant melihat `/pilih-tujuan` dengan dua entri Portal Produsen.
+  Deploy: jalankan migration 0091 di VPS (aman sebelum maupun sesudah kode; indeks baru lebih longgar dari yang lama).
+- P2–P7 belum dimulai.

@@ -62,7 +62,7 @@ export const getProducerAccessUngated = cache(async (slug: string): Promise<Prod
     .from(tenants).where(eq(tenants.slug, slug)).limit(1);
   if (!tenant || !tenant.isActive) return null;
 
-  // 2) Status produsen akun ini DI TENANT INI (UNIQUE(user_id): satu akun hanya satu tenant)
+  // 2) Status produsen akun ini DI TENANT INI (UNIQUE(user_id, tenant_id); satu akun boleh jadi produsen di banyak tenant)
   const [login] = await db
     .select({ producerId: producerLogins.producerId })
     .from(producerLogins)
@@ -124,20 +124,24 @@ export async function getProducerPageAccess(slug: string): Promise<ProducerAcces
   return access;
 }
 
-// Untuk /dashboard-redirect & pemilih tujuan: tenant tempat akun ini berstatus produsen, HANYA bila aksesnya
-// benar-benar lolos (getProducerAccess penuh). Sengaja tidak cukup "baris producer_logins ada": produsen yang
-// dinonaktifkan / keluar keanggotaan akan dialihkan ke portal lalu ditolak → loop. UNIQUE(user_id) = paling banyak
-// satu tenant.
-export async function findProducerPortal(): Promise<{ slug: string; name: string } | null> {
+// Untuk /dashboard-redirect & pemilih tujuan: SEMUA tenant tempat akun ini berstatus produsen, HANYA yang aksesnya
+// benar-benar lolos (getProducerAccessUngated penuh). Sengaja tidak cukup "baris producer_logins ada": produsen yang
+// dinonaktifkan / keluar keanggotaan akan dialihkan ke portal lalu ditolak → loop. Seorang akun BOLEH menjadi produsen
+// di banyak tenant (UNIQUE(user_id, tenant_id), migration 0091) — daftar diurutkan menurut nama untuk tampilan stabil.
+// Batas 50 baris melindungi dari akun yang aneh; Ungated (bukan gerbang syarat) dipakai karena produsen yang BELUM
+// menandatangani syarat tetap harus bisa sampai ke halaman Syarat.
+export async function listProducerPortals(): Promise<{ slug: string; name: string }[]> {
   const session = await getCurrentSession();
   const userId  = session?.user?.id ?? null;
-  if (!userId) return null;
-  const [row] = await db
+  if (!userId) return [];
+  const rows = await db
     .select({ slug: tenants.slug, name: tenants.name })
     .from(producerLogins)
     .innerJoin(tenants, eq(tenants.id, producerLogins.tenantId))
     .where(and(eq(producerLogins.userId, userId), eq(tenants.isActive, true)))
-    .limit(1);
-  if (!row) return null;
-  return (await getProducerAccessUngated(row.slug)) ? row : null;
+    .limit(50);
+  const checked = await Promise.all(rows.map(async (r) => ((await getProducerAccessUngated(r.slug)) ? r : null)));
+  return checked
+    .filter((r): r is { slug: string; name: string } => !!r)
+    .sort((a, b) => a.name.localeCompare(b.name, "id"));
 }
