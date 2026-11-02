@@ -2,6 +2,9 @@ import { createTenantDb, getSettings } from "@jalajogja/db";
 
 export type TokoSettings = {
   mitraEnabled:     boolean;
+  // Saklar pengajuan produsen (docs/arsitektur-pengajuan-produsen.md § 6.5). Mati = form/unggah/kirim ditolak di server;
+  // pengajuan yang sudah menunggu tetap bisa ditinjau. Default MATI (tenant harus sengaja membukanya).
+  producerApplicationsEnabled: boolean;
   mitraMaxProducts: number;
   minKomisiMitra:   number;
   tokoDescription:  string;
@@ -22,6 +25,7 @@ export type TokoSettings = {
 
 export const DEFAULT_TOKO_SETTINGS: TokoSettings = {
   mitraEnabled:     false,
+  producerApplicationsEnabled: false,
   mitraMaxProducts: 20,
   minKomisiMitra:   10,
   tokoDescription:  "",
@@ -40,6 +44,7 @@ export async function getTokoSettings(slug: string): Promise<TokoSettings> {
   const raw      = await getSettings(tenantDb, "toko");
   return {
     mitraEnabled:     (raw.mitra_enabled     as boolean | undefined) ?? DEFAULT_TOKO_SETTINGS.mitraEnabled,
+    producerApplicationsEnabled: raw.producer_applications_enabled === true,
     mitraMaxProducts: (raw.mitra_max_products as number  | undefined) ?? DEFAULT_TOKO_SETTINGS.mitraMaxProducts,
     minKomisiMitra:   (raw.min_komisi_mitra  as number  | undefined) ?? DEFAULT_TOKO_SETTINGS.minKomisiMitra,
     tokoDescription:  (raw.toko_description  as string  | undefined) ?? DEFAULT_TOKO_SETTINGS.tokoDescription,

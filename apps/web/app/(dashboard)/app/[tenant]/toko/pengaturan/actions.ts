@@ -38,6 +38,7 @@ export async function saveTokoSettingsAction(
   const tenantDb = createTenantDb(slug);
   await upsertSettings(tenantDb, "toko", {
     mitra_enabled:      values.mitraEnabled,
+    producer_applications_enabled: values.producerApplicationsEnabled === true, // strict boolean — jangan simpan nilai mentah dari klien
     mitra_max_products: values.mitraMaxProducts,
     min_komisi_mitra:   values.minKomisiMitra,
     toko_description:   values.tokoDescription,

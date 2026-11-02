@@ -1,4 +1,4 @@
-import { pgSchema, uuid, text, integer, boolean, jsonb, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgSchema, uuid, text, integer, boolean, jsonb, numeric, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // ─── Produsen produk (ADMIN-ONLY) ─────────────────────────────────────────────────────────────
@@ -43,6 +43,15 @@ export function createProducersTable(s: ReturnType<typeof pgSchema>) {
 
     // Kode kurir RajaOngkir pilihan produsen (subset RAJAONGKIR_COURIER_CODES). NULL = ikut daftar kurir admin (0083, § 25).
     couriers:    jsonb("couriers").$type<string[] | null>(),
+
+    // ── Pengajuan produsen (docs/arsitektur-pengajuan-produsen.md § 8.2) — semua NULLABLE & aditif ─────
+    brandName:     text("brand_name"),                   // dari pengajuan; bahan awal entitas brand kelak
+    // NULL = tanpa batas (produsen lama buatan admin). Produsen hasil pengajuan = 3; admin bisa menaikkan.
+    // Ditegakkan pada produk yang dibuat produsen sendiri (tahap produk), bukan pada produk buatan admin.
+    productLimit:  integer("product_limit"),
+    // Bagi hasil yang DISEPAKATI saat persetujuan (% dari harga jual untuk tenant); berlaku pesanan BARU. Lihat § 17.
+    revenueSharePercent: numeric("revenue_share_percent", { precision: 5, scale: 2 }),
+    applicationId: uuid("application_id"),               // jejak asal (tanpa FK — hindari ketergantungan melingkar dgn producer_applications)
 
     notes:       text("notes"),
     isActive:    boolean("is_active").notNull().default(true),

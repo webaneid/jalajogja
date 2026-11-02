@@ -916,6 +916,10 @@ export async function createTenantSchemaInDb(
         custom_village_id      TEXT,
         custom_postal_code     TEXT,
         couriers    JSONB,       -- kode kurir RajaOngkir pilihan produsen; NULL = ikut daftar admin (0083)
+        brand_name  TEXT,        -- pengajuan produsen (0092)
+        product_limit INTEGER,   -- NULL = tanpa batas (produsen lama); hasil pengajuan = 3
+        revenue_share_percent NUMERIC(5,2), -- bagi hasil disepakati saat persetujuan
+        application_id UUID,     -- jejak asal; tanpa FK
         notes       TEXT,
         is_active   BOOLEAN     NOT NULL DEFAULT TRUE,
         created_by  UUID,
@@ -927,6 +931,43 @@ export async function createTenantSchemaInDb(
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producers_type_idx   ON "${s}".producers(type)`));
     // Produsen anggota tidak boleh ganda (migration 0075) — index parsial: baris custom (source_id NULL) tidak ikut
     await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producers_source_uniq ON "${s}".producers(source_type, source_id) WHERE source_type IS NOT NULL AND source_id IS NOT NULL`));
+
+    // ── 30b1. Pengajuan Produsen (docs/arsitektur-pengajuan-produsen.md § 8.1) ──
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".producer_applications (
+        id                    UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        member_id             UUID        NOT NULL,   -- FK public.members via aplikasi (lintas schema)
+        status                TEXT        NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','pending','approved','rejected','cancelled')),
+        source_type           TEXT        CHECK (source_type IN ('usaha','pesantren','profesional')),
+        source_id             UUID,
+        brand_name            TEXT,
+        product_kind          TEXT        NOT NULL DEFAULT 'physical' CHECK (product_kind IN ('physical')),
+        product_categories    TEXT,
+        description           TEXT,
+        own_product_declared  BOOLEAN     NOT NULL DEFAULT FALSE,
+        offered_share_percent NUMERIC(5,2) CHECK (offered_share_percent IS NULL OR (offered_share_percent > 0 AND offered_share_percent < 100)),
+        ops_name              TEXT,
+        ops_whatsapp          TEXT,
+        team_size             INTEGER     CHECK (team_size IS NULL OR (team_size >= 1 AND team_size <= 999)),
+        process_days          INTEGER     CHECK (process_days IS NULL OR (process_days >= 1 AND process_days <= 3)),
+        origin_regency_id     INTEGER,
+        sample_products       JSONB       NOT NULL DEFAULT '[]'::jsonb,
+        process_media         JSONB       NOT NULL DEFAULT '[]'::jsonb,
+        document_media        JSONB       NOT NULL DEFAULT '[]'::jsonb,
+        links                 JSONB       NOT NULL DEFAULT '[]'::jsonb,
+        submitted_at          TIMESTAMPTZ,
+        reviewed_at           TIMESTAMPTZ,
+        reviewed_by           UUID,
+        rejection_reason      TEXT,
+        review_note           TEXT,
+        producer_id           UUID        REFERENCES "${s}".producers(id) ON DELETE SET NULL,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producer_applications_open_uniq ON "${s}".producer_applications(member_id) WHERE status IN ('draft','pending')`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_applications_status_idx ON "${s}".producer_applications(status)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_applications_member_idx ON "${s}".producer_applications(member_id)`));
 
     // ── 30b2. Syarat & Ketentuan Produsen (docs/arsitektur-portal-produsen.md § 28) ──
     await tx.execute(sql.raw(`

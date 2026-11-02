@@ -305,4 +305,11 @@ Sudah dijawab user (putaran 2): izin (K10), sumber (K11), contoh produk (K12), P
   Uji: akun sama di tenant 1 & 2 diterima; dua produsen untuk satu akun di satu tenant ditolak; satu produsen = satu akun tetap berlaku.
   **Belum diuji di browser:** akun produsen di dua tenant melihat `/pilih-tujuan` dengan dua entri Portal Produsen.
   Deploy: jalankan migration 0091 di VPS (aman sebelum maupun sesudah kode; indeks baru lebih longgar dari yang lama).
-- P2–P7 belum dimulai.
+- **P2 SELESAI KODE (2026-11-03; type-check + build bersih):** saklar `producer_applications_enabled` (settings group `toko`, default MATI, disimpan sebagai boolean ketat) — `lib/toko-settings.ts`
+  (`producerApplicationsEnabled`), `saveTokoSettingsAction`, bagian "Pengajuan Produsen" di `toko-settings-form.tsx`. Otorisasi mengikuti aksi simpan Pengaturan Toko yang sudah ada (`canManageUsers` = **Owner dan Ketua saja**; Sekretaris tidak bisa membuka/menutup — perilaku bawaan form, bukan keputusan baru).
+  Penegakan di server (form/unggah/kirim ditolak saat mati) dikerjakan di P4.
+- **P3 SELESAI KODE (2026-11-03; type-check + build bersih; belum di-push/deploy):** `schema/tenant/producer-applications.ts`, kolom baru `producers.{brand_name, product_limit, revenue_share_percent, application_id}`,
+  DDL tenant baru (`create-tenant-schema.ts`), migration **`0092_producer_applications.sql`** (idempotent, diuji dua kali jalan di DB lokal).
+  Uji data nyata (transaksi di-rollback): satu pengajuan terbuka per anggota (draft/pending kedua ditolak; sesudah `rejected` boleh baris baru), CHECK persentase (0 dan 100 ditolak, 7,5 diterima), status/process_days di luar rentang ditolak, nama kolom Drizzle cocok dengan DB.
+  Tidak mengubah perilaku apa pun (belum ada kode yang membaca tabel). Deploy: jalankan **0091 lalu 0092** di VPS sebelum kode P4+.
+- P4–P7 belum dimulai.

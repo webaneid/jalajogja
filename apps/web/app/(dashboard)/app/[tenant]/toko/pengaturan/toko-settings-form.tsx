@@ -129,6 +129,32 @@ export function TokoSettingsForm({ slug, initialSettings }: Props) {
         )}
       </section>
 
+      {/* ── Pengajuan Produsen ─────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <div className="pb-2 border-b border-border">
+          <h2 className="text-sm font-semibold">Pengajuan Produsen</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Izinkan anggota tenant ini mengajukan diri menjadi produsen untuk dikurasi pengurus.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="pr-4">
+            <Label htmlFor="producer-applications-enabled" className="text-sm">Buka Pengajuan Produsen</Label>
+            <p className="text-xs text-muted-foreground">
+              Saat dimatikan, anggota tidak bisa mengisi atau mengirim pengajuan baru; pengajuan yang sudah masuk tetap bisa ditinjau.
+              Disarankan menerbitkan Syarat &amp; Ketentuan Produsen terlebih dahulu (bagian di bawah halaman ini), supaya produsen baru
+              langsung diarahkan menandatanganinya.
+            </p>
+          </div>
+          <Switch
+            id="producer-applications-enabled"
+            checked={settings.producerApplicationsEnabled}
+            onCheckedChange={(v: boolean) => set("producerApplicationsEnabled", v)}
+          />
+        </div>
+      </section>
+
       {/* ── Info Toko ─────────────────────────────────────────────────── */}
       <section className="space-y-4">
         <div className="pb-2 border-b border-border">
