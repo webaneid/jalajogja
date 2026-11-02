@@ -808,4 +808,11 @@ tenant_{slug}.producer_term_acceptances
 T1 schema + migration + DDL tenant baru · T2 tab "Syarat Produsen" (draf/Tiptap/terbitkan/daftar status TTD) · T3 gerbang di `producer-access` + halaman Syarat & TTD di portal (gaya `signing-page-client`) · T4 audit `security-auditor`, dokumen, lessons.
 
 ### 28.6 Status
-Rencana saja; belum ada kode.
+- **T1 SELESAI** (commit `5d1bc5b`): schema + migration `0090_producer_terms.sql` (jalan di DB dev lokal; **belum di VPS**) + DDL tenant baru.
+- **T2 SELESAI** (type-check bersih, security review lolos; belum diuji di browser): tab/seksi "Syarat & Ketentuan Produsen" di bawah `/toko/pengaturan`
+  (`producer-terms-form.tsx`, `producer-terms-actions.ts`, `lib/producer-terms.ts` murni, `lib/producer-terms.server.ts`).
+  Editor = `<TiptapEditor>` standar; tampilan isi = `renderBody()` (sanitasi link/URL sudah ada di renderer). Satu draf per tenant (advisory lock),
+  Terbitkan = simpan dulu + beri nomor versi berikutnya di satu transaksi + konfirmasi "mengunci N produsen"; versi terbit tak bisa diedit/dihapus.
+  Daftar status TTD menampilkan produsen AKTIF yang punya login portal (hanya mereka yang bisa menandatangani).
+- **T3 BELUM**: gerbang akses + halaman Syarat di portal. SEBELUM T3 selesai, menerbitkan syarat belum mengunci siapa pun (jangan terbitkan di production dulu).
+- T4 BELUM.

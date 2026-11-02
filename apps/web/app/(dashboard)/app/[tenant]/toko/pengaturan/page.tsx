@@ -8,6 +8,9 @@ import { sanitizeCouriers } from "@/lib/producer-couriers";
 import { CourierLogosForm } from "./courier-logos-form";
 import { getTokoSettings } from "@/lib/toko-settings";
 import { TokoSettingsForm } from "./toko-settings-form";
+import { ProducerTermsForm } from "./producer-terms-form";
+import { getActiveProducerTerm, listTermSigners } from "@/lib/producer-terms.server";
+import { renderBody } from "@/lib/letter-render";
 import { ProductArchiveDesignForm } from "./product-archive-design-form";
 import { PRODUCT_ARCHIVE_CARD_DESIGN_IDS, type ProductArchiveCardDesignId } from "@/lib/product-archive-card-designs";
 
@@ -57,6 +60,12 @@ export default async function TokoSettingsPage({
     .filter((c) => !enabledCodes || enabledCodes.includes(c.value))
     .map((c) => ({ code: c.value as string, label: c.label as string }));
 
+  // Syarat & Ketentuan Produsen (§ 28)
+  const activeTerm = await getActiveProducerTerm(tenantClient);
+  const [draftRow] = await tenantClient.db.select().from(tenantClient.schema.producerTerms)
+    .where(eq(tenantClient.schema.producerTerms.status, "draft")).limit(1);
+  const signers = await listTermSigners(access.tenant.id, tenantClient, activeTerm?.id ?? null);
+
   return (
     <div className="p-6 max-w-2xl space-y-10">
       <div>
@@ -74,6 +83,17 @@ export default async function TokoSettingsPage({
       <div className="border-t border-border" />
 
       <CourierLogosForm slug={slug} couriers={courierOptions} initialLogos={logoMap} canEdit={hasFullAccess(access.tenantUser, "toko")} />
+
+      <div className="border-t border-border" />
+
+      <ProducerTermsForm
+        slug={slug}
+        canEdit={hasFullAccess(access.tenantUser, "toko")}
+        active={activeTerm ? { version: activeTerm.version, title: activeTerm.title, publishedAt: activeTerm.publishedAt.toISOString(), html: renderBody(activeTerm.body, { tenantSlug: slug }) } : null}
+        activeBody={activeTerm?.body ?? null}
+        draft={draftRow ? { id: draftRow.id, title: draftRow.title, body: draftRow.body } : null}
+        signers={signers.map((x) => ({ producerId: x.producerId, name: x.name, signedAt: x.signedAt ? x.signedAt.toISOString() : null }))}
+      />
     </div>
   );
 }
