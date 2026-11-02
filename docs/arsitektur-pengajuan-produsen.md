@@ -3,7 +3,7 @@
 > **Status: RENCANA (2026-11-03) — BELUM ADA KODE.** Ditulis bersama user lewat diskusi; dokumen ini adalah satu-satunya sumber keputusan untuk fitur ini.
 > Dokumen terkait: `docs/arsitektur-portal-produsen.md` (portal, § 28 Syarat & Ketentuan), `docs/arsitektur-produsen.md` (data produsen),
 > `docs/arsitektur-mitra.md` (sistem Mitra yang sudah ada — pola pengajuan dipinjam dari sini), `docs/arsitektur-keamanan.md`.
-> Bagian **§ 19** memuat asumsi yang BELUM dikonfirmasi user — jangan dianggap final sebelum dijawab.
+> Jawaban user 2026-11-03 (putaran 2) sudah dimasukkan (K10–K16). Bagian **§ 19** tinggal memuat hal yang MASIH terbuka — terutama model harga/bagi hasil (§ 17).
 
 ---
 
@@ -45,6 +45,13 @@ Arah jauhnya (user, 2026-11-03): produsen adalah tangga pertama; **Mitra adalah 
 | K7 | Seorang produsen di tenant A **boleh** juga jadi produsen di tenant B (pengajuan + persetujuan terpisah per tenant). Aturan lama "satu akun satu tenant" (D2, 2026-10-31) **digantikan** — lihat § 9. |
 | K8 | Nama brand di pengajuan tetap tersimpan; saat membuat produk, pilihan brand dibahas terpisah (tahap brand). |
 | K9 | Tahap pertama hanya menerima produk **fisik**; digital/jasa menyusul. |
+| K10 | **Tidak menambah role/modul izin baru.** Penyetuju = pemegang `anggota: full` pada matriks izin yang ada, yang persis dimiliki **Owner, Ketua, Sekretaris** (Bendahara `none`). |
+| K11 | Pemohon wajib punya **salah satu** dari: data **Usaha** (utama — ini bisnis), atau **Pesantren** milik/dikelola, atau **Profesional**. |
+| K12 | Contoh produk: **minimal 1, tersedia 4 slot**. |
+| K13 | Dokumen legalitas boleh **gambar dan/atau PDF**, dengan keterangan opsional. |
+| K14 | Retensi berkas: **1 minggu** setelah keputusan ditolak/dibatalkan; **30 hari** untuk yang disetujui (pengurus masih mengunggah produknya pada masa peralihan). |
+| K15 | **Ada saklar** buka/tutup pengajuan per tenant (Pengaturan Toko). |
+| K16 | Notifikasi **hanya email**; kelengkapan kanal dibahas di rapat. Penyetuju melihat lencana + digest PJ yang sudah ada. |
 
 ## 4. Temuan kode (fakta yang menentukan rancangan, dibaca 2026-11-03)
 
@@ -52,7 +59,7 @@ Arah jauhnya (user, 2026-11-03): produsen adalah tangga pertama; **Mitra adalah 
 2. **Pola Mitra** (`mitra_applications`, `/api/mitra/apply`, `toko/mitra/actions.ts`) sudah punya: pengajuan → pending → approve/reject/cancel, cek `isTenantMember`, validasi kepemilikan usaha. **Kelemahan yang TIDAK boleh ditiru:** `approveMitraAction` tidak memeriksa ulang keanggotaan; cek "sudah pending" tanpa unique index (balapan dua klik); approve tidak atomik (insert `mitras` lalu update application tanpa transaksi/kunci).
 3. **`public.producer_logins` UNIQUE(user_id)** memaksa satu akun = satu tenant; pesan galat "sudah terdaftar sebagai produsen di tempat lain" ada di `grantProducerLoginAction`. Konsumen "satu portal": `findProducerPortal()`, `listUserContexts()`, `dashboard-redirect`. Halaman `/pilih-tujuan` sudah mendukung banyak konteks.
 4. **Penyimpanan foto**: `public.member_media` (Media Library anggota, global per anggota; file fisik di bucket `tenant-{sourceTenantSlug}`), kolom `purpose` menyembunyikan file dari picker dan menjadi kunci pembersihan (`'resi'` → cron `cleanup-resi`). Pipeline unggah teruji di `api/produsen/resi/route.ts` (Content-Length dulu, Sharp, buang EXIF, WebP 1600px, rate limit, cek Origin). Pola ini dipakai ulang.
-5. **Izin**: `lib/permissions.ts` — `Module` adalah union tertutup (10 modul). Peran sistem **Sekretaris punya `toko: "read"`**, jadi `hasFullAccess(toko)` TIDAK mencakup Sekjen. Menyetujui produsen lewat `toko:full` akan mengecualikan Sekjen.
+5. **Izin**: `lib/permissions.ts` — `Module` adalah union tertutup (10 modul). Peran sistem **Sekretaris punya `toko: "read"`**, jadi `hasFullAccess(toko)` TIDAK mencakup Sekjen. Modul `anggota` bernilai `full` untuk tepat owner, ketua, sekretaris (bendahara `none`) → dipakai sebagai izin penyetuju (§ 11), tanpa menambah modul.
 6. **Notifikasi**: `notifyWa` (+ template di `lib/wa-templates.ts`, bisa diedit per tenant) dan `sendMailForTenant`; pola dual-channel di `lib/notify-customer.ts`. Digest PJ modul (`lib/pj-notification.server.ts`) punya digest "toko".
 7. **Portal produsen baca-saja untuk produk** (D3); produk dibuat admin lewat `createProductAction` (butuh `toko:full`).
 8. **Validasi harga di form produk**: Harga Dasar >0, Harga Publik >0, Harga Anggota ≤ Harga Publik. **Belum ada** aturan Harga Publik ≥ Harga Dasar atau Harga Anggota ≥ Harga Dasar — relevan untuk model bagi hasil (§ 17), BUKAN untuk dokumen ini.
@@ -83,27 +90,27 @@ Aturan status:
 2. `isTenantMember(memberId, tenant)` — anggota sah tenant itu (status aktif; forum: `forum_status='active'`; alumni BUKAN anggota). **Diperiksa ulang saat disetujui.**
 3. Belum menjadi produsen aktif di tenant ini; jika ada baris produsen nonaktif dari sumber yang sama → pesan "hubungi pengurus" (admin yang mengaktifkan kembali, bukan pengajuan baru).
 4. Tidak punya pengajuan `draft`/`pending` lain di tenant ini.
-5. Pengajuan sedang dibuka di tenant ini (usulan: saklar di Pengaturan Toko — § 19.6).
+5. Pengajuan sedang dibuka di tenant ini — saklar `producer_applications_enabled` (settings group `toko`, default **mati**; pola `mitra_enabled`, kartu baru di Pengaturan Toko). Saat mati: form/unggah/kirim ditolak di server; pengajuan yang sudah `pending` tetap bisa ditinjau.
 6. Tenant aktif (`isActiveTenant(slug)` SEBELUM `createTenantDb`).
 
 ## 7. Form pengajuan (menggantikan Google Form)
 
 | Bagian | Isian | Aturan |
 |---|---|---|
-| Identitas | Sumber produsen: pilih SATU dari usaha / pesantren / profesional **milik sendiri** | wajib; kepemilikan diverifikasi server dari `public.*` (bukan id mentah dari klien); sumber yang sudah jadi produsen ditolak. Anggota tanpa data apa pun diarahkan melengkapi satu dulu di `/akun/usaha` dst. |
+| Identitas | Sumber produsen: pilih SATU dari **usaha** (utama) / **pesantren** milik/dikelola / profesional **milik sendiri** | wajib (K11); kepemilikan diverifikasi server dari `public.*` (bukan id mentah dari klien); sumber yang sudah jadi produsen ditolak. Anggota tanpa satu pun data itu diarahkan melengkapi dulu di `/akun/usaha` (atau pesantren/profesional); form tidak bisa dikirim sebelum itu. |
 | Brand | Nama brand | **wajib**, 2–100 karakter |
 | Produk | Jenis produk (fisik; digital/jasa tampil nonaktif "segera") | tahap ini hanya `physical` |
 | | Kategori/jenis barang yang dijual | teks bebas, ≤200 |
 | | Deskripsi singkat usaha & produk | wajib, 20–1000 karakter |
 | | Pernyataan: "produk ini dibuat/dimiliki sendiri, bukan jual-beli ulang" | centang wajib |
-| Contoh produk | 1–4 contoh: nama + foto (+ harga perkiraan opsional) | min/maks lihat § 19.3 |
+| Contoh produk | **Minimal 1, maksimal 4** slot: nama + foto + harga jual umum & harga jual anggota (perkiraan, opsional) | K12 |
 | Operasional | Penanggung jawab pesanan: nama + WhatsApp (`PhoneInput`, `normalizePhone`) | wajib |
 | | Jumlah orang di tim | angka 1–999 |
 | | Kesanggupan proses pesanan | pilihan 1×24 / 2×24 / 3×24 jam |
 | | Kota/kabupaten asal barang dikirim | Combobox wilayah; alamat gudang lengkap diisi kemudian di Profil portal |
 | Bukti tambahan (opsional) | Tautan Instagram/marketplace/website (maks 3) | hanya `https://`, lewat `lib/safe-url.ts` |
 | | Foto proses produksi (maks 3) | opsional |
-| | Dokumen legalitas (PIRT/BPOM/Halal/NIB/lainnya) (maks 3, + jenis) | opsional; **gambar/scan saja** di v1 (PDF = risiko saat peninjau membuka berkas tak tepercaya; menyusul bila perlu) |
+| | Dokumen legalitas (PIRT/BPOM/Halal/NIB/lainnya) (maks 3: jenis + **keterangan opsional**) | opsional; **gambar dan/atau PDF** (K13); perlakuan PDF di § 13 |
 
 Standar UI proyek: semua dropdown Combobox, telepon `PhoneInput`, wilayah `WilayahSelect`, tombol publik lewat `PublicButton`, kontainer `max-w-7xl`. Teks bebas ditampilkan sebagai teks biasa (tanpa `dangerouslySetInnerHTML`).
 
@@ -128,7 +135,7 @@ process_days     integer                   -- 1..3
 origin_regency_id integer                  -- ref_regencies
 sample_products  jsonb  NOT NULL DEFAULT '[]'   -- [{name, estPrice|null, mediaId}]
 process_media    jsonb  NOT NULL DEFAULT '[]'   -- [mediaId]
-document_media   jsonb  NOT NULL DEFAULT '[]'   -- [{kind, mediaId}]
+document_media   jsonb  NOT NULL DEFAULT '[]'   -- [{kind, note|null, mediaId}]  (gambar → member_media; PDF → lihat § 13)
 links            jsonb  NOT NULL DEFAULT '[]'   -- [https url]
 submitted_at     timestamptz
 reviewed_at      timestamptz
@@ -184,28 +191,29 @@ Keputusan D2 (`arsitektur-portal-produsen.md` § 9, 2026-10-31) ditandai **DIGAN
 
 ## 11. Izin akses
 
-Rekomendasi: **Module baru `produsen`** di `lib/permissions.ts` (peran sistem: owner/ketua/sekretaris = `full`, bendahara = `read`; peran kustom diatur di `/settings/roles` — daftar modul di `roles-manage-client.tsx` ditambah). Menyetujui/menolak = `hasFullAccess(user, "produsen")`; melihat antrean = `hasReadAccess`. Alasan: `toko:full` mengecualikan Sekretaris (Sekjen) padahal user menyebut Sekjen sebagai penyetuju; mengubah Sekretaris jadi `toko:full` terlalu luas efeknya. Aturan proyek melarang cek peran manual — semua lewat helper izin.
-Dampak: tambah anggota `Module`, entri 4 peran sistem, daftar peran kustom, guard halaman. Menu *Produsen* lain (kelola produsen, beri akses login) tetap `toko:full` seperti sekarang.
-Alternatif yang ditolak: (b) tetap `toko:full` (Sekjen tak bisa menyetujui), (c) menaikkan Sekretaris ke `toko:full` (efek luas ke seluruh toko).
+**Tanpa role/modul baru (K10).** Menyetujui/menolak = `hasFullAccess(access.tenantUser, "anggota")`; melihat antrean & detail = `hasReadAccess(..., "anggota")`. Pada matriks yang ada ini berlaku untuk **Owner, Ketua, Sekretaris**; Bendahara tidak punya akses (`anggota: none`). Peran kustom yang diberi `anggota: full` di `/settings/roles` otomatis ikut bisa menyetujui — itu perilaku yang disengaja dan dikontrol lewat pengaturan peran. Semua lewat helper izin, tidak ada cek peran manual. Aksi *kelola produsen* yang sudah ada (tambah produsen, beri/cabut akses login, ubah batas produk) tetap `toko:full`.
+Catatan: "super admin" diartikan peran **Owner** tenant (super admin platform tidak bisa masuk dashboard tenant — aturan proyek).
+Konsekuensi yang perlu disadari: orang yang menyetujui (anggota:full) dan orang yang kemudian mengatur produsen (toko:full) bisa berbeda — Sekretaris dapat menyetujui tetapi tidak dapat mengubah batas produk/akses login setelahnya.
 
-## 12. Notifikasi
+## 12. Notifikasi (K16: email saja)
 
 | Peristiwa | Penerima | Kanal |
 |---|---|---|
-| Pengajuan masuk (`pending`) | pengurus (penyetuju) | baris di digest harian PJ "toko" (jumlah menunggu) + lencana UI. Tidak ada pesan seketika di v1 (hindari banjir). |
-| Disetujui | pemohon | WA + email (`channel_mode` tenant), memuat tautan login portal & ajakan menandatangani Syarat & Ketentuan |
-| Ditolak | pemohon | WA + email, memuat alasan & informasi boleh mengajukan lagi |
+| Pengajuan masuk (`pending`) | pengurus penyetuju | lencana jumlah menunggu (`TokoNav` + Dashboard "perlu tindakan") + satu baris di **digest PJ "toko"** yang sudah ada (mengikuti kanal PJ yang dikonfigurasi tenant). Tidak ada email seketika per pengajuan di v1. |
+| Disetujui | pemohon | **Email** — tautan login portal + ajakan menandatangani Syarat & Ketentuan |
+| Ditolak | pemohon | **Email** — alasan + informasi boleh mengajukan lagi |
 
-Template baru di `lib/wa-templates.ts` (bisa diedit per tenant lewat mekanisme yang ada) + padanan email; kontak pemohon diambil dari data anggota di server.
+Alamat tujuan = email akun login pemohon (selalu ada) — bukan kontak yang diketik di form. Dikirim lewat `sendMailForTenant` (SMTP tenant, fallback SMTP platform); kegagalan kirim dicatat, tidak membatalkan keputusan. Tidak ada template WhatsApp baru. Kelengkapan kanal (WA, email seketika ke penyetuju) dibahas di rapat.
 
 ## 13. Penyimpanan, pembersihan, retensi
 
-- Unggah lewat route handler `POST /api/produsen/pengajuan/upload` (bukan Server Action — batas body 1 MB), pola `resi/route.ts`: cek `Content-Length` sebelum membaca body, Origin/Referer, `getSessionMember`, `isTenantMember`, kepemilikan draf, **batas jumlah berkas per draf (≤10)**, Sharp (format dari isi file, buang EXIF, maks 1600 px, WebP q80, `limitInputPixels`), nama berkas `randomUUID()`, `member_media.purpose = 'producer_application'` (tersembunyi dari picker), rate limit per anggota.
-- Perkiraan: ±150–250 KB per berkas setelah WebP → ±2 MB per pengajuan penuh.
+- Unggah gambar lewat route handler `POST /api/produsen/pengajuan/upload` (bukan Server Action — batas body 1 MB), pola `resi/route.ts`: cek `Content-Length` sebelum membaca body, Origin/Referer, `getSessionMember`, `isTenantMember`, kepemilikan draf, **batas jumlah berkas per draf (≤14: 4 contoh + 3 proses + 3 dokumen + cadangan)**, Sharp (format dari isi file, buang EXIF, maks 1600 px, WebP q80, `limitInputPixels`), nama berkas `randomUUID()`, `member_media.purpose = 'producer_application'` (tersembunyi dari picker), rate limit per anggota.
+- **PDF (K13), hanya untuk dokumen legalitas:** disimpan APA ADANYA (tidak diproses ulang), maksimal 5 MB, divalidasi dari ISI (header `%PDF-` dan penutup `%%EOF`, bukan `file.type` klien), nama acak, jumlah dibatasi. Karena PDF dari pihak tak tepercaya dibuka peninjau, berkas **tidak** disajikan lewat URL publik MinIO: disajikan oleh route handler berotorisasi (izin `anggota` read atau pemilik pengajuan) dengan `Content-Type: application/pdf`, `X-Content-Type-Options: nosniff` dan `Content-Security-Policy: sandbox` (PDF dibuka di penampil bawaan peramban yang ber-sandbox; tanpa menjalankan skrip halaman kita). Risiko sisa: kerentanan penampil PDF peramban peninjau — diterima, didokumentasikan; pemindaian antivirus tidak ada di infrastruktur saat ini.
+- Perkiraan: gambar ±150–250 KB setelah WebP; PDF sampai 5 MB (batas keras 3 per pengajuan → ≤15 MB terburuk, wajar karena dihapus sesuai retensi).
 - **Cron baru** `GET /api/cron/cleanup-pengajuan-produsen` (harian, `x-cron-secret`, pola `cleanup-resi`):
   - `draft` > 7 hari → hapus berkas (MinIO + `member_media`) dan barisnya.
-  - Pengajuan `rejected`/`cancelled` > 30 hari sejak keputusan → hapus semua berkas.
-  - Pengajuan `approved` > 30 hari → hapus foto contoh & foto proses; **dokumen legalitas dipertahankan** sebagai catatan (asumsi § 19.5).
+  - `rejected`/`cancelled` > **7 hari** sejak keputusan → hapus **semua** berkas (K14).
+  - `approved` > **30 hari** → hapus foto contoh & foto proses (pengurus masih memakainya saat mengunggah produk pada masa peralihan); **dokumen legalitas dipertahankan** sebagai catatan.
   - Rujukan di JSON dikosongkan; respons melaporkan `deleted/failed/tenantsSkipped` (kegagalan tidak boleh senyap).
 - Retensi baris teks pengajuan: disimpan (kecil; jejak audit). Tidak ada penghapusan otomatis di v1.
 
@@ -216,14 +224,14 @@ Template baru di `lib/wa-templates.ts` (bisa diedit per tenant lewat mekanisme y
 - Kunci/CAS: unique index parsial (satu pengajuan terbuka), kunci advisory saat setujui/tolak, status asal diperiksa → dua klik/dua penyetuju bersamaan aman.
 - Privasi: pemohon hanya melihat pengajuannya sendiri; pengurus melihat data kontak pemohon karena memang perlu; tidak ada data pengajuan di halaman/API publik.
 - Teks bebas: batas panjang, ditampilkan sebagai teks; URL hanya `https` lewat `safe-url`; telepon `normalizePhone` + validasi E.164 server.
-- Unggah: lihat § 13 (format dari isi file, ukuran, jumlah, nama acak, tanpa PDF di v1).
+- Unggah: lihat § 13 (format dari isi file, ukuran, jumlah, nama acak; PDF disajikan lewat route berotorisasi + sandbox, bukan URL publik).
 - Rate limit: kirim ≤5/hari per anggota; unggah ≤30/jam per anggota (pola `checkRateLimit`).
 - Pesan galat tidak membocorkan keadaan tenant lain (mis. "sudah produsen di tempat lain" tidak ada lagi).
 - Wajib: skill `jalakarta-security-review` setiap fase + subagent `security-auditor` sebelum rilis; kelemahan Mitra (§ 4.2) tidak boleh ditiru.
 
 ## 15. UI publik (anggota)
 
-- Rute: `/{slug}/akun/produsen` — jika sudah produsen aktif → alihkan ke portal; jika punya pengajuan → status (draf/menunggu/ditolak + alasan + tombol "Ajukan lagi"); jika belum → form. Kartu "Jadi Produsen" di beranda `/akun` hanya bila pengajuan dibuka dan anggota memenuhi syarat dasar (kartu Produsen yang ada tetap hanya untuk produsen aktif).
+- Rute: `/{slug}/akun/produsen` — jika sudah produsen aktif → alihkan ke portal; jika punya pengajuan → status (draf/menunggu/ditolak + alasan + tombol "Ajukan lagi"); jika belum → form. Kartu "Jadi Produsen" di beranda `/akun` hanya bila saklar pengajuan hidup dan anggota memenuhi syarat dasar (kartu Produsen yang ada tetap hanya untuk produsen aktif).
 - Mobile: mengikuti mobile shell akun (`docs/arsitektur-mobile-shell.md`); form dibagi bagian yang bisa dilipat, bukan satu halaman panjang; tombol bawah tidak menutup konten (aturan spacer).
 - Custom domain: tautan memakai `baseUrl` seperti halaman akun lain; tautan portal tetap `/app/{slug}/portal-produsen`.
 
@@ -231,36 +239,57 @@ Template baru di `lib/wa-templates.ts` (bisa diedit per tenant lewat mekanisme y
 
 Produsen hasil persetujuan langsung terkena gerbang bila tenant sudah menerbitkan syarat. Disarankan **menerbitkan Syarat & Ketentuan Produsen SEBELUM membuka pengajuan** di sebuah tenant, supaya produsen baru langsung diarahkan menandatangani. Tidak ada kode tambahan di pengajuan untuk ini.
 
-## 17. Model harga & bagi hasil (dicatat, TIDAK dikerjakan di fitur ini)
+## 17. Model harga & bagi hasil — USULAN user 2026-11-03, BELUM FINAL (tidak dikerjakan di fitur pengajuan; memblokir tahap produk & pencairan)
 
-Diskusi 2026-11-03: tiga harga (Dasar/pokok, Publik, Anggota). Pemahaman yang **menunggu konfirmasi user dengan contoh angka**: produsen menerima Harga Dasar per unit (mis. pokok 50.000; publik 70.000 → selisih 20.000 untuk tenant; anggota 65.000 → selisih 15.000; diskon anggota ditanggung tenant). Catatan teknis untuk tahap produk/pembayaran: tambahkan validasi Harga Publik ≥ Harga Anggota ≥ Harga Dasar; pertimbangkan produsen hanya mengisi Harga Dasar sementara Harga Publik/Anggota ditetapkan tenant saat tinjauan produk. Pencairan ke produsen (fitur "pengajuan pembayaran") menjumlahkan Harga Dasar dari pesanan lunas+terkirim.
+### 17.1 Usulan user
+Produsen cukup menulis **harga jual umum** dan **harga jual anggota**. Tenant mengambil **persentase dari harga jual** (bukan dari keuntungan, bukan harga pokok tetap). Persentase itulah yang menurunkan "harga pokok" (bagian produsen) sehingga keuntungan tenant diketahui. Alasan user: persentase mudah dikembangkan — mis. **program afiliasi** (dari bagian tenant 10%, 2–3% diberikan ke afiliasi).
+
+### 17.2 Penilaian
+- **Cocok:** produsen berpikir dalam harga jual; tidak perlu memverifikasi modal (menghindari sengketa "untung"); ikut naik-turun harga; satu aturan yang sama dengan komisi Mitra; afiliasi tinggal memotong dari bagian tenant. Tidak ada kelemahan fatal. Pendekatan "dari keuntungan" ditolak karena mensyaratkan modal yang tak bisa diverifikasi.
+- **Konsekuensi pada kode yang ada:** `products.price` sekarang = Harga Dasar/modal yang diisi admin dan dipakai Laporan Produk. Untuk produk berpersentase, bagian produsen **harus dihitung per baris pesanan dan disimpan sebagai snapshot** (persentase + jumlah bagian produsen/tenant/afiliasi di `invoice_items`) — perubahan persentase di kemudian hari tidak boleh mengubah pesanan lama. Snapshot ini diperlukan oleh afiliasi dan pencairan apa pun modelnya.
+- **Pembulatan:** bagian produsen = `round(harga × (1 − p))` ke rupiah, bagian tenant = harga − bagian produsen (jumlah selalu pas).
+- **Dasar hitung:** hanya harga barang. **Ongkir dan kode unik tidak ikut** dibagi (bukan pendapatan produk). Siapa menanggung diskon **voucher** — belum diputuskan (lihat 17.4-c).
+
+### 17.3 Dua varian perlakuan harga anggota (contoh: umum 70.000, anggota 65.000, p = 10%)
+
+| | Pembeli umum | Pembeli anggota |
+|---|---|---|
+| **Varian A — persentase dari harga yang DIBAYAR** | produsen 63.000 · tenant 7.000 | produsen 58.500 · tenant 6.500 |
+| **Varian B — bagian produsen dikunci dari harga umum** | produsen 63.000 · tenant 7.000 | produsen 63.000 · tenant 2.000 |
+
+- **A (rekomendasi):** satu rumus, margin tenant tidak pernah negatif, diskon anggota dipikul proporsional — wajar karena produsen sendiri yang menetapkan harga anggota. Afiliasi 3% dari harga bayar tetap konsisten. Konsekuensi: biaya produsen per pesanan bergantung jenis pembeli → butuh snapshot per baris (yang toh dibutuhkan afiliasi).
+- **B:** produsen tidak terdampak diskon anggota (lebih menarik bagi produsen); tenant menanggung diskon — margin anggota tipis (di contoh hanya 2.000 = ±3%) dan bisa negatif bila harga anggota lebih rendah dari bagian produsen. Cocok dengan `products.price` statis yang ada.
+
+### 17.4 Pertanyaan yang menunggu user
+a. **Varian A atau B?** (rekomendasi A.)
+b. **Siapa menetapkan persentase?** Rekomendasi: bawaan per tenant (mis. 10%) di Pengaturan Toko + penyetuju boleh menyesuaikan per produsen saat menyetujui pengajuan (dengan batas bawah kebijakan, mis. 5%), disimpan di produsen (`revenue_share_percent`); berlaku untuk pesanan BARU; tercantum di email persetujuan dan Profil portal (read-only). Bukan diisi pemohon. Alternatif: per produk.
+c. **Voucher:** persentase dihitung dari harga **sebelum** voucher (voucher = promo tenant, ditanggung tenant) atau **sesudah** (produsen ikut menanggung)? Rekomendasi: sebelum voucher.
+d. **Ongkir:** siapa membayar kurir pada pengiriman oleh produsen — dibahas bersama fitur pencairan.
+
+### 17.5 Dampak pada pengajuan (sudah diakomodasi)
+Contoh produk di form pengajuan meminta **harga jual umum** dan **harga jual anggota** (perkiraan, opsional) — cocok dengan model ini apa pun varian yang dipilih. Persentase TIDAK ditanyakan ke pemohon. Pada tahap produk: validasi Harga Anggota ≤ Harga Umum (sudah ada) ditambah persentase 0 < p < 100 dan, untuk varian B, Harga Anggota ≥ bagian produsen.
 
 ## 18. Fase eksekusi (tiap fase: tsc → skill security-review → commit; push hanya bila diminta; deploy: migration DULU)
 
 | Fase | Isi | Catatan |
 |---|---|---|
 | **P1** | Pelonggaran multi-tenant: migration 0092 + `producerLogins` + `listProducerPortals` + `listUserContexts` + pesan `grantProducerLoginAction`; tandai D2 digantikan | berdiri sendiri; bisa di-deploy lebih dulu |
-| **P2** | Module izin `produsen` (jika disetujui § 19.1) | kecil |
+| **P2** | Saklar `producer_applications_enabled` di Pengaturan Toko (tanpa role/modul baru — K10) | kecil |
 | **P3** | Schema `producer_applications` + kolom `producers` + DDL tenant baru + migration 0091 | tanpa perubahan perilaku |
 | **P4** | Upload route + aksi draf/kirim/batal + form publik `/akun/produsen` | audit keamanan wajib (unggah + kepemilikan) |
 | **P5** | Antrean admin + setujui/tolak (atomik + kompensasi) + lencana + dashboard | audit keamanan wajib (alur uang-identitas) |
-| **P6** | Notifikasi (template WA/email + baris digest) | |
+| **P6** | Email disetujui/ditolak + baris digest PJ toko | email saja (K16) |
 | **P7** | Cron pembersihan + uji data nyata (berkas sungguhan, bukan panggilan kosong) + `security-auditor` menyeluruh + dokumen/lessons/CLAUDE.md | |
 
 Uji wajib sebelum selesai: dua penyetuju menyetujui bersamaan; keluar keanggotaan di antara kirim & setujui; sumber dihapus di antara kirim & setujui; langkah login gagal setelah produsen dibuat (kompensasi); unggah berkas bukan gambar / terlalu besar / lewat batas jumlah; pemohon A mengacu `mediaId` milik B; pemohon tenant lain mengajukan di tenant ini.
 
-## 19. Asumsi & pertanyaan TERBUKA (belum dikonfirmasi user — jangan ditebak)
+## 19. Yang MASIH terbuka
 
-1. **Izin penyetuju**: Module baru `produsen` (rekomendasi § 11)? Dan "super admin" = peran **Owner** tenant (Owner/Ketua/Sekretaris)?
-2. **Anggota tanpa data usaha/pesantren/profesional** wajib melengkapi satu dulu (karena produsen anggota butuh sumber). Setuju, atau ada jalur lain?
-3. **Jumlah contoh produk** yang wajib (usulan: minimal 1, maksimal 4) dan foto proses maks 3, dokumen maks 3.
-4. **Dokumen legalitas**: v1 hanya gambar/scan (tanpa PDF). Setuju?
-5. **Retensi berkas**: foto 30 hari setelah keputusan; dokumen legalitas pengajuan yang disetujui disimpan. Setuju?
-6. **Saklar buka/tutup pengajuan** per tenant di Pengaturan Toko (usulan, seperti `mitraEnabled`) — atau selalu terbuka? (Bukan permintaan user; boleh dibuang.)
-7. **Aturan hitung batas produk** (draf+aktif, tanpa arsip) dan bahwa produsen lama buatan admin = tanpa batas.
-8. **Arti Harga Dasar** untuk produsen (§ 17) — contoh angka belum dijawab.
-9. Kategori/"jenis" produk tambahan yang dimaksud user (di luar kategori yang sudah ada) — butuh penjelasan sebelum dirancang.
-10. Perlu pesan seketika ke penyetuju saat pengajuan masuk, atau cukup digest harian + lencana?
+Sudah dijawab user (putaran 2): izin (K10), sumber (K11), contoh produk (K12), PDF (K13), retensi (K14), saklar (K15), notifikasi (K16). Tersisa:
+1. **Model harga/bagi hasil** — pertanyaan di § 17 (varian A/B, siapa menetapkan persentase, dasar perhitungan setelah voucher). **Tidak memblokir P1–P5** (pengajuan hanya mengumpulkan harga perkiraan); memblokir tahap produk & pencairan.
+2. Aturan hitung batas produk (usulan: draf + aktif; arsip tidak) dan produsen lama buatan admin = tanpa batas — usulan, belum dikonfirmasi.
+3. Kategori/"jenis" produk tambahan di luar kategori yang sudah ada (jenis digital/jasa sudah dicatat sebagai tahap sendiri).
+4. Apakah penyetuju perlu email seketika saat pengajuan masuk (sekarang: lencana + digest PJ) — dibahas di rapat.
 
 ## 20. Status
 
