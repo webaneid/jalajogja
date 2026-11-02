@@ -827,4 +827,7 @@ T1 schema + migration + DDL tenant baru · T2 tab "Syarat Produsen" (draf/Tiptap
   - **URUTAN DEPLOY:** migration `0090` di VPS DULU, baru build/restart. Terbitkan syarat hanya setelah itu (penerbitan = semua produsen terkunci).
 - **T4 SELESAI** (2026-11-03): uji data nyata di DB dev lokal lulus 10/10 (validasi isi kosong, versi aktif = terbit terbesar, unique tanda tangan ganda, verifikasi bukti valid/hash acak/format salah,
   versi baru ⇒ belum ada tanda tangan ⇒ terkunci, isi diubah lewat SQL ⇒ verifikasi menolak, data uji dibersihkan); lessons-learned dicatat; ringkasan status di CLAUDE.md.
-  **Belum diuji:** alur browser penuh (terbit → produsen terkunci → tanda tangan → terbuka; dua tab bersamaan; sidebar terkunci), migration `0090` di VPS.
+- **DEPLOYED 2026-11-03:** push ke `main` (sampai `575bcf0`), migration `0090` dijalankan di VPS, build + restart. User mengonfirmasi "sementara sesuai" setelah menjalankan langkah deploy/uji.
+  Daftar uji browser yang dianjurkan (rincian mana yang sudah dicoba user belum dicatat): draf tersimpan setelah muat ulang → terbit (konfirmasi "mengunci N produsen") → produsen terkunci
+  (sidebar hanya "Syarat", halaman lain dialihkan) → tanda tangan (QR + hash) → portal terbuka → `/{slug}/verify/{hash}` valid → status tercatat di pengaturan toko → versi 2 mengunci ulang → dua tab bersamaan.
+  Pembatalan darurat tanpa rollback kode: kembalikan versi terbit ke draf (`UPDATE "tenant_<slug>".producer_terms SET status='draft', version=NULL, published_at=NULL WHERE status='published'`) — tidak ada versi aktif ⇒ tidak ada penguncian.
