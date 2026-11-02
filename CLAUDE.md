@@ -243,7 +243,7 @@ pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
 | Notifikasi Email (paritas WA, fallback SMTP platform, preset Gmail/Resend, From per domain) — SELESAI + deployed 2026-10-30 | `docs/arsitektur-notifikasi-email.md` |
 | Notifikasi PJ modul (digest + verifikasi bendahara via tautan) — keuangan+keanggotaan+toko+donasi+event SELESAI KODE 2026-10-10, belum deploy | `docs/arsitektur-notifikasi-pengurus.md` |
 | Produsen produk (admin-only: internal/anggota/custom) — deployed 2026-10-09 | `docs/arsitektur-produsen.md` |
-| Portal Produsen + Profil/Gudang + Cetak Label + Buat Batch masal + Pengiriman per Produsen (F1–F5) — baca "PETA STATUS" di bagian atas dokumen (deploy: sampai § 24 F3, 2026-11-01; uji browser F2–F3 belum); definisi fitur terkunci § 18 | `docs/arsitektur-portal-produsen.md` |
+| Portal Produsen + Profil/Gudang + Cetak Label + Buat Batch masal + Pengiriman per Produsen (F1–F5) + **Syarat & Ketentuan Produsen + TTD digital (§ 28, kode SELESAI 2026-11-03)** — baca "PETA STATUS" di bagian atas dokumen (deploy: sampai § 24 F3, 2026-11-01; uji browser F2–F3 belum); definisi fitur terkunci § 18 | `docs/arsitektur-portal-produsen.md` |
 | Penulis & Editor Post (byline system) | `docs/arsitektur-penulis-post.md` |
 | Data Pesantren anggota | `docs/arsitektur-pesantren.md` |
 | Data Profesional anggota — perencanaan, belum dieksekusi | `docs/arsitektur-profesional.md` |
@@ -1186,6 +1186,12 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 > Ini status singkat yang di-OVERWRITE tiap kali berubah, BUKAN log yang ditambah terus.
 > Riwayat detail tiap perbaikan ada di `docs/lessons-learned.md` dan `docs/arsitektur-*.md` masing-masing modul.
 
+- **2026-11-03 — Syarat & Ketentuan Produsen + tanda tangan digital** (KODE SELESAI T1–T4, type-check + build bersih, audit `security-auditor` 0 Critical/High; commit lokal `5d1bc5b`, `30ba7a1`, `7101ab0`, BELUM di-push/deploy/uji browser).
+  Teks syarat dikelola di `/toko/pengaturan` (draf → terbit, versi tak bisa diedit); produsen wajib membaca + tanda tangan digital (satu sisi) sebelum portal terbuka; terbit versi baru = SEMUA produsen tanda tangan ulang.
+  Penjaga `getProducerAccess` fail-closed bila syarat belum ditandatangani; halaman portal dialihkan ke `/portal-produsen/syarat`; bukti diverifikasi lewat `/{slug}/verify/{hash}`.
+  **URUTAN DEPLOY: migration `0090_producer_terms.sql` di VPS DULU, baru build/restart; terbitkan syarat hanya setelah itu (terbit = semua produsen terkunci).**
+  Terbuka: perbaikan akar XSS di renderer bersama `lib/letter-render.ts` (butuh keputusan user — `docs/lessons-learned.md` [2026-11-03]); uji browser alur penuh; kolom `ip` bukti belum tepercaya (menunggu keputusan `real_ip` Nginx).
+  Detail: `docs/arsitektur-portal-produsen.md` § 28.
 - **2026-10-30 — Integrasi & Pelacakan SEO** (SELESAI, deployed, diuji di tenant `forbis`: GA4 + Search Console masuk): tab di `/settings/seo`
   untuk Search Console, Bing, GTM, GA4, Meta Pixel — gratis semua paket, admin isi ID saja (regex ketat `lib/tracking-ids.ts`), dipasang hanya di
   front-end publik. Migration `0074` sudah jalan di VPS. Detail: `docs/arsitektur-seo.md` § 3. Belum diuji sungguhan: GTM dan Meta Pixel.

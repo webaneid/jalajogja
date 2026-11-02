@@ -825,4 +825,6 @@ T1 schema + migration + DDL tenant baru · T2 tab "Syarat Produsen" (draf/Tiptap
     (M2) Pengaturan Toko kini `hasReadAccess(toko)` dan draf + daftar penanda tangan hanya dimuat untuk akses PENUH; (L) 42P01 di halaman pengaturan tidak 500; komentar layout diperbarui.
   - Catatan: kolom `ip` di bukti = `x-forwarded-for` apa adanya (informatif, bisa dipalsukan sampai keputusan `real_ip` Nginx dibuat); bukan dasar keputusan keamanan.
   - **URUTAN DEPLOY:** migration `0090` di VPS DULU, baru build/restart. Terbitkan syarat hanya setelah itu (penerbitan = semua produsen terkunci).
-- T4 BELUM (audit menyeluruh akhir + lessons + ringkasan status di CLAUDE.md).
+- **T4 SELESAI** (2026-11-03): uji data nyata di DB dev lokal lulus 10/10 (validasi isi kosong, versi aktif = terbit terbesar, unique tanda tangan ganda, verifikasi bukti valid/hash acak/format salah,
+  versi baru ⇒ belum ada tanda tangan ⇒ terkunci, isi diubah lewat SQL ⇒ verifikasi menolak, data uji dibersihkan); lessons-learned dicatat; ringkasan status di CLAUDE.md.
+  **Belum diuji:** alur browser penuh (terbit → produsen terkunci → tanda tangan → terbuka; dua tab bersamaan; sidebar terkunci), migration `0090` di VPS.
