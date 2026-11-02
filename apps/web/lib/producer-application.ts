@@ -12,6 +12,7 @@ export const APP_MAX_PROCESS   = 3;
 export const APP_MAX_DOCUMENTS = 3;
 export const APP_MAX_FILES     = APP_MAX_SAMPLES + APP_MAX_PROCESS + APP_MAX_DOCUMENTS; // 10 per draf
 export const APP_MAX_LINKS     = 3;
+export const DEFAULT_PRODUCER_PRODUCT_LIMIT = 3;   // K3: batas produk produsen hasil pengajuan; admin bisa menaikkan
 export const APP_IMAGE_MAX_BYTES = 8 * 1024 * 1024;  // sebelum diproses ulang
 export const APP_PDF_MAX_BYTES   = 5 * 1024 * 1024;  // PDF disimpan apa adanya
 export const APP_DOC_KINDS = ["PIRT", "BPOM", "Halal", "NIB", "Lainnya"] as const;
@@ -135,6 +136,16 @@ function price(v: unknown): number | null | "bad" {
   return Math.round(n);
 }
 
+/** Persentase bagi hasil: 0 < p < 100, maks 2 desimal, tanpa "0x10"/"1e1". Dipakai form pemohon DAN keputusan penyetuju. */
+export function parseSharePercent(v: unknown): { ok: true; value: string } | { ok: false; error: string } {
+  if (typeof v !== "string" && typeof v !== "number") return { ok: false, error: "Persentase bagi hasil tidak valid." };
+  const txt = String(v).trim().replace(",", ".");
+  const n = /^\d+(\.\d+)?$/.test(txt) ? Number(txt) : NaN;
+  const rounded = Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;     // bulatkan DULU: "0.004"→0.00 dan "99.999"→100.00 harus ditolak
+  if (!Number.isFinite(rounded) || rounded <= 0 || rounded >= 100) return { ok: false, error: "Persentase bagi hasil harus lebih dari 0 dan kurang dari 100." };
+  return { ok: true, value: rounded.toFixed(2) };
+}
+
 export function parseDraftInput(raw: unknown): { ok: true; value: ParsedDraft } | { ok: false; error: string } {
   // Server Action bisa dipanggil dengan JSON bebas → bentuk disaring dulu; tipe yang salah = galat bersih, bukan TypeError/500.
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { ok: false, error: "Data tidak valid." };
@@ -152,10 +163,9 @@ export function parseDraftInput(raw: unknown): { ok: true; value: ParsedDraft } 
   // Persentase bagi hasil yang ditawarkan: 0 < p < 100, maksimal 2 desimal
   let share: string | null = null;
   if (input.offeredSharePercent != null && String(input.offeredSharePercent).trim() !== "") {
-    const shareTxt = String(input.offeredSharePercent).trim().replace(",", ".");
-    const n = /^\d+(\.\d+)?$/.test(shareTxt) ? Number(shareTxt) : NaN;      // tanpa "0x10"/"1e1"
-    if (!Number.isFinite(n) || n <= 0 || n >= 100) return { ok: false, error: "Persentase bagi hasil harus lebih dari 0 dan kurang dari 100." };
-    share = (Math.round(n * 100) / 100).toFixed(2);
+    const sp = parseSharePercent(input.offeredSharePercent);
+    if (!sp.ok) return sp;
+    share = sp.value;
   }
 
   let whatsapp: string | null = null;

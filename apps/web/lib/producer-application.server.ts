@@ -127,19 +127,21 @@ export async function loadPageData(a: Applicant): Promise<PageData> {
 }
 
 // ── Verifikasi data rujukan (selalu dari DB) ───────────────────────────────────────────────────────────
-async function verifySource(a: Applicant, type: "usaha" | "pesantren" | "profesional", id: string): Promise<string | null> {
+/** Konteks minimal untuk verifikasi sumber — dipakai pemohon (Applicant) DAN penyetuju (data pemohon dari DB). */
+export type SourceCtx = { memberId: string; tenantClient: TenantDb };
+export async function verifySource(a: SourceCtx, type: "usaha" | "pesantren" | "profesional", id: string): Promise<string | null> {
   let owned = false;
   if (type === "usaha") {
     const [r] = await publicDb.select({ id: memberBusinesses.id }).from(memberBusinesses)
-      .where(and(eq(memberBusinesses.id, id), eq(memberBusinesses.memberId, a.member.id), eq(memberBusinesses.isActive, true))).limit(1);
+      .where(and(eq(memberBusinesses.id, id), eq(memberBusinesses.memberId, a.memberId), eq(memberBusinesses.isActive, true))).limit(1);
     owned = !!r;
   } else if (type === "pesantren") {
     const [r] = await publicDb.select({ id: memberOwnedPesantren.id }).from(memberOwnedPesantren)
-      .where(and(eq(memberOwnedPesantren.id, id), eq(memberOwnedPesantren.memberId, a.member.id))).limit(1);
+      .where(and(eq(memberOwnedPesantren.id, id), eq(memberOwnedPesantren.memberId, a.memberId))).limit(1);
     owned = !!r;
   } else {
     const [r] = await publicDb.select({ id: memberProfessionals.id }).from(memberProfessionals)
-      .where(and(eq(memberProfessionals.id, id), eq(memberProfessionals.memberId, a.member.id), eq(memberProfessionals.isActive, true))).limit(1);
+      .where(and(eq(memberProfessionals.id, id), eq(memberProfessionals.memberId, a.memberId), eq(memberProfessionals.isActive, true))).limit(1);
     owned = !!r;
   }
   if (!owned) return "Data usaha tidak valid atau bukan milik Anda.";
@@ -196,7 +198,7 @@ export async function getOrCreateDraft(a: Applicant): Promise<{ ok: true; app: P
 export async function saveDraftFields(a: Applicant, v: ParsedDraft): Promise<R> {
   const g = closedGuard(a);
   if (g) return { ok: false, error: g };
-  if (v.sourceType && v.sourceId) { const e = await verifySource(a, v.sourceType, v.sourceId); if (e) return { ok: false, error: e }; }
+  if (v.sourceType && v.sourceId) { const e = await verifySource({ memberId: a.member.id, tenantClient: a.tenantClient }, v.sourceType, v.sourceId); if (e) return { ok: false, error: e }; }
   if (v.originRegencyId) { const e = await verifyRegency(v.originRegencyId); if (e) return { ok: false, error: e }; }
 
   const created = await getOrCreateDraft(a);
@@ -318,7 +320,7 @@ export async function submitApplication(a: Applicant): Promise<R> {
     if (!cur) return { error: "Draf tidak ditemukan atau sudah dikirim." };
     const invalid = validateForSubmit(cur);                       // atas data TERSIMPAN di DB, bukan kiriman klien
     if (invalid) return { error: invalid };
-    const srcErr = await verifySource(a, cur.sourceType!, cur.sourceId!);
+    const srcErr = await verifySource({ memberId: a.member.id, tenantClient: a.tenantClient }, cur.sourceType!, cur.sourceId!);
     if (srcErr) return { error: srcErr };
     const regErr = await verifyRegency(cur.originRegencyId!);
     if (regErr) return { error: regErr };

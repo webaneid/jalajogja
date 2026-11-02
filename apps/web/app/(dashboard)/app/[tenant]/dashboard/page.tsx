@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { and, eq, gte, lte, inArray, sql, desc, asc } from "drizzle-orm";
 import { db, tenantMemberships, createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { countPendingApplicationsSafe } from "@/lib/producer-application-review.server";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { ModuleCard } from "@/components/dashboard/module-card";
 import { IncomeExpenseChart } from "@/components/dashboard/income-expense-chart";
@@ -175,6 +176,7 @@ export default async function TenantDashboardPage({
   const eventRegPendingCount = Number(eventRegPendingRow[0]?.count ?? 0);
   const lowStockCount        = Number(lowStockRow[0]?.count ?? 0);
   const mitraPendingCount    = Number(mitraPendingRow[0]?.count ?? 0);
+  const producerPendingCount = await countPendingApplicationsSafe(createTenantDb(slug));   // tabel belum ada → 0
 
   const activeProductsCount  = Number(activeProductsRow[0]?.count ?? 0);
   const activeCampaignsCount = Number(activeCampaignsRow[0]?.count ?? 0);
@@ -190,9 +192,10 @@ export default async function TenantDashboardPage({
     { label: "Pendaftaran event menunggu konfirmasi",   count: eventRegPendingCount, href: `/app/${slug}/event/acara` },
     { label: "Produk stok rendah (≤5)",                 count: lowStockCount, href: `/app/${slug}/toko/produk` },
     { label: "Pengajuan mitra menunggu review",         count: mitraPendingCount, href: `/app/${slug}/toko/mitra` },
+    { label: "Pengajuan produsen menunggu tinjauan",    count: producerPendingCount, href: `/app/${slug}/toko/produsen/pengajuan` },
   ].filter((item) => item.count > 0);
 
-  const totalActionItems = invoicesWaitingCount + pendingExpenseCount + eventRegPendingCount + lowStockCount + mitraPendingCount;
+  const totalActionItems = invoicesWaitingCount + pendingExpenseCount + eventRegPendingCount + lowStockCount + mitraPendingCount + producerPendingCount;
 
   // Tren 30 hari
   const days: string[] = [];

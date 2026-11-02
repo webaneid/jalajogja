@@ -12,6 +12,7 @@ import {
   Factory,
   Settings2,
   MapPin,
+  ClipboardCheck,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -21,11 +22,13 @@ const NAV_ITEMS = [
   { label: "Kategori",    icon: Tag,             path: "/kategori"    },
   { label: "Mitra",       icon: Handshake,       path: "/mitra"       },
   { label: "Produsen",    icon: Factory,         path: "/produsen"    },
+  { label: "Pengajuan",   icon: ClipboardCheck,  path: "/produsen/pengajuan" },
   { label: "Asal Kirim",  icon: MapPin,          path: "/asal-kirim"  },
   { label: "Pengaturan",  icon: Settings2,       path: "/pengaturan"  },
 ] as const;
 
-export function TokoNav({ slug }: { slug: string }) {
+// `badges`: jumlah yang perlu ditindak per path item (mis. pengajuan produsen menunggu tinjauan)
+export function TokoNav({ slug, badges = {} }: { slug: string; badges?: Record<string, number> }) {
   const pathname = usePathname();
   const base = `/app/${slug}/toko`;
 
@@ -42,7 +45,7 @@ export function TokoNav({ slug }: { slug: string }) {
           const href     = `${base}${path}`;
           const isActive = path === ""
             ? pathname === base || pathname === `${base}/`
-            : pathname.startsWith(href);
+            : pathname.startsWith(href) && !(path === "/produsen" && pathname.startsWith(`${base}/produsen/pengajuan`));   // "Produsen" bukan induk aktif dari "Pengajuan"
 
           return (
             <li key={label} className="shrink-0">
@@ -57,6 +60,9 @@ export function TokoNav({ slug }: { slug: string }) {
               >
                 <Icon className="h-4 w-4" />
                 {label}
+                {(badges[path] ?? 0) > 0 && (
+                  <span className="ml-auto rounded-full bg-primary px-1.5 text-[10px] font-semibold leading-4 text-primary-foreground">{badges[path]}</span>
+                )}
               </Link>
             </li>
           );

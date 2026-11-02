@@ -1,6 +1,6 @@
 # Arsitektur Pengajuan Produsen — alur anggota mengajukan diri, kurasi pengurus, jadi produsen
 
-> **Status: RENCANA (2026-11-03) — BELUM ADA KODE.** Ditulis bersama user lewat diskusi; dokumen ini adalah satu-satunya sumber keputusan untuk fitur ini.
+> **Status: KODE SELESAI P1–P7 (2026-11-03) — lihat § 20 (status) dan § 21 (regresi + runbook deploy).** Ditulis bersama user lewat diskusi; dokumen ini adalah satu-satunya sumber keputusan untuk fitur ini.
 > Dokumen terkait: `docs/arsitektur-portal-produsen.md` (portal, § 28 Syarat & Ketentuan), `docs/arsitektur-produsen.md` (data produsen),
 > `docs/arsitektur-mitra.md` (sistem Mitra yang sudah ada — pola pengajuan dipinjam dari sini), `docs/arsitektur-keamanan.md`.
 > Jawaban user 2026-11-03 (putaran 2) sudah dimasukkan (K10–K16). Bagian **§ 19** tinggal memuat hal yang MASIH terbuka — terutama model harga/bagi hasil (§ 17).
@@ -187,7 +187,7 @@ Keputusan D2 (`arsitektur-portal-produsen.md` § 9, 2026-10-31) ditandai **DIGAN
   1. `getTenantAccess` + izin penyetuju (§ 11); kunci advisory per `application_id`; muat pengajuan; status harus `pending`.
   2. **Periksa ulang**: pemohon masih `isTenantMember`; punya akun Better Auth terklaim; baris sumber masih milik pemohon & aktif; belum ada produsen untuk sumber itu.
   3. Buat `producers` (type `member`, sumber, `member_id`, `brand_name`, `product_limit=3`, `revenue_share_percent` = angka yang DISEPAKATI penyetuju [bawaan = tawaran pemohon, divalidasi 0<p<100], `application_id`, `name_cache`) di schema tenant.
-  4. Buat `public.producer_logins` (dengan `granted_by`). Dua schema berbeda → **tidak satu transaksi**: bila langkah 4 gagal, produsen yang baru dibuat dihapus (kompensasi, pola `createFirstOwnerAction`); status pengajuan menjadi `approved` **terakhir**. Kegagalan di tengah tidak boleh meninggalkan produsen yatim tanpa tercatat.
+  4. Buat `public.producer_logins` (dengan `granted_by`). **Realisasi (lebih aman dari rencana awal):** semua langkah tenant (produsen + status) ada dalam SATU transaksi tenant dan `producer_logins` (schema `public`, client terpisah) disisipkan PALING AKHIR di dalam blok transaksi itu — kegagalannya me-rollback produsen + status. Satu-satunya celah (commit gagal SETELAH login tersisip) dikompensasi dengan menghapus login di `catch`. Sebelum insert, login YATIM (produsen sudah tak ada) untuk akun yang sama dibersihkan; login yang menunjuk produsen lain yang masih ada → ditolak jelas. `name_cache` diisi sesudah commit (upaya terbaik).
   5. Tulis `reviewed_*`, `producer_id`; kirim notifikasi (fire-and-forget; kegagalan kirim tidak membatalkan persetujuan).
 - **Tolak** — alasan wajib (min. 10 karakter), tampil ke pemohon; `review_note` internal terpisah.
 - **Batalkan** — oleh pemohon selagi `pending`.
@@ -195,11 +195,11 @@ Keputusan D2 (`arsitektur-portal-produsen.md` § 9, 2026-10-31) ditandai **DIGAN
 
 ## 11. Izin akses
 
-**Tanpa role/modul baru (K10).** Menyetujui/menolak = `hasFullAccess(access.tenantUser, "anggota")`; melihat antrean & detail = `hasReadAccess(..., "anggota")`. Pada matriks yang ada ini berlaku untuk **Owner, Ketua, Sekretaris**; Bendahara tidak punya akses (`anggota: none`). Peran kustom yang diberi `anggota: full` di `/settings/roles` otomatis ikut bisa menyetujui — itu perilaku yang disengaja dan dikontrol lewat pengaturan peran. Semua lewat helper izin, tidak ada cek peran manual. Aksi *kelola produsen* yang sudah ada (tambah produsen, beri/cabut akses login, ubah batas produk) tetap `toko:full`.
+**Tanpa role/modul baru (K10).** Menyetujui/menolak = `hasFullAccess(access.tenantUser, "anggota")`; melihat antrean & detail = `hasReadAccess(..., "anggota")`. Pada matriks yang ada ini berlaku untuk **Owner, Ketua, Sekretaris**; Bendahara tidak punya akses (`anggota: none`). Peran kustom yang diberi `anggota: full` di `/settings/roles` otomatis ikut bisa menyetujui — itu perilaku yang disengaja dan dikontrol lewat pengaturan peran. Server Action setujui/tolak MENAMBAH syarat `hasReadAccess(toko)` (halamannya ada di bawah `/toko`; menutup pemanggilan langsung oleh peran kustom `anggota:full` tanpa akses Toko). Sekretaris (`toko: read`) tetap bisa menyetujui. Syarat `toko:read` juga berlaku di penyaji berkas untuk jalur peninjau (konsisten dengan aksi & halaman). Semua lewat helper izin, tidak ada cek peran manual. Aksi *kelola produsen* yang sudah ada (tambah produsen, beri/cabut akses login, ubah batas produk) tetap `toko:full`.
 Catatan: "super admin" diartikan peran **Owner** tenant (super admin platform tidak bisa masuk dashboard tenant — aturan proyek).
 Konsekuensi yang perlu disadari: orang yang menyetujui (anggota:full) dan orang yang kemudian mengatur produsen (toko:full) bisa berbeda — Sekretaris dapat menyetujui tetapi tidak dapat mengubah batas produk/akses login setelahnya.
 
-## 12. Notifikasi (K16: email saja)
+## 12. Notifikasi (K16: email saja) — ✅ terimplementasi (P6)
 
 | Peristiwa | Penerima | Kanal |
 |---|---|---|
@@ -207,7 +207,7 @@ Konsekuensi yang perlu disadari: orang yang menyetujui (anggota:full) dan orang 
 | Disetujui | pemohon | **Email** — tautan login portal + ajakan menandatangani Syarat & Ketentuan |
 | Ditolak | pemohon | **Email** — alasan + informasi boleh mengajukan lagi |
 
-Alamat tujuan = email akun login pemohon (selalu ada) — bukan kontak yang diketik di form. Dikirim lewat `sendMailForTenant` (SMTP tenant, fallback SMTP platform); kegagalan kirim dicatat, tidak membatalkan keputusan. Tidak ada template WhatsApp baru. Kelengkapan kanal (WA, email seketika ke penyetuju) dibahas di rapat.
+Alamat tujuan = email akun login pemohon (selalu ada) — bukan kontak yang diketik di form. Dikirim lewat `sendMailForTenant` (SMTP tenant, fallback SMTP platform); kegagalan kirim dicatat, tidak membatalkan keputusan. Tidak ada template WhatsApp baru. Kelengkapan kanal (WA, email seketika ke penyetuju) dibahas di rapat. Implementasi: `lib/producer-application-notify.server.ts` (`buildDecisionEmail` murni + `notifyApplicationDecision` fire-and-forget; alamat dari `public.user.email` via akun pemohon, teks di-escape, subjek tanpa CR/LF); baris digest: `lib/pj-notification.server.ts` (digest toko + "Pengajuan produsen menunggu tinjauan: N").
 
 ## 13. Penyimpanan, pembersihan, retensi
 
@@ -216,12 +216,12 @@ Alamat tujuan = email akun login pemohon (selalu ada) — bukan kontak yang dike
 - **Pemrosesan** (`lib/producer-application-file.server.ts`): gambar (JPG/PNG/WebP/HEIC) diproses ulang Sharp → WebP, EXIF dibuang, maks 1600 px, `limitInputPixels`; SVG/HTML/teks/format lain ditolak. **PDF hanya slot dokumen**, disimpan APA ADANYA: header `%PDF-` + penutup `%%EOF`, maks 5 MB. Nama berkas `randomUUID()` buatan server. Batas: 4 contoh + 3 proses + 3 dokumen = 10 berkas per draf.
 - **Penyaji berkas** `GET /api/produsen/pengajuan/berkas?tenant&app&f`: `key` dicari dari JSON pengajuan itu sendiri (tidak ada path dari klien); boleh untuk pemilik pengajuan ATAU pengurus `hasReadAccess(anggota)`; selain itu 404 (tidak membedakan "tidak ada" dari "bukan hakmu"). Header: `Content-Type` dari catatan server, `nosniff`, `X-Frame-Options: DENY`, `Cache-Control: private, no-store`, `Referrer-Policy: no-referrer`, `inline`; gambar tambahan `Content-Security-Policy: default-src 'none'; sandbox`. Peninjau (`hasReadAccess(anggota)`) hanya boleh membuka berkas pengajuan yang SUDAH dikirim (bukan `draft`).
   **Koreksi atas rencana awal:** rencana semula menyebut `Content-Security-Policy: sandbox` untuk PDF. TIDAK dipakai — yang diketahui, CSP sandbox pada dokumen PDF top-level dapat memblokir penampil PDF bawaan peramban (belum diuji di sini). PDF dibuka inline di penampil peramban peneliti; risiko sisa (celah penampil PDF peramban) diterima dan tidak ada pemindaian antivirus di infrastruktur ini.
-- **Cron pembersihan** `GET /api/cron/cleanup-pengajuan-produsen` (harian, `x-cron-secret`, pola `cleanup-resi`) — **BELUM dibuat (P7)**:
+- **Cron pembersihan** `GET /api/cron/cleanup-pengajuan-produsen` (harian, `x-cron-secret`, pola `cleanup-resi`) — ✅ **terimplementasi (P7)**: `lib/producer-application-cleanup.server.ts` + `app/api/cron/cleanup-pengajuan-produsen/route.ts` (fail-closed bila `CRON_SECRET` tak terkonfigurasi). Urutan aman: rujukan DB dihapus/dikosongkan DULU (usia diulang di klausa WHERE), baru objek; objek sisa ditangkap penyapu yatim (umur >1 jam). Aturan:
   - `draft` > 7 hari → hapus objek privat + baris.
   - `rejected`/`cancelled` > **7 hari** sejak keputusan → hapus semua berkas (K14).
   - `approved` > **30 hari** → hapus foto contoh & foto proses; **dokumen legalitas dipertahankan**.
-  - Rujukan di JSON dikosongkan; respons melaporkan `deleted/failed/tenantsSkipped`.
-  Sampai cron ada, berkas pengajuan final tetap di bucket privat (tidak tampil ke siapa pun kecuali pemilik/pengurus).
+  - Rujukan di JSON dikosongkan; respons melaporkan `draftsDeleted/finalCleared/approvedPhotosCleared/orphansDeleted/objectsDeleted/failed/tenantsSkipped/tenantsFailed` dan berstatus **500 bila `failed>0` atau ada tenant gagal** (curl -f di crontab ikut gagal); kunci terreferensi diambil lewat SQL (bukan memuat seluruh JSONB).
+  **Crontab VPS (harus dipasang):** `20 3 * * * curl -s -H "x-cron-secret: $CRON_SECRET" https://jalakarta.com/api/cron/cleanup-pengajuan-produsen >> /var/log/jalajogja-cron.log 2>&1` — respons `{draftsDeleted, finalCleared, approvedPhotosCleared, orphansDeleted, objectsDeleted, failed, tenantsSkipped, tenantsFailed}`; `failed`/`tenantsFailed` ≠ kosong = periksa log.
 - Retensi baris teks pengajuan: disimpan (kecil; jejak audit).
 
 ## 14. Keamanan (kategori Critical khusus proyek ini diberi tanda ★)
@@ -290,13 +290,18 @@ Form pengajuan meminta **persentase bagi hasil yang ditawarkan** (wajib, K17) se
 
 Uji wajib sebelum selesai: dua penyetuju menyetujui bersamaan; keluar keanggotaan di antara kirim & setujui; sumber dihapus di antara kirim & setujui; langkah login gagal setelah produsen dibuat (kompensasi); unggah berkas bukan gambar / terlalu besar / lewat batas jumlah; pemohon A mengacu `mediaId` milik B; pemohon tenant lain mengajukan di tenant ini.
 
-## 19. Yang MASIH terbuka
+## 19. Yang MASIH terbuka (diperbarui setelah P7)
 
-Sudah dijawab user (putaran 2): izin (K10), sumber (K11), contoh produk (K12), PDF (K13), retensi (K14), saklar (K15), notifikasi (K16). Tersisa:
-1. **Model harga/bagi hasil** — pertanyaan di § 17 (varian A/B, dasar perhitungan setelah voucher, batas bawah persentase; siapa mengajukan persentase sudah diputuskan = pemohon, K17). **Tidak memblokir P1–P5** (pengajuan hanya mengumpulkan harga perkiraan); memblokir tahap produk & pencairan.
-2. Aturan hitung batas produk (usulan: draf + aktif; arsip tidak) dan produsen lama buatan admin = tanpa batas — usulan, belum dikonfirmasi.
-3. Kategori/"jenis" produk tambahan di luar kategori yang sudah ada (jenis digital/jasa sudah dicatat sebagai tahap sendiri).
-4. Apakah penyetuju perlu email seketika saat pengajuan masuk (sekarang: lencana + digest PJ) — dibahas di rapat.
+Sudah dijawab user: izin (K10), sumber (K11), contoh produk (K12), PDF (K13), retensi (K14), saklar (K15), notifikasi (K16), tawaran bagi hasil dari pemohon (K17). Tersisa — TIDAK memblokir peluncuran pengajuan, tetapi perlu keputusan:
+1. **Penyetuju memutuskan pengajuannya sendiri** — saat ini dibolehkan + diberi peringatan + ditandai (§ 20). Kunci atau biarkan?
+2. **Model harga/bagi hasil** (§ 17): varian A/B (diskon anggota ditanggung siapa), dasar hitung terhadap voucher, batas bawah persentase di form. Memblokir tahap produk & pencairan, bukan pengajuan.
+3. **Mengubah persentase bagi hasil SETELAH disetujui** — belum ada UI (hanya batas produk yang bisa diubah admin). Perlu? Siapa yang boleh?
+4. **Aturan hitung batas produk** (draf+aktif, tanpa arsip) — usulan; belum ditegakkan karena portal belum bisa membuat produk (tahap produk).
+5. **Kategori/"jenis" produk tambahan** di luar `product_categories` yang sudah ada (digital/jasa dicatat sebagai tahap sendiri).
+6. **Email seketika ke penyetuju** saat pengajuan masuk (sekarang: lencana + dashboard + digest PJ) — dibahas di rapat.
+7. **Sekretaris tanpa akses penuh Toko** boleh menyetujui (keputusan K6) — dicatat agar disadari.
+8. **Retensi data pribadi** (hasil audit akhir): dokumen legalitas pengajuan DISETUJUI disimpan tanpa batas waktu (K14), pengajuan PENDING tanpa batas waktu (berkas tertahan selama belum diputuskan), dan baris teks final (nama PJ, WA, deskripsi) disimpan selamanya. Pertimbangkan TTL panjang (mis. 1–2 tahun) untuk dokumen, dan pembatalan/peringatan otomatis untuk pending > N bulan.
+9. **Deploy**: migration 0092 hanya menyentuh tenant `is_active=true`; tenant nonaktif yang diaktifkan kemudian harus menjalankan 0091/0092 lagi sebelum fitur dipakai (tabel/kolom tak ada → 42P01/42703).
 
 ## 20. Status
 
@@ -332,4 +337,36 @@ Sudah dijawab user (putaran 2): izin (K10), sumber (K11), contoh produk (K12), P
   `sampleId` hilang 400 / ngawur 409; penyaji berkas pemilik 200 (header `no-store`, `nosniff`, CSP gambar), anonim 404, akun lain 404, traversal/tenant palsu/id lain 404; unggah saat pending 409, saat saklar mati 403; kartu beranda tak tampil saat saklar mati.
   **Belum diuji:** tampilan/gesture formulir di browser sungguhan (terutama HP); jalur pengurus membuka berkas (`hasReadAccess(anggota)`, perlu akun pengurus); perilaku Origin/Host di belakang Nginx & custom domain.
   **CATATAN DEPLOY P4:** (1) Nginx: `client_max_body_size 10m;` untuk `location /api/produsen/pengajuan/upload` (default 1 MB menolak unggahan sebelum sampai ke aplikasi); (2) jalankan migration 0091 lalu 0092 SEBELUM kode; (3) saklar biarkan MATI di production sampai P7 (cron) selesai; (4) bucket `private-{slug}` dibuat otomatis saat unggahan pertama — pastikan kredensial MinIO aplikasi boleh membuat bucket.
-- P5–P7 belum dimulai.
+- **P5 SELESAI KODE:** antrean + detail + setujui/tolak di `/app/{slug}/toko/produsen/pengajuan` (lihat § 10–11). Audit `security-auditor` (0 Critical, 0 High, 2 Medium, 5 Low; tanpa IDOR/lintas-tenant) — diperbaiki:
+  daftar → SQL `COUNT/LIMIT/OFFSET` + kolom ringan + `ILIKE` dengan escape `%`/`_` (pencarian nama pemohon lewat `public.members`); login YATIM (produsen sudah tak ada) dibersihkan sebelum persetujuan, login sah milik produsen lain → ditolak jelas;
+  aksi setujui/tolak mensyaratkan `anggota:full` **dan** `toko:read`; log galat aksi tidak lagi mencetak objek galat utuh.
+  **Keputusan bisnis yang saya ambil SENDIRI saat Anda tidur (mohon dikonfirmasi):** (1) penyetuju BOLEH memutuskan pengajuannya sendiri (agar tenant dengan satu pengurus tidak buntu) — tetapi halaman detail menampilkan peringatan dan keputusan ditandai `[Diputuskan oleh pemohon sendiri]` di catatan internal; bila ingin dikunci, tambahkan penolakan `access.tenantUser.memberId === app.memberId` di `approveApplication`/`rejectApplication`.
+  (2) Sekretaris (`toko: read`) boleh menyetujui — sesuai keputusan K6, meski aksi Produsen lain butuh `toko:full`.
+- **P6 SELESAI KODE:** email disetujui/ditolak + baris digest toko (§ 12). Teruji: isi email (escape, tanpa tag dari input, subjek tanpa CR/LF), kait berjalan & kegagalan SMTP tidak menghalangi keputusan. **Belum teruji:** pengiriman email sungguhan (SMTP lokal tidak ada) dan kiriman digest PJ nyata (butuh PJ terkonfigurasi).
+- **P7 SELESAI KODE:** cron pembersihan (§ 13). Teruji data nyata dengan jam simulasi: draf kedaluwarsa (draf baru disentuh selamat), ditolak/dibatalkan (semua berkas hilang, baris teks tetap), disetujui >30 hari (dokumen legalitas dipertahankan), pending tak tersentuh, objek yatim terhapus, idempoten; rute: tanpa header/header salah 401, header benar 200 + laporan; tanpa `CRON_SECRET` selalu 401.
+- **Pelengkap hasil evaluasi total (celah yang ditutup sebelum push):** (a) K3 "admin bisa menaikkan batas produk" belum punya UI → tombol "Batas produk" di kartu produsen anggota (`setProducerProductLimitAction`, `toko:full`, 1–999 atau kosong = tanpa batas); kartu juga menampilkan bagi hasil & brand;
+  (b) § 17.4b "bagi hasil tampil di Profil portal (read-only)" belum ada → bagian "Kesepakatan" (brand, bagi hasil, batas produk) di Profil portal produsen.
+
+## 21. Regresi & runbook deploy (2026-11-03)
+
+### 21.1 Regresi
+Proyek belum punya suite tes. Skrip data-nyata: `cd apps/web && SMOKE_I_KNOW=1 bun run --preload ./scripts/stub-server-only.ts scripts/smoke-producer-application.ts` — 41 pengecekan (berkas, parsing, draf, tinjauan termasuk balapan/rollback/login yatim/keputusan sendiri, daftar+paginasi+escape LIKE, email, cron dengan jam simulasi).
+**Pengaman:** menolak jalan bila host `DATABASE_URL`/`MINIO_ENDPOINT` (di-parse, bukan sekadar kata yang cocok) bukan localhost, atau tanpa `SMOKE_I_KNOW=1`; kandidat anggota yang sudah punya produsen/pengajuan dikecualikan (skrip membuat akun/produsen/berkas uji dan mengganti sementara tautan akun 3 anggota; dipulihkan di `finally`). Butuh migration 0083–0092 di DB lokal, MinIO lokal hidup, ≥3 anggota aktif berusaha.
+Jalankan ulang setiap mengubah modul ini.
+
+### 21.2 Urutan deploy VPS (migration DULU, lalu kode)
+1. `git pull` → cek `git log --oneline -3`.
+2. Migration (idempotent; jalankan berurutan): `docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/0091_producer_logins_multi_tenant.sql` lalu `…/0092_producer_applications.sql`. (0090 = Syarat & Ketentuan, sudah jalan.) Hasil benar: `NOTICE: OK tenant_<slug>` per tenant, tanpa `ERROR`.
+3. Nginx: tambahkan `client_max_body_size 10m;` untuk `location /api/produsen/pengajuan/upload` (default 1 MB menolak unggahan), `nginx -t && systemctl reload nginx`.
+4. `bun install && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env && pm2 flush jalajogja`.
+5. Crontab (user `webane`): tambahkan baris di § 13. Uji manual sekali: `curl -s -H "x-cron-secret: $CRON_SECRET" https://jalakarta.com/api/cron/cleanup-pengajuan-produsen` → harapan `{"draftsDeleted":0,…,"failed":0,"tenantsSkipped":[],"tenantsFailed":[]}`.
+6. Pastikan kredensial MinIO aplikasi boleh membuat bucket (bucket `private-{slug}` dibuat otomatis saat unggahan pertama) dan **tidak ada** kebijakan akses pada bucket itu (fungsi menolak bila ada).
+7. Peluncuran per tenant: terbitkan Syarat & Ketentuan Produsen (§ 28 portal) → hidupkan saklar di Pengaturan Toko (Owner/Ketua) → uji dengan satu anggota asli.
+8. Mundur cepat: matikan saklar (tidak ada data yang perlu dihapus).
+
+### 21.3 Belum diuji / tidak diuji di sini
+Tampilan & gesture formulir di browser sungguhan (terutama HP); pengiriman email sungguhan & digest PJ; jalur pengurus asli membuka berkas dan menekan tombol setujui/tolak di browser (logika diuji di lib, halaman diuji lewat HTTP dengan Ketua/Bendahara sementara); perilaku Origin/Host di belakang Nginx & custom domain; kinerja pool Postgres di bawah beban persetujuan paralel (rate limit 60/jam).
+
+### 21.4 Sengaja belum dibangun (tahap berikut)
+Produsen mengunggah/mengedit produk sendiri + tinjauan produk + penegakan batas produk · jenis digital/jasa · entitas brand · salin produk lintas tenant (opsi B) · kenaikan ke Mitra · pengajuan pembayaran/pencairan · keputusan model harga § 17.
+

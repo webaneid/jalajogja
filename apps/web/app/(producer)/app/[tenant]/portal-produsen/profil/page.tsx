@@ -23,7 +23,7 @@ export default async function ProducerProfilePage({ params }: { params: Promise<
   const [views, origins, [prodRow]] = await Promise.all([
     resolveProducers(tenantClient, access.tenant, [access.producer.id]),
     listOrigins(tenantClient, { producerId: access.producer.id }),
-    db.select({ couriers: schema.producers.couriers }).from(schema.producers)
+    db.select({ couriers: schema.producers.couriers, brandName: schema.producers.brandName, share: schema.producers.revenueSharePercent, productLimit: schema.producers.productLimit }).from(schema.producers)
       .where(eq(schema.producers.id, access.producer.id)).limit(1),
   ]);
   const couriers = sanitizeCouriers(prodRow?.couriers);
@@ -57,6 +57,19 @@ export default async function ProducerProfilePage({ params }: { params: Promise<
           <a href={`/${slug}/akun`} className="text-primary hover:underline">halaman Akun</a> (Usaha / Pesantren / Profesional).
         </p>
       </section>
+
+      {/* Kesepakatan hasil pengajuan (diatur pengurus; BACA-SAJA) — docs/arsitektur-pengajuan-produsen.md § 17.4b */}
+      {(prodRow?.brandName || prodRow?.share != null || prodRow?.productLimit != null) && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold">Kesepakatan dengan {access.tenant.name}</h2>
+          <dl className="divide-y divide-border rounded-lg border border-border bg-card px-4">
+            {prodRow?.brandName && <Row label="Brand">{prodRow.brandName}</Row>}
+            {prodRow?.share != null && <Row label="Bagi hasil tenant">{Number(prodRow.share)}% dari harga jual (berlaku untuk pesanan baru)</Row>}
+            <Row label="Batas produk">{prodRow?.productLimit != null ? `${prodRow.productLimit} produk` : "Tanpa batas"}</Row>
+          </dl>
+          <p className="text-xs text-muted-foreground">Diatur oleh pengurus. Hubungi pengurus bila perlu penyesuaian.</p>
+        </section>
+      )}
 
       <section className="space-y-3">
         <div>

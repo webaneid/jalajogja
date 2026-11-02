@@ -23,6 +23,9 @@ BEGIN
     EXECUTE format('ALTER TABLE %I.producers ADD COLUMN IF NOT EXISTS brand_name TEXT', t);
     EXECUTE format('ALTER TABLE %I.producers ADD COLUMN IF NOT EXISTS product_limit INTEGER', t);
     EXECUTE format('ALTER TABLE %I.producers ADD COLUMN IF NOT EXISTS revenue_share_percent NUMERIC(5,2)', t);
+    -- Bagi hasil yang disepakati: 0 < p < 100 (ditegakkan juga di DB, bukan hanya di kode). Idempotent: DROP lalu ADD.
+    EXECUTE format('ALTER TABLE %I.producers DROP CONSTRAINT IF EXISTS producers_revenue_share_chk', t);
+    EXECUTE format('ALTER TABLE %I.producers ADD CONSTRAINT producers_revenue_share_chk CHECK (revenue_share_percent IS NULL OR (revenue_share_percent > 0 AND revenue_share_percent < 100))', t);
     EXECUTE format('ALTER TABLE %I.producers ADD COLUMN IF NOT EXISTS application_id UUID', t);
 
     EXECUTE format($f$

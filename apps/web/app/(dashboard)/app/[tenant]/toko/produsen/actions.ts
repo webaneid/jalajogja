@@ -270,6 +270,15 @@ export async function grantProducerLoginAction(slug: string, producerId: string)
       .where(and(eq(producerLogins.tenantId, access.tenant.id), eq(producerLogins.producerId, producerId))).limit(1);
     if (existing) return { success: false, error: "Produsen ini sudah punya akses login." };
 
+    // Login YATIM (baris producer_logins yang produsennya sudah tidak ada) menghalangi UNIQUE(user_id, tenant_id) dengan pesan menyesatkan → bersihkan.
+    // Login yang menunjuk produsen LAIN yang masih ada dibiarkan (insert di bawah akan ditolak dengan pesan yang benar).
+    const [stale] = await publicDb.select({ id: producerLogins.id, producerId: producerLogins.producerId }).from(producerLogins)
+      .where(and(eq(producerLogins.userId, owner.betterAuthUserId), eq(producerLogins.tenantId, access.tenant.id))).limit(1);
+    if (stale && stale.producerId !== producerId) {
+      const [live] = await db.select({ id: schema.producers.id }).from(schema.producers).where(eq(schema.producers.id, stale.producerId)).limit(1);
+      if (!live) await publicDb.delete(producerLogins).where(eq(producerLogins.id, stale.id));
+    }
+
     await publicDb.insert(producerLogins).values({
       userId: owner.betterAuthUserId, tenantId: access.tenant.id, producerId, grantedBy: access.tenantUser.id,
     });
@@ -304,6 +313,27 @@ export async function revokeProducerLoginAction(slug: string, producerId: string
   } catch (err) {
     console.error("[revokeProducerLoginAction]", err);
     return { success: false, error: "Gagal mencabut akses login." };
+  }
+}
+
+/** Admin mengatur batas jumlah produk produsen (K3, docs/arsitektur-pengajuan-produsen.md § 8.2). null = tanpa batas; selain itu bilangan bulat 1–999. */
+export async function setProducerProductLimitAction(slug: string, producerId: string, limit: number | null): Promise<ActionResult> {
+  const g = await guard(slug);
+  if (!g.access) return { success: false, error: g.error ?? "Akses ditolak." };
+  if (!isValidUuid(producerId)) return { success: false, error: "Produsen tidak ditemukan." };
+  if (limit !== null && (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 999)) {
+    return { success: false, error: "Batas produk harus bilangan bulat 1–999, atau kosong untuk tanpa batas." };
+  }
+  try {
+    const { db, schema } = createTenantDb(slug);
+    const updated = await db.update(schema.producers).set({ productLimit: limit, updatedAt: new Date() })
+      .where(eq(schema.producers.id, producerId)).returning({ id: schema.producers.id });
+    if (updated.length === 0) return { success: false, error: "Produsen tidak ditemukan." };
+    refresh(slug);
+    return { success: true, data: undefined };
+  } catch (err) {
+    console.error("[setProducerProductLimitAction]", pgErrorCode(err) ?? "unknown");
+    return { success: false, error: "Gagal menyimpan batas produk." };
   }
 }
 

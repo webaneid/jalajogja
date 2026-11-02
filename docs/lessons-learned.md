@@ -8,6 +8,13 @@
 
 ---
 
+## [2026-11-03] Modul Pengajuan Produsen — empat pola yang hampir lolos ke production
+1. **Nama bucket/objek yang diturunkan dari slug bisa bertabrakan dengan slug lain.** `tenant-{slug}-private` bertabrakan dengan bucket PUBLIK tenant bersluk `{slug}-private` (kebijakan publik-baca ikut menempel pada berkas "privat"). Fix: prefiks berbeda (`private-{slug}`) + `ensurePrivateBucket` fail-closed bila bucket sudah punya kebijakan. Pencegahan: nama sumber daya turunan slug HARUS dari namespace yang tidak bisa dibentuk oleh slug lain.
+2. **Menggabung array hasil unggahan berdasarkan POSISI membuat autosave basi menghapus data.** Klien mengirim daftar lebih pendek/urutan berbeda → foto yang baru diunggah terpotong atau menempel ke contoh yang salah. Fix: gabung per ID yang dikenal server; entri yang tak ada di kiriman klien DIPERTAHANKAN; penghapusan hanya lewat aksi hapus eksplisit; rujukan berkas hanya diubah server.
+3. **Operasi lintas-schema tidak bisa satu transaksi.** Persetujuan = INSERT produsen + UPDATE status (schema tenant) + INSERT `producer_logins` (schema public). Pola yang benar: bagian yang bisa di-rollback di dalam TX, bagian lintas-schema DIPASANG PALING AKHIR di dalam blok TX (kegagalannya me-rollback semuanya), dan hanya satu celah tersisa (commit gagal setelah login tersisip) yang dikompensasi di `catch`. Baris yatim yang menghalangi UNIQUE (login tanpa produsen) dibersihkan secara eksplisit, bukan dibiarkan memunculkan galat membingungkan.
+4. **Rate limit/validasi tidak cukup tanpa memeriksa dulu hal yang murah.** Pemrosesan gambar (Sharp) harus berjalan SESUDAH cek status draf/izin, dengan batas piksel kecil dan batas konkurensi global — rate limit per-akun tidak melindungi memori server dari banyak akun sekaligus.
+**Catatan pengujian:** (a) DB dev lokal sering tertinggal migration → `select *` pada tabel yang bertambah kolom gagal di skrip uji; pakai kolom eksplisit dan jalankan migration yang tertinggal. (b) Uji XSS dengan regex yang mencocokkan teks ter-escape memberi kegagalan palsu — periksa TAG/ATRIBUT sungguhan. (c) Turbo tidak meneruskan env shell ke `bun run dev` (strict env); uji rute berbasis env dengan `next dev` langsung dari `apps/web`. (d) Skrip regresi data-nyata yang mengubah DB WAJIB menolak jalan di luar localhost.
+
 ## [2026-11-03] `renderBody` menyisipkan atribut node Tiptap tanpa escape → stored XSS lewat Server Action
 
 - **Gejala (ditemukan audit fitur Syarat Produsen):** `lib/letter-render.ts` meng-escape teks dan `href` mark link, tetapi `color` (mark `textStyle`/`highlight`),

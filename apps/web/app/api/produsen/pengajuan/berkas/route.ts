@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   if (!allowed) {
     const admin = await getTenantAccess(slug);
     // Peninjau hanya untuk pengajuan yang SUDAH dikirim — draf adalah milik pemohon sampai ia mengirimnya
-    if (admin && hasReadAccess(admin.tenantUser, "anggota") && app.status !== "draft") allowed = true;
+    if (admin && hasReadAccess(admin.tenantUser, "anggota") && hasReadAccess(admin.tenantUser, "toko") && app.status !== "draft") allowed = true;
   }
   if (!allowed) return notFound();
 

@@ -1,4 +1,5 @@
 import "server-only";
+import { countPendingApplicationsSafe } from "@/lib/producer-application-review.server";
 import { createHash, randomBytes } from "crypto";
 import { and, asc, eq, gte, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import {
@@ -523,8 +524,12 @@ async function sendActivityDigest(opts: {
       ))
       .orderBy(asc(schema.invoices.createdAt))
       .limit(100);
-    if (lines.length === 0) return 0;
+    // Pengajuan produsen menunggu tinjauan (docs/arsitektur-pengajuan-produsen.md § 12): satu baris ringkas di digest toko yang sudah ada.
+    // Tabel belum dimigrasi → 0 (tidak menggagalkan digest pesanan).
+    const pendingApps = await countPendingApplicationsSafe(tenantDb);
+    if (lines.length === 0 && pendingApps === 0) return 0;
 
+    if (lines.length > 0) {
     const ids = [...new Set(lines.map((l) => l.invoiceId))];
     const items = await tdb
       .select({ invoiceId: schema.invoiceItems.invoiceId, name: schema.invoiceItems.name, qty: schema.invoiceItems.quantity })
@@ -538,6 +543,11 @@ async function sendActivityDigest(opts: {
       return `${i + 1}. *${cleanUserText(l.customerName) || "(tanpa nama)"}* — ${l.invoiceNumber}\n   ${(itemsBy.get(l.invoiceId) ?? ["(tanpa barang)"]).slice(0, 3).join(", ")}\n   ${ship || "-"} • dipesan ${when(l.createdAt)}`;
     });
     body = `Ada *${lines.length}* pesanan yang sudah dibayar dan belum diproses:\n\n${rows.join("\n\n")}${lines.length > MAX ? `\n…dan ${lines.length - MAX} lainnya.` : ""}`;
+    }
+    if (pendingApps > 0) {
+      body = (body ? `${body}\n\n` : "") + `Pengajuan produsen menunggu tinjauan: *${pendingApps}*.`;
+      if (lines.length === 0) { title = "Pengajuan Produsen"; path = "toko/produsen/pengajuan"; }
+    }
   }
 
   if (mod === "donasi") {

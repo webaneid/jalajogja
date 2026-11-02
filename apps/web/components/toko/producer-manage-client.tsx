@@ -13,12 +13,13 @@ import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import type { ProducerSourceKind } from "@/lib/producer-resolve";
+import { ProductLimitForm } from "@/components/toko/product-limit-form";
 import { CourierForm } from "@/components/producer/courier-form";
 import { ProducerCard } from "@/components/toko/producer-card";
 import type { ProducerView } from "@/lib/producer.server";
 import {
   createMemberProducerAction, createCustomProducerAction, updateProducerAction,
-  toggleProducerActiveAction, deleteProducerAction, grantProducerLoginAction, revokeProducerLoginAction, setProducerCouriersAction, type CustomProducerInput,
+  toggleProducerActiveAction, deleteProducerAction, grantProducerLoginAction, revokeProducerLoginAction, setProducerCouriersAction, setProducerProductLimitAction, type CustomProducerInput,
 } from "@/app/(dashboard)/app/[tenant]/toko/produsen/actions";
 
 export type ProducerItem = {
@@ -28,6 +29,8 @@ export type ProducerItem = {
   portal: { granted: boolean; ownerHasAccount: boolean } | null;
   /** Kurir pilihan produsen (§ 25); null = ikut pengaturan admin */
   couriers: string[] | null;
+  /** Hasil pengajuan produsen: batas produk (null = tanpa batas), bagi hasil disepakati (%), brand */
+  terms: { productLimit: number | null; sharePercent: string | null; brand: string | null };
   edit: { name: string; whatsapp: string; addressDetail: string; provinceId?: number; regencyId?: number; districtId?: number; villageId?: number; postalCode: string; notes: string };
 };
 
@@ -77,6 +80,7 @@ export function ProducerManageClient({ slug, internal, internalProductCount, ite
   const [error, setError] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<ProducerItem | null>(null);
+  const [limitFor, setLimitFor] = useState<ProducerItem | null>(null);
   const [courierFor, setCourierFor] = useState<ProducerItem | null>(null);
 
   // Tambah dari anggota
@@ -133,6 +137,12 @@ export function ProducerManageClient({ slug, internal, internalProductCount, ite
             <Button size="sm" variant="outline" onClick={() => setCourierFor(it)}>
               Kurir{it.couriers ? ` (${it.couriers.length})` : ""}
             </Button>
+            {it.view.kind === "member" && (
+              <Button size="sm" variant="outline" onClick={() => setLimitFor(it)}>
+                Batas produk: {it.terms.productLimit ?? "tanpa batas"}
+              </Button>
+            )}
+            {it.terms.sharePercent && <span className="self-center text-xs text-muted-foreground">Bagi hasil {it.terms.sharePercent}%{it.terms.brand ? ` · ${it.terms.brand}` : ""}</span>}
             <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => toggleProducerActiveAction(slug, it.view.id as string))}>
               {it.view.isActive ? "Nonaktifkan" : "Aktifkan"}
             </Button>
@@ -206,6 +216,22 @@ export function ProducerManageClient({ slug, internal, internalProductCount, ite
               <CourierForm key={courierFor.view.id as string} initial={courierFor.couriers}
                 onSave={(c) => setProducerCouriersAction(slug, courierFor.view.id as string, c)}
                 onDone={() => setCourierFor(null)} />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!limitFor} onOpenChange={(o) => !o && setLimitFor(null)}>
+        <DialogContent className="max-w-sm">
+          {limitFor && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Batas produk: {limitFor.view.name}</DialogTitle>
+                <DialogDescription>Produsen hasil pengajuan mulai dari 3 produk. Naikkan bila tokonya ramai.</DialogDescription>
+              </DialogHeader>
+              <ProductLimitForm key={limitFor.view.id as string} initial={limitFor.terms.productLimit} used={limitFor.productCount}
+                onSave={(l) => setProducerProductLimitAction(slug, limitFor.view.id as string, l)}
+                onDone={() => { setLimitFor(null); router.refresh(); }} />
             </>
           )}
         </DialogContent>

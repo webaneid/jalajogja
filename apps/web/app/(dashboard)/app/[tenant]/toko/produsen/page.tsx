@@ -57,6 +57,7 @@ export default async function ProdusenPage({ params }: { params: Promise<{ tenan
       view,
       productCount: countMap.get(r.id) ?? 0,
       couriers: sanitizeCouriers(r.couriers),
+      terms: { productLimit: r.productLimit ?? null, sharePercent: r.revenueSharePercent != null ? String(Number(r.revenueSharePercent)) : null, brand: r.brandName ?? null },
       portal: r.type === "member" ? { granted: grantedSet.has(r.id), ownerHasAccount: !!r.memberId && hasAccount.has(r.memberId) } : null,
       edit: {
         name: r.customName ?? "", whatsapp: r.customWhatsapp ?? "", addressDetail: r.customAddressDetail ?? "",

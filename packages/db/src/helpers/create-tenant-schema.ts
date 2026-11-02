@@ -918,7 +918,7 @@ export async function createTenantSchemaInDb(
         couriers    JSONB,       -- kode kurir RajaOngkir pilihan produsen; NULL = ikut daftar admin (0083)
         brand_name  TEXT,        -- pengajuan produsen (0092)
         product_limit INTEGER,   -- NULL = tanpa batas (produsen lama); hasil pengajuan = 3
-        revenue_share_percent NUMERIC(5,2), -- bagi hasil disepakati saat persetujuan
+        revenue_share_percent NUMERIC(5,2) CONSTRAINT producers_revenue_share_chk CHECK (revenue_share_percent IS NULL OR (revenue_share_percent > 0 AND revenue_share_percent < 100)), -- bagi hasil disepakati saat persetujuan
         application_id UUID,     -- jejak asal; tanpa FK
         notes       TEXT,
         is_active   BOOLEAN     NOT NULL DEFAULT TRUE,
