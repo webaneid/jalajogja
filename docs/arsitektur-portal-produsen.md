@@ -814,5 +814,15 @@ T1 schema + migration + DDL tenant baru · T2 tab "Syarat Produsen" (draf/Tiptap
   Editor = `<TiptapEditor>` standar; tampilan isi = `renderBody()` (sanitasi link/URL sudah ada di renderer). Satu draf per tenant (advisory lock),
   Terbitkan = simpan dulu + beri nomor versi berikutnya di satu transaksi + konfirmasi "mengunci N produsen"; versi terbit tak bisa diedit/dihapus.
   Daftar status TTD menampilkan produsen AKTIF yang punya login portal (hanya mereka yang bisa menandatangani).
-- **T3 BELUM**: gerbang akses + halaman Syarat di portal. SEBELUM T3 selesai, menerbitkan syarat belum mengunci siapa pun (jangan terbitkan di production dulu).
-- T4 BELUM.
+- **T3 SELESAI** (type-check + build bersih; audit `security-auditor` 0 Critical/0 High, 2 Medium + 4 Low — semua ditangani di bawah; belum diuji browser):
+  - `lib/producer-access.server.ts`: `getProducerAccessUngated` (identitas saja; HANYA halaman Syarat, shell layout, penentu tautan akun/dashboard-redirect) ·
+    `getProducerAccess` (DEFAULT, **null bila syarat versi aktif belum ditandatangani** → Server Action + API + loader fail-closed, caller baru otomatis aman) ·
+    `getProducerPageAccess` (halaman portal: belum TTD → redirect `/portal-produsen/syarat`). Tabel belum ada (SQLSTATE 42P01) = fitur belum aktif (tanpa penguncian, log peringatan); galat lain dilempar.
+  - Halaman `portal-produsen/syarat` + `producer-term-sign.tsx` (gaya halaman TTD Surat: isi penuh → centang → tombol → hash + QR + tautan verifikasi); aksi `signProducerTermAction`
+    (producerId/userId dari sesi, `termId` harus = versi aktif, body di-hash dari DB, idempotent 23505). Sidebar terkunci hanya menampilkan "Syarat".
+  - `/{slug}/verify/{hash}` kini juga mengenali tanda tangan syarat (judul, versi, nama produsen, waktu; "valid" hanya bila sha256(isi) masih = `body_sha256`).
+  - Perbaikan temuan audit: (M1) isi syarat dirender lewat `renderProducerTermHtml` = `renderBody` + sanitize-html daftar putih ketat (renderer bersama menyisipkan `color`/`level`/url blok tanpa escape — lihat lessons-learned);
+    (M2) Pengaturan Toko kini `hasReadAccess(toko)` dan draf + daftar penanda tangan hanya dimuat untuk akses PENUH; (L) 42P01 di halaman pengaturan tidak 500; komentar layout diperbarui.
+  - Catatan: kolom `ip` di bukti = `x-forwarded-for` apa adanya (informatif, bisa dipalsukan sampai keputusan `real_ip` Nginx dibuat); bukan dasar keputusan keamanan.
+  - **URUTAN DEPLOY:** migration `0090` di VPS DULU, baru build/restart. Terbitkan syarat hanya setelah itu (penerbitan = semua produsen terkunci).
+- T4 BELUM (audit menyeluruh akhir + lessons + ringkasan status di CLAUDE.md).

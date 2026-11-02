@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createTenantDb } from "@jalajogja/db";
-import { getProducerAccess } from "@/lib/producer-access.server";
+import { getProducerPageAccess } from "@/lib/producer-access.server";
 import { listProducerOrders, parseStatusFilter, suggestBatchName, type OrderStatusFilter } from "@/lib/producer-orders.server";
 import { todayWib } from "@/lib/producer-batch.server";
 import { StatusFilter } from "@/components/orders/status-filter";
@@ -20,7 +20,7 @@ export default async function ProducerOrdersPage({
   const { tenant: slug } = await params;
   const { q, page, status } = await searchParams;
 
-  const access = await getProducerAccess(slug);
+  const access = await getProducerPageAccess(slug);
   if (!access) redirect("/no-tenant-access");
 
   const currentPage = Math.min(10_000, Math.max(1, parseInt(page ?? "1") || 1));

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentSession, getTenantAccess } from "@/lib/tenant";
-import { getProducerAccess } from "@/lib/producer-access.server";
+import { getProducerAccessUngated } from "@/lib/producer-access.server";
 import { listUserContexts } from "@/lib/user-contexts.server";
 import { isActiveTenant } from "@/lib/tenant-active";
 
@@ -26,7 +26,7 @@ export default async function DashboardRedirectPage({
   let denied: string | null = null;
   if (wanted && /^[a-z0-9-]{3,20}$/.test(wanted) && (await isActiveTenant(wanted))) {
     if (await getTenantAccess(wanted))   redirect(`/app/${wanted}/dashboard`);
-    if (await getProducerAccess(wanted)) redirect(`/app/${wanted}/portal-produsen`);
+    if (await getProducerAccessUngated(wanted)) redirect(`/app/${wanted}/portal-produsen`);
     denied = wanted;
   }
 

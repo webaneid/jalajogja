@@ -8,6 +8,15 @@
 
 ---
 
+## [2026-11-03] `renderBody` menyisipkan atribut node Tiptap tanpa escape → stored XSS lewat Server Action
+
+- **Gejala (ditemukan audit fitur Syarat Produsen):** `lib/letter-render.ts` meng-escape teks dan `href` mark link, tetapi `color` (mark `textStyle`/`highlight`),
+  `textAlign`, `level` heading, dan `url` blok `relatedLinkBlock`/`embedBlock` masuk ke HTML mentah. JSON Tiptap dikirim klien ke Server Action tanpa validasi struktur,
+  jadi pengguna dengan akses penuh modul bisa menyisipkan `color:'x" onmouseover="..."'` tanpa lewat editor.
+- **Mitigasi di fitur syarat produsen:** `renderProducerTermHtml()` (`lib/producer-terms.server.ts`) = `renderBody` + `sanitize-html` daftar putih (tanpa iframe/script, style hanya color/background-color/text-align dengan regex).
+- **BELUM diperbaiki di renderer bersama** (dipakai Post/Page/Produk/Event/Surat) — perbaikan akarnya: whitelist nilai di `letter-render.ts` (color regex, textAlign enum, level 1–6 integer, url lewat `sanitizeLinkHref`). Perlu keputusan user karena menyentuh semua modul.
+- **Pola:** HTML yang dirakit dengan template string dari data JSON bebas WAJIB di-escape/di-whitelist per atribut, atau disanitasi di titik render; "teks sudah di-escape" tidak berarti atribut aman.
+
 ## [2026-11-02] Edit file besar lewat skrip: `str.index(penanda)` yang tidak unik MENGGANDAKAN isi file
 **Masalah:** Memindahkan satu blok di `cart/actions.ts` (±1.200 baris) lewat skrip Python: `end = s.index("  try {\n    const token = ...")` ternyata mengembalikan kemunculan PERTAMA (di fungsi lain, sebelum blok yang dipindah). `s[:a] + s[end:]` dengan `end < a` menggandakan ±350 baris; `tsc` langsung gagal (identifier ganda), tetapi pemulihan "matematis" dari file rusak tidak berhasil.
 **Fix/pemulihan:** ambil versi bersih dari git (`git show HEAD:path`), terapkan ulang tiap perubahan dengan penunjuk yang DIVERIFIKASI unik (`assert s.count(old) == 1`), cek `git diff --stat` kecil.

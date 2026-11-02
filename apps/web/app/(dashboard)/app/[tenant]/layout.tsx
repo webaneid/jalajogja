@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getCurrentSession, getTenantAccess } from "@/lib/tenant";
-import { getProducerAccess } from "@/lib/producer-access.server";
+import { getProducerAccessUngated } from "@/lib/producer-access.server";
 import { isOwnHost } from "@/lib/is-own-host";
 import { createTenantDb, getSettings } from "@jalajogja/db";
 import { foregroundFor } from "@/lib/theme-palette";
@@ -29,7 +29,7 @@ export default async function TenantLayout({
     // Bukan pengurus tenant INI. Hormati tenant yang dituju (mis. forbis.id/admin): produsen di tenant ini → langsung
     // ke portalnya (tanpa lompatan, juga jalan di custom domain); selain itu /dashboard-redirect memilih konteks dengan
     // membawa tenant yang dituju — BUKAN menebak tenant pengurus pertama. Doc: docs/arsitektur-portal-produsen.md § 16.
-    if (await getProducerAccess(slug)) redirect(`/app/${slug}/portal-produsen`);
+    if (await getProducerAccessUngated(slug)) redirect(`/app/${slug}/portal-produsen`);
     redirect(`/dashboard-redirect?tenant=${encodeURIComponent(slug)}`);
   }
 

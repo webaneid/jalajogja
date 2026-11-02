@@ -5,7 +5,7 @@ import Link from "next/link";
 import { and, count, desc, eq, ilike, inArray, isNull } from "drizzle-orm";
 import { Package } from "lucide-react";
 import { createTenantDb, mergeVariationPrices, publicSellingPrice, minMax } from "@jalajogja/db";
-import { getProducerAccess } from "@/lib/producer-access.server";
+import { getProducerPageAccess } from "@/lib/producer-access.server";
 import { escapeLike } from "@/lib/escape-like";
 
 const PAGE_SIZE = 20;
@@ -35,7 +35,7 @@ export default async function ProducerProductsPage({
   const { tenant: slug } = await params;
   const { q, status, page } = await searchParams;
 
-  const access = await getProducerAccess(slug);
+  const access = await getProducerPageAccess(slug);
   if (!access) redirect("/no-tenant-access");
 
   const { db, schema } = createTenantDb(access.tenant.slug);

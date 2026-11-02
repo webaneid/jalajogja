@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createTenantDb } from "@jalajogja/db";
-import { getProducerAccess } from "@/lib/producer-access.server";
+import { getProducerPageAccess } from "@/lib/producer-access.server";
 import { getProducerBatch, listBatchableOrders } from "@/lib/producer-orders.server";
 import { isValidUuid } from "@/lib/is-uuid";
 import { publicUrl } from "@/lib/minio";
@@ -15,7 +15,7 @@ const fmtDate = (iso: string) => new Intl.DateTimeFormat("id-ID", { dateStyle: "
 
 export default async function BatchDetailPage({ params }: { params: Promise<{ tenant: string; batchId: string }> }) {
   const { tenant: slug, batchId } = await params;
-  const access = await getProducerAccess(slug);
+  const access = await getProducerPageAccess(slug);
   if (!access) redirect("/no-tenant-access");
   if (!isValidUuid(batchId)) notFound();
 

@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { CheckCircle2, XCircle, Shield } from "lucide-react";
 import { generateQrDataUrl, buildVerifyUrl } from "@/lib/qr-code";
+import { findProducerTermAcceptance } from "@/lib/producer-terms.server";
 
 export default async function VerifyPage({
   params,
@@ -31,8 +32,49 @@ export default async function VerifyPage({
     .where(eq(schema.letterSignatures.verificationHash, hash))
     .limit(1);
 
-  // Jika hash tidak ditemukan — tampilkan invalid, bukan 404
+  // Bukan tanda tangan surat → coba persetujuan Syarat & Ketentuan Produsen (docs/arsitektur-portal-produsen.md § 28).
+  // Tabel belum ada (migration 0090 belum jalan) = dianggap tidak ditemukan, bukan galat.
   if (!sig) {
+    const term = await findProducerTermAcceptance(slug, hash);
+    if (term) {
+      const verifyUrl = buildVerifyUrl(slug, hash);
+      const qrDataUrl = await generateQrDataUrl(verifyUrl);
+      return (
+        <VerifyLayout orgName={tenant.name} valid>
+          <div className="flex items-center gap-3 text-green-600">
+            <CheckCircle2 className="h-7 w-7 shrink-0" />
+            <div>
+              <p className="font-semibold text-base">Tanda Tangan Valid</p>
+              <p className="text-sm text-muted-foreground">Persetujuan syarat &amp; ketentuan produsen {tenant.name}</p>
+            </div>
+          </div>
+          <div className="rounded-lg border border-border divide-y divide-border text-sm">
+            <div className="px-4 py-2.5 grid grid-cols-[140px_1fr]">
+              <span className="text-muted-foreground">Dokumen</span>
+              <span>{term.title} (versi {term.version})</span>
+            </div>
+            <div className="px-4 py-2.5 grid grid-cols-[140px_1fr]">
+              <span className="text-muted-foreground">Penandatangan</span>
+              <span className="font-medium">{term.producerName}</span>
+            </div>
+            <div className="px-4 py-2.5 grid grid-cols-[140px_1fr]">
+              <span className="text-muted-foreground">Waktu TTD</span>
+              <span>{new Date(term.signedAt).toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short" })}</span>
+            </div>
+          </div>
+          <div className="flex items-start gap-5">
+            <div className="shrink-0">
+              <img src={qrDataUrl} alt="QR Code verifikasi" width={120} height={120} className="rounded border border-border" />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <p className="text-xs text-muted-foreground">Hash verifikasi</p>
+              <p className="font-mono text-[11px] break-all text-muted-foreground bg-muted/30 rounded p-2">{hash}</p>
+            </div>
+          </div>
+        </VerifyLayout>
+      );
+    }
+    // Jika hash tidak ditemukan — tampilkan invalid, bukan 404
     return <VerifyLayout orgName={tenant.name} valid={false} />;
   }
 

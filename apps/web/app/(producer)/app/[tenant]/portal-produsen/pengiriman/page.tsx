@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { createTenantDb } from "@jalajogja/db";
-import { getProducerAccess } from "@/lib/producer-access.server";
+import { getProducerPageAccess } from "@/lib/producer-access.server";
 import { listProducerBatches } from "@/lib/producer-orders.server";
 
 const LABEL: Record<string, string> = { pending: "Menunggu", processing: "Diproses", packed: "Dikemas", shipped: "Dikirim", delivered: "Diterima" };
@@ -11,7 +11,7 @@ const fmtDate = (iso: string) => new Intl.DateTimeFormat("id-ID", { dateStyle: "
 
 export default async function ProducerShipmentsPage({ params }: { params: Promise<{ tenant: string }> }) {
   const { tenant: slug } = await params;
-  const access = await getProducerAccess(slug);
+  const access = await getProducerPageAccess(slug);
   if (!access) redirect("/no-tenant-access");
 
   const batches = await listProducerBatches(createTenantDb(access.tenant.slug), access.producer.id);

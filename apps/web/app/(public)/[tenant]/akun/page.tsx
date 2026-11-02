@@ -15,7 +15,7 @@ import { MembershipEligibilityOverlay } from "@/components/akun/membership-eligi
 import { notifyMembershipActivated } from "@/lib/membership-activated.server";
 import { WhatsappGroupCard } from "@/components/akun/whatsapp-group-card";
 import { isValidWhatsappGroupUrl, WHATSAPP_GROUP_SETTING_KEY } from "@/lib/whatsapp-group";
-import { getProducerAccess } from "@/lib/producer-access.server";
+import { getProducerAccessUngated } from "@/lib/producer-access.server";
 import { resolveForumJoinProgress, type ForumJoinStage } from "@/lib/forum-join-progress.server";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
@@ -247,7 +247,7 @@ export default async function AkunPage({ params }: { params: Params }) {
   // Link ke 3 modul ekosistem + Foto Saya — item ber-moduleKey hilang kalau modul itu
   // dimatikan admin di tenant ini (Foto Saya tidak punya moduleKey, selalu tampil).
   // Kartu Produsen: hanya bila akun ini produsen aktif di tenant ini (pemeriksaan penuh yang sama dengan portal).
-  const isProducer = !!(await getProducerAccess(slug));
+  const isProducer = !!(await getProducerAccessUngated(slug));
   const directoryLinks = (
     [
       { href: `${baseUrl}/akun/pesantren`,   icon: BookOpen,   label: resolveEkosistemModuleLabel("pesantren", moduleLabels),   desc: "Data keterlibatan pesantren", moduleKey: "pesantren" },

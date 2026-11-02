@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
-import { getProducerAccess } from "@/lib/producer-access.server";
+import { getProducerPageAccess } from "@/lib/producer-access.server";
 import { resolveProducers } from "@/lib/producer.server";
 import { OriginManager } from "@/components/address/origin-manager";
 import { listOrigins } from "@/lib/shipping-origins.server";
@@ -15,7 +15,7 @@ const SOURCE_LABEL: Record<string, string> = { usaha: "Usaha", pesantren: "Pesan
 
 export default async function ProducerProfilePage({ params }: { params: Promise<{ tenant: string }> }) {
   const { tenant: slug } = await params;
-  const access = await getProducerAccess(slug);
+  const access = await getProducerPageAccess(slug);
   if (!access) redirect("/no-tenant-access");
 
   const tenantClient = createTenantDb(access.tenant.slug);

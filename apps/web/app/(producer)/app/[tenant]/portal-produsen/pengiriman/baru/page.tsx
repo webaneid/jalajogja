@@ -2,13 +2,13 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createTenantDb } from "@jalajogja/db";
-import { getProducerAccess } from "@/lib/producer-access.server";
+import { getProducerPageAccess } from "@/lib/producer-access.server";
 import { listBatchableOrders, suggestBatchName } from "@/lib/producer-orders.server";
 import { BatchCreateForm } from "@/components/producer/batch-create-form";
 
 export default async function NewBatchPage({ params }: { params: Promise<{ tenant: string }> }) {
   const { tenant: slug } = await params;
-  const access = await getProducerAccess(slug);
+  const access = await getProducerPageAccess(slug);
   if (!access) redirect("/no-tenant-access");
 
   const tdb = createTenantDb(access.tenant.slug);

@@ -6,7 +6,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, ClipboardList, Truck, UserCircle, Menu, X } from "lucide-react";
+import { LayoutDashboard, Package, ClipboardList, Truck, UserCircle, FileText, Menu, X } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Dashboard",  icon: LayoutDashboard, path: "dashboard"  },
@@ -14,17 +14,18 @@ const NAV_ITEMS = [
   { label: "Pesanan",    icon: ClipboardList,   path: "pesanan"    },
   { label: "Pengiriman", icon: Truck,           path: "pengiriman" },
   { label: "Profil",     icon: UserCircle,      path: "profil"     },
+  { label: "Syarat",     icon: FileText,        path: "syarat"     },
 ] as const;
 
-function SidebarBody({ slug, orgName, producerName, onNavigate }: {
-  slug: string; orgName: string; producerName: string; onNavigate?: () => void;
+function SidebarBody({ slug, orgName, producerName, locked, onNavigate }: {
+  slug: string; orgName: string; producerName: string; locked?: boolean; onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   const base = `/app/${slug}/portal-produsen`;
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col border-r bg-card">
       <div className="flex h-14 items-center border-b px-5">
-        <Link href={`${base}/dashboard`} onClick={onNavigate} className="flex min-w-0 items-center gap-2 font-semibold text-foreground hover:opacity-80">
+        <Link href={locked ? `${base}/syarat` : `${base}/dashboard`} onClick={onNavigate} className="flex min-w-0 items-center gap-2 font-semibold text-foreground hover:opacity-80">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
             {orgName.charAt(0).toUpperCase()}
           </span>
@@ -37,7 +38,7 @@ function SidebarBody({ slug, orgName, producerName, onNavigate }: {
 
       <div className="flex-1 overflow-y-auto py-4">
         <nav className="flex flex-col gap-0.5 px-3">
-          {NAV_ITEMS.map(({ label, icon: Icon, path }) => {
+          {NAV_ITEMS.filter((i) => !locked || i.path === "syarat").map(({ label, icon: Icon, path }) => {
             const href = `${base}/${path}`;
             const isActive = pathname === href || pathname.startsWith(`${href}/`);
             return (
@@ -64,12 +65,12 @@ function SidebarBody({ slug, orgName, producerName, onNavigate }: {
 }
 
 /** Sidebar tetap untuk desktop (md ke atas). */
-export function ProducerSidebar(props: { slug: string; orgName: string; producerName: string }) {
+export function ProducerSidebar(props: { slug: string; orgName: string; producerName: string; locked?: boolean }) {
   return <SidebarBody {...props} />;
 }
 
 /** Tombol hamburger + drawer untuk HP (di bawah md). */
-export function ProducerMobileSidebar(props: { slug: string; orgName: string; producerName: string }) {
+export function ProducerMobileSidebar(props: { slug: string; orgName: string; producerName: string; locked?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>

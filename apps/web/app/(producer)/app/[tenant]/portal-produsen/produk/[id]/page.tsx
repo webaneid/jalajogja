@@ -5,7 +5,7 @@
 // Doc: docs/arsitektur-portal-produsen.md § 17.
 import { redirect, notFound } from "next/navigation";
 import { createTenantDb } from "@jalajogja/db";
-import { getProducerAccess } from "@/lib/producer-access.server";
+import { getProducerPageAccess } from "@/lib/producer-access.server";
 import { isValidUuid } from "@/lib/is-uuid";
 import { loadProductDetail } from "@/lib/product-detail.server";
 import { resolveProductBuyers } from "@/lib/product-buyers.server";
@@ -26,7 +26,7 @@ export default async function ProducerProductDetailPage({
   const { tenant: slug, id } = await params;
   const { tab, q, page, status } = await searchParams;
 
-  const access = await getProducerAccess(slug);
+  const access = await getProducerPageAccess(slug);
   if (!access) redirect("/no-tenant-access");
   if (!isValidUuid(id)) notFound();
 

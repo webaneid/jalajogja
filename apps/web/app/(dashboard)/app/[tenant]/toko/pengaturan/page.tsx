@@ -1,5 +1,6 @@
 import { getTenantAccess } from "@/lib/tenant";
-import { hasFullAccess } from "@/lib/permissions";
+import { hasFullAccess, hasReadAccess } from "@/lib/permissions";
+import { pgErrorCode } from "@/lib/pg-error";
 import { redirect } from "next/navigation";
 import { createTenantDb, getSettings, db as publicDb, tenantAddonInstallations, addons } from "@jalajogja/db";
 import { and, eq } from "drizzle-orm";
@@ -9,8 +10,7 @@ import { CourierLogosForm } from "./courier-logos-form";
 import { getTokoSettings } from "@/lib/toko-settings";
 import { TokoSettingsForm } from "./toko-settings-form";
 import { ProducerTermsForm } from "./producer-terms-form";
-import { getActiveProducerTerm, listTermSigners } from "@/lib/producer-terms.server";
-import { renderBody } from "@/lib/letter-render";
+import { getActiveProducerTerm, listTermSigners, renderProducerTermHtml } from "@/lib/producer-terms.server";
 import { ProductArchiveDesignForm } from "./product-archive-design-form";
 import { PRODUCT_ARCHIVE_CARD_DESIGN_IDS, type ProductArchiveCardDesignId } from "@/lib/product-archive-card-designs";
 
@@ -23,6 +23,7 @@ export default async function TokoSettingsPage({
 
   const access = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
+  if (!hasReadAccess(access.tenantUser, "toko")) redirect(`/app/${slug}/dashboard`);
 
   const settings = await getTokoSettings(slug);
 
@@ -60,11 +61,25 @@ export default async function TokoSettingsPage({
     .filter((c) => !enabledCodes || enabledCodes.includes(c.value))
     .map((c) => ({ code: c.value as string, label: c.label as string }));
 
-  // Syarat & Ketentuan Produsen (§ 28)
-  const activeTerm = await getActiveProducerTerm(tenantClient);
-  const [draftRow] = await tenantClient.db.select().from(tenantClient.schema.producerTerms)
-    .where(eq(tenantClient.schema.producerTerms.status, "draft")).limit(1);
-  const signers = await listTermSigners(access.tenant.id, tenantClient, activeTerm?.id ?? null);
+  // Syarat & Ketentuan Produsen (§ 28). Draf + daftar penanda tangan HANYA untuk akses penuh toko (data belum terbit / data produsen).
+  // Tabel belum ada (migration 0090 belum jalan, SQLSTATE 42P01) → seksi tampil kosong, bukan 500.
+  const canEditTerms = hasFullAccess(access.tenantUser, "toko");
+  let activeTerm: Awaited<ReturnType<typeof getActiveProducerTerm>> = null;
+  let draftRow: { id: string; title: string; body: string } | undefined;
+  let signers: Awaited<ReturnType<typeof listTermSigners>> = [];
+  try {
+    activeTerm = await getActiveProducerTerm(tenantClient);
+    if (canEditTerms) {
+      [draftRow] = await tenantClient.db.select({
+          id: tenantClient.schema.producerTerms.id, title: tenantClient.schema.producerTerms.title, body: tenantClient.schema.producerTerms.body,
+        }).from(tenantClient.schema.producerTerms)
+        .where(eq(tenantClient.schema.producerTerms.status, "draft")).limit(1);
+      signers = await listTermSigners(access.tenant.id, tenantClient, activeTerm?.id ?? null);
+    }
+  } catch (e) {
+    if (pgErrorCode(e) !== "42P01") throw e;
+    console.warn(`[producer-terms] tabel belum ada di tenant ${slug} — jalankan migration 0090`);
+  }
 
   return (
     <div className="p-6 max-w-2xl space-y-10">
@@ -88,8 +103,8 @@ export default async function TokoSettingsPage({
 
       <ProducerTermsForm
         slug={slug}
-        canEdit={hasFullAccess(access.tenantUser, "toko")}
-        active={activeTerm ? { version: activeTerm.version, title: activeTerm.title, publishedAt: activeTerm.publishedAt.toISOString(), html: renderBody(activeTerm.body, { tenantSlug: slug }) } : null}
+        canEdit={canEditTerms}
+        active={activeTerm ? { version: activeTerm.version, title: activeTerm.title, publishedAt: activeTerm.publishedAt.toISOString(), html: renderProducerTermHtml(activeTerm.body, slug) } : null}
         activeBody={activeTerm?.body ?? null}
         draft={draftRow ? { id: draftRow.id, title: draftRow.title, body: draftRow.body } : null}
         signers={signers.map((x) => ({ producerId: x.producerId, name: x.name, signedAt: x.signedAt ? x.signedAt.toISOString() : null }))}

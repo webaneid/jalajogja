@@ -12,7 +12,7 @@ import { AkunBottomNav }    from "@/components/akun/mobile/akun-bottom-nav";
 import { BadgeCheck } from "lucide-react";
 import { resolveAkunBranding } from "@/lib/resolve-akun-branding";
 import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
-import { getProducerAccess } from "@/lib/producer-access.server";
+import { getProducerAccessUngated } from "@/lib/producer-access.server";
 
 type Props = {
   children: React.ReactNode;
@@ -71,7 +71,7 @@ export default async function AkunLayout({ children, params }: Props) {
 
   // Menu Produsen hanya untuk akun yang LOLOS akses produsen penuh di tenant ini (bukan sekadar baris login) —
   // pemeriksaan yang sama dengan penjaga portal, jadi tautan tidak pernah mengarah ke penolakan.
-  const producerPortalHref = (await getProducerAccess(slug)) ? `/app/${slug}/portal-produsen` : null;
+  const producerPortalHref = (await getProducerAccessUngated(slug)) ? `/app/${slug}/portal-produsen` : null;
 
   // Label keanggotaan — bukan selalu tenant yang sedang dibrowsing, lihat
   // docs/arsitektur-akun.md § Resolusi Branding Kartu Anggota. `memberVerified=false`

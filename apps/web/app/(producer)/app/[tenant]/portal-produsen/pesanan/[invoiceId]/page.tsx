@@ -5,7 +5,7 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createTenantDb } from "@jalajogja/db";
-import { getProducerAccess } from "@/lib/producer-access.server";
+import { getProducerPageAccess } from "@/lib/producer-access.server";
 import { getProducerOrder } from "@/lib/producer-orders.server";
 import { isValidUuid } from "@/lib/is-uuid";
 import { displayPhone } from "@/lib/phone";
@@ -17,7 +17,7 @@ import { OrderDetailView, type OrderDetailVM } from "@/components/orders/order-d
 export default async function ProducerOrderDetailPage({ params }: { params: Promise<{ tenant: string; invoiceId: string }> }) {
   const { tenant: slug, invoiceId } = await params;
 
-  const access = await getProducerAccess(slug);
+  const access = await getProducerPageAccess(slug);
   if (!access) redirect("/no-tenant-access");
   if (!isValidUuid(invoiceId)) notFound();
 
