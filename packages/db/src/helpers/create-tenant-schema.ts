@@ -928,6 +928,40 @@ export async function createTenantSchemaInDb(
     // Produsen anggota tidak boleh ganda (migration 0075) — index parsial: baris custom (source_id NULL) tidak ikut
     await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producers_source_uniq ON "${s}".producers(source_type, source_id) WHERE source_type IS NOT NULL AND source_id IS NOT NULL`));
 
+    // ── 30b2. Syarat & Ketentuan Produsen (docs/arsitektur-portal-produsen.md § 28) ──
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".producer_terms (
+        id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        version      INTEGER,     -- NULL selama draf; diisi saat diterbitkan
+        title        TEXT        NOT NULL,
+        body         TEXT        NOT NULL,   -- JSON Tiptap (string)
+        status       TEXT        NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+        published_at TIMESTAMPTZ,
+        published_by UUID,
+        created_by   UUID,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producer_terms_version_uniq ON "${s}".producer_terms(version)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_terms_status_idx ON "${s}".producer_terms(status)`));
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".producer_term_acceptances (
+        id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        term_id           UUID        NOT NULL REFERENCES "${s}".producer_terms(id) ON DELETE RESTRICT,
+        producer_id       UUID        NOT NULL REFERENCES "${s}".producers(id) ON DELETE CASCADE,
+        user_id           TEXT        NOT NULL,
+        signed_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        body_sha256       TEXT        NOT NULL,
+        verification_hash TEXT        NOT NULL,
+        ip                TEXT,
+        user_agent        TEXT
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producer_term_acceptances_uniq ON "${s}".producer_term_acceptances(term_id, producer_id)`));
+    await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producer_term_acceptances_hash_uniq ON "${s}".producer_term_acceptances(verification_hash)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_term_acceptances_producer_idx ON "${s}".producer_term_acceptances(producer_id)`));
+
     // ── 30c. Shipping Origins (asal kirim: gudang/pabrik/toko — docs/arsitektur-alamat.md § 20) ──
     // Dibuat SEBELUM products karena products.origin_id merujuknya. producer_id NULL = milik toko/internal.
     await tx.execute(sql.raw(`

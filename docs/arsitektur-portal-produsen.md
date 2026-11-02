@@ -770,3 +770,42 @@ Audit `security-auditor` 2 putaran. Putaran 1 (1 High, 4 Medium, 4 Low) — DIPE
   jadi tautan tidak pernah berujung penolakan. Bukan produsen → kartu & menu tidak dirender sama sekali.
 - Tujuan: `/app/{slug}/portal-produsen`. Item nav memakai `NavItem.producerOnly` + `externalHref` (diisi `filterNavItemsByModules`).
 - Berkas: `components/akun/akun-nav.tsx`, `components/akun/mobile/akun-bottom-nav.tsx`, `app/(public)/[tenant]/akun/{layout,page}.tsx`.
+
+## 28. Syarat & Ketentuan Produsen + persetujuan tanda tangan digital — RENCANA (2026-11-03, ditulis SEBELUM kode)
+
+### 28.1 Keputusan user (2026-11-03)
+- Tujuan: produsen **membaca** syarat & ketentuan lalu **menyetujuinya dengan tanda tangan digital** sebagai bukti telah membaca. **Satu sisi saja (produsen)**; pengurus tenant tidak menandatangani.
+- BUKAN surat: modul Surat hanya contoh gaya tanda tangan digital agar **tampilan/perilakunya konsisten** (halaman `signing-page-client.tsx`: info → baca isi → tombol TTD → hash verifikasi + QR). Tidak memakai tabel `letters`/`letter_signatures`/`officers`.
+- Tempat teks: tab baru **"Syarat Produsen"** di `/toko/pengaturan` (bukan kategori halaman Website; `terms`/`privacy` singleton itu untuk pengunjung publik).
+- Begitu syarat **terbit**, **semua produsen yang ada langsung terkunci** sampai menandatangani (berlaku untuk semua produsen tenant itu).
+- Asumsi turunan (BELUM dikonfirmasi): bila kelak terbit **versi baru**, aturan yang sama berlaku lagi (semua produsen menandatangani ulang). Tanpa syarat terbit = tidak ada penguncian.
+
+### 28.2 Data (schema TENANT, pola ADR-0003; migration baru + DDL untuk tenant existing & `create-tenant-schema.ts`)
+```
+tenant_{slug}.producer_terms
+  id, version int (naik per terbit), title, body (HTML hasil Tiptap, disanitasi),
+  status 'draft' | 'published', published_at, published_by, created_at
+  -- Versi 'published' TIDAK boleh diedit/dihapus (bukti). Ubah = buat draf baru.
+  -- Maksimal SATU versi aktif = published dengan version terbesar.
+tenant_{slug}.producer_term_acceptances
+  id, term_id, producer_id, user_id (akun Better Auth yang menekan TTD), signed_at,
+  body_sha256 (hash isi saat TTD), verification_hash (sha256 term_id+producer_id+user_id+signed_at),
+  ip, user_agent;  UNIQUE(term_id, producer_id)
+```
+
+### 28.3 Gerbang akses (inti keamanan)
+- Penjaga portal TERPUSAT di `lib/producer-access.server.ts`: `getProducerAccess` ditambah status syarat (ada versi aktif? sudah ditandatangani produsen ini?). Karena portal tidak punya Server Action dan tiap page memanggil `getProducerAccess` (bukan hanya layout), pengecekan di sini menutup semua page + `/api/produsen/*`.
+- Belum tanda tangan → hanya halaman **Syarat & Ketentuan** + keluar yang terbuka; menu/halaman lain mengalihkan ke sana. Halaman syarat memakai varian pemeriksaan yang mengizinkan "belum TTD".
+- Aksi tanda tangan: server-side, `producerId` dari `getProducerAccess` (bukan dari klien), `term_id` harus = versi aktif saat itu, isi di-hash dari DB (bukan dari klien), UNIQUE mencegah ganda.
+- Pengurus: hanya `hasFullAccess(toko)` yang boleh membuat/terbitkan; admin melihat daftar siapa sudah/belum menandatangani.
+
+### 28.4 Risiko
+- Produsen aktif terkunci seketika saat terbit → perlu pratinjau + konfirmasi "Terbitkan" yang menyebut jumlah produsen terdampak. Pengumuman lewat kanal notifikasi yang ada = TIDAK dibuat kecuali diminta.
+- Terbit versi baru mengunci semua lagi (asumsi di atas).
+- Migration: 5 tenant existing (pola 0075–0082).
+
+### 28.5 Fase (tiap fase: tsc → security review → commit; push hanya bila diminta)
+T1 schema + migration + DDL tenant baru · T2 tab "Syarat Produsen" (draf/Tiptap/terbitkan/daftar status TTD) · T3 gerbang di `producer-access` + halaman Syarat & TTD di portal (gaya `signing-page-client`) · T4 audit `security-auditor`, dokumen, lessons.
+
+### 28.6 Status
+Rencana saja; belum ada kode.
