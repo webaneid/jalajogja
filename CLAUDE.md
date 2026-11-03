@@ -246,6 +246,7 @@ pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
 | Portal Produsen + Profil/Gudang + Cetak Label + Buat Batch masal + Pengiriman per Produsen (F1–F5) + **Syarat & Ketentuan Produsen + TTD digital (§ 28, kode SELESAI 2026-11-03)** — baca "PETA STATUS" di bagian atas dokumen (deploy: sampai § 24 F3, 2026-11-01; uji browser F2–F3 belum); definisi fitur terkunci § 18 | `docs/arsitektur-portal-produsen.md` |
 | Pengajuan Produsen (anggota mengajukan, kurasi pengurus, batas produk, produsen multi-tenant) — **KODE SELESAI P1–P7 + deployed 2026-11-03**; asumsi terbuka di § 19 | `docs/arsitektur-pengajuan-produsen.md` |
 | Produk & Voucher dikelola Produsen (buat/ubah/hapus produk, voucher dua jenis, bagi hasil K18–K29) — **KODE SELESAI 2026-11-03, belum deploy** | `docs/arsitektur-produk-produsen.md` |
+| Pencairan dana produsen (saldo/ledger, batch Senin, hutang refund) — **RENCANA 2026-11-04, belum ada kode**; keputusan D1–D8 terkunci, T1–T6 terbuka | `docs/arsitektur-pencairan-produsen.md` |
 | Penulis & Editor Post (byline system) | `docs/arsitektur-penulis-post.md` |
 | Data Pesantren anggota | `docs/arsitektur-pesantren.md` |
 | Data Profesional anggota — perencanaan, belum dieksekusi | `docs/arsitektur-profesional.md` |
