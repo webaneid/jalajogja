@@ -21,13 +21,13 @@ function formatTickDate(iso: string): string {
   return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
 }
 
-export function IncomeExpenseChart({ data }: { data: DayPoint[] }) {
+export function IncomeExpenseChart({ data, labels = { income: "Pemasukan", expense: "Pengeluaran" }, emptyText = "Belum ada transaksi 30 hari terakhir." }: { data: DayPoint[]; labels?: { income: string; expense: string }; emptyText?: string }) {
   const hasData = data.some((d) => d.income > 0 || d.expense > 0);
 
   if (!hasData) {
     return (
       <div className="flex h-56 items-center justify-center text-sm text-muted-foreground">
-        Belum ada transaksi 30 hari terakhir.
+        {emptyText}
       </div>
     );
   }
@@ -66,7 +66,7 @@ export function IncomeExpenseChart({ data }: { data: DayPoint[] }) {
             labelFormatter={(v) => formatTickDate(String(v))}
             formatter={(value, name) => [
               formatRupiah(Number(value)),
-              name === "income" ? "Pemasukan" : "Pengeluaran",
+              name === "income" ? labels.income : labels.expense,
             ]}
             contentStyle={{ fontSize: 12, borderRadius: 8 }}
           />
