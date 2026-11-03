@@ -207,3 +207,21 @@ Tidak ada IDOR, mass assignment, SQL injection, XSS baru, atau kebocoran lintas 
 - **Checkout**: `resolveProductCartItem` menganggap produk beku TIDAK dapat dipesan (`producerActive=false`) → keranjang dan checkout publik menolak ("sedang tidak tersedia"), termasuk item yang sudah terlanjur di keranjang. Pemanggil admin (invoice manual) tidak terpengaruh.
 - **Status: KODE SELESAI + diuji** (`smoke-producer-products.ts`: 7 pengecekan beku; semua regresi lain lulus). **Deploy: migration `0094` DULU**, baru build/restart.
 - **Catatan terbuka (pra-ada, bukan bagian K30):** produk berstatus `archived`/`draft` yang sudah terlanjur di keranjang pembeli tidak ditolak checkout (hanya `frozen` & produsen nonaktif yang ditolak). Perlu keputusan bila mau diseragamkan.
+
+## 15. RENCANA REFAKTOR — satu `ProductForm` bersama (K31–K33; arahan user 2026-11-03, BELUM dikerjakan)
+**Latar:** form produsen buatan sendiri (`components/producer/producer-product-form.tsx`, 174 baris) diputuskan sepihak dan kurang lengkap (tanpa gudang, variasi, pilihan status). User: cukup beri akses ke produsen pada arsitektur yang sudah ada. Form admin (`components/toko/product-form.tsx`, 906 baris) sudah punya semuanya.
+
+**Keputusan:**
+- **K31 Satu form.** `ProductForm` menerima `mode="admin" | "producer"`. Mode produsen menyembunyikan: gratis ongkir, ambil sendiri per produk, SEO manual, pemilih produsen, produk mitra; menampilkan harga dasar **read-only**. Menyembunyikan di UI BUKAN pengamanan — server tetap menegakkan.
+- **K32 Status (koreksi K21).** "Langsung tayang" = produsen BOLEH menayangkan sendiri (tanpa moderasi), BUKAN membuang status lain. Produsen memilih **Draft / Aktif / Diarsipkan** seperti admin. `frozen` (K30) tidak bisa dipilih atau diubah produsen. Konsekuensi: aturan lama "draft tidak bisa ditayangkan produsen" (temuan audit Medium) dicabut untuk produk MILIKNYA; batas produk tetap menghitung semua status (K26).
+- **K33 Variasi & harga dasar variasi** — logika SAMA dengan "Harga & stok" admin: harga publik variasi kosong → ikut harga induk; harga anggota kosong → ikut induk; stok produk bervariasi = Σ stok variasi aktif (stok utama diabaikan); berat variasi kosong → ikut induk. Harga dasar (`price`) tiap variasi **dihitung server** = harga jual efektif variasi × (100 − persen)/100 (K24), produsen tidak bisa mengisinya; ikut disinkronkan saat admin mengubah persentase (sekarang hanya produk sederhana).
+- **Gudang:** wajib dipilih dari gudang MILIK produsen itu (otomatis bila hanya satu). Server memakai `originBelongsTo` yang sudah ada.
+
+**Batas aman (tidak berubah):** jalur simpan ke server TETAP khusus produsen (`getProducerAccess`, `producerId` dari sesi, whitelist field, harga dasar dihitung server, kepemilikan produk/variasi diverifikasi). Yang dibagi hanya tampilan.
+
+**Fase:**
+| Fase | Isi |
+|---|---|
+| R1 (server) | Simpan variasi untuk produsen (diff-upsert seperti admin, kepemilikan diverifikasi, `price` dihitung server); gudang di create/update; status tiga arah (frozen terkunci); sinkron harga dasar variasi saat persentase berubah; uji lokal |
+| R2 (UI) | `ProductForm mode="producer"` + halaman portal memakainya; hapus `producer-product-form.tsx` setelah lolos uji |
+| R3 | Voucher produsen boleh menarget produk bervariasi (resolver sudah per-harga-baris; tinggal pemilih target); audit `security-auditor`; docs; push; deploy |
