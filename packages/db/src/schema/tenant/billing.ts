@@ -177,6 +177,10 @@ export function createInvoiceItemsTable(s: ReturnType<typeof pgSchema>) {
     // Disalin dari cart_items.for_gabung_registration saat checkout — lihat komentar di
     // createCartItemsTable() untuk penjelasan lengkap.
     forGabungRegistration: boolean("for_gabung_registration").notNull().default(false),
+    // SNAPSHOT bagi hasil (K25): % bagian tenant saat checkout (hanya baris ber-produsen) + penanggung potongan voucher.
+    // Dibekukan per baris supaya perubahan persentase/harga/voucher kemudian TIDAK mengubah riwayat pencairan.
+    producerSharePercent: numeric("producer_share_percent", { precision: 5, scale: 2 }),
+    discountFundedBy:     text("discount_funded_by", { enum: ["tenant", "producer"] as const }),
   }, (t) => ({
     invoiceIdx: index("invoice_items_invoice_id_idx").on(t.invoiceId),
   }));
@@ -228,6 +232,10 @@ export function createVouchersTable(s: ReturnType<typeof pgSchema>) {
     validFrom:  timestamp("valid_from",  { withTimezone: true }),
     validUntil: timestamp("valid_until", { withTimezone: true }),
     isActive:   boolean("is_active").notNull().default(true),
+
+    // Promo Produsen (K23, docs/arsitektur-produk-produsen.md § 4): NULL = Promo Tenant (admin, ditanggung tenant);
+    // terisi = dibuat & DITANGGUNG produsen itu. FK → producers.id RESTRICT via DDL.
+    ownerProducerId: uuid("owner_producer_id"),
 
     createdBy: uuid("created_by"), // FK → users.id via SQL
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -51,6 +51,7 @@ export {
   findVoucherByCode,
   countCustomerRedemptions,
   computeVoucherDiscount,
+  loadProducerSharePercents,
   type ResolvedCartItemForVoucher,
   type VoucherRow,
   type VoucherApplicationResult,

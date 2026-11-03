@@ -15,7 +15,7 @@ import { revalidatePath } from "next/cache";
 import { db, resolveIdentity, resolveCheckoutContact, verification, generateUniqueCode, generateInstallmentScheduleCode, settleInstallmentSchedules } from "@jalajogja/db";
 import { createTenantDb, generateFinancialNumber, getSettings } from "@jalajogja/db";
 import {
-  findVoucherByCode, countCustomerRedemptions, computeVoucherDiscount, resolveProductCartItem,
+  findVoucherByCode, countCustomerRedemptions, computeVoucherDiscount, resolveProductCartItem, loadProducerSharePercents,
   type VoucherApplicationResult, type ResolvedCartItemForVoucher,
 } from "@jalajogja/db";
 import {
@@ -334,13 +334,14 @@ export async function previewVoucherAction(
     for (const item of cartItems) {
       let unitPrice = parseFloat(String(item.unitPrice));
       let mitraId: string | null = null;
+      let previewProducerId: string | null = null;
       // voucherTargetId = ID PRODUK INDUK untuk item bervariasi (VoucherTargetPicker cuma
       // pernah simpan products.id) — lihat resolve-product-item.ts. Sama seperti checkoutAction.
       let voucherTargetId = item.itemId;
       if (item.itemId) {
         if (item.itemType === "product") {
           const resolved = await resolveProductCartItem(tenantDb, schema, item.itemId, priceTier);
-          if (resolved) { unitPrice = resolved.price; mitraId = resolved.mitraId; voucherTargetId = resolved.productId; }
+          if (resolved) { unitPrice = resolved.price; mitraId = resolved.mitraId; voucherTargetId = resolved.productId; previewProducerId = resolved.mitraId ? null : resolved.producerId; }
         } else if (item.itemType === "ticket") {
           const [ticket] = await tenantDb
             .select({ price: schema.eventTickets.price })
@@ -348,7 +349,12 @@ export async function previewVoucherAction(
           if (ticket) unitPrice = parseFloat(String(ticket.price));
         }
       }
-      voucherResolvedItems.push({ itemType: item.itemType, itemId: voucherTargetId, unitPrice, quantity: item.quantity, mitraId });
+      voucherResolvedItems.push({ itemType: item.itemType, itemId: voucherTargetId, unitPrice, quantity: item.quantity, mitraId, producerId: previewProducerId });
+    }
+    // Promo Produsen (K23): persentase bagian tenant TERKINI dipakai sebagai batas potongan — sama dengan checkout.
+    if (voucherRow.ownerProducerId) {
+      const shares = await loadProducerSharePercents(tenantDb, schema, voucherResolvedItems.map((v) => v.producerId));
+      for (const v of voucherResolvedItems) v.sharePercent = v.producerId ? shares.get(v.producerId) ?? null : null;
     }
 
     const result = computeVoucherDiscount(
@@ -909,6 +915,10 @@ export async function checkoutAction(
         }
       }
 
+      // Persentase bagian tenant TERKINI per produsen — dipakai (a) batas potongan Promo Produsen, (b) SNAPSHOT di invoice_items (K25).
+      // Dibaca di dalam transaksi yang sama dengan pembuatan invoice, jadi snapshot = nilai saat pembeli membayar.
+      const producerShares = await loadProducerSharePercents(tx, schema, resolvedItems.map((it) => (it.itemType === "product" && !it.mitraId ? it.producerId : null)));
+
       // ── Resolusi voucher (opsional) — SETELAH resolvedItems (unitPrice FINAL) siap, jangan
       // pernah reimplement resolusi harga sendiri di sini. Lihat docs/arsitektur-voucher.md.
       // Lock voucher row (forUpdate) di dalam transaction yang sama dengan lock cart — cegah
@@ -928,6 +938,8 @@ export async function checkoutAction(
         const voucherResolvedItems: ResolvedCartItemForVoucher[] = resolvedItems.map((it) => ({
           itemType: it.itemType, itemId: it.voucherTargetId, unitPrice: it.unitPrice,
           quantity: it.quantity, mitraId: it.mitraId,
+          producerId: it.itemType === "product" && !it.mitraId ? it.producerId : null,
+          sharePercent: it.itemType === "product" && !it.mitraId && it.producerId ? producerShares.get(it.producerId) ?? null : null,
         }));
 
         const result = computeVoucherDiscount(
@@ -1018,6 +1030,11 @@ export async function checkoutAction(
             discountAmount: discountAmount.toFixed(2),
             voucherId:      discountAmount > 0 ? (voucherApplication?.voucher.id ?? null) : null,
             forGabungRegistration: item.forGabungRegistration,
+            // Snapshot bagi hasil (K25): persentase saat checkout (hanya baris ber-produsen) + siapa yang menanggung potongan
+            producerSharePercent: item.itemType === "product" && !item.mitraId && item.producerId
+              ? (producerShares.get(item.producerId) ?? null)?.toFixed(2) ?? null
+              : null,
+            discountFundedBy: discountAmount > 0 ? (voucherApplication?.fundedBy ?? null) : null,
           };
         })
       );

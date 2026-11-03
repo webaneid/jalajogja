@@ -10,7 +10,7 @@
  *   dalam transaction) tanpa duplikasi logic validasi/perhitungan.
  */
 
-import { eq, and, or, sql, type ExtractTablesWithRelations } from "drizzle-orm";
+import { eq, and, or, sql, inArray, type ExtractTablesWithRelations } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 import type { TenantDb } from "../tenant-client";
@@ -30,6 +30,11 @@ export type ResolvedCartItemForVoucher = {
   unitPrice: number;
   quantity:  number;
   mitraId:   string | null; // null = milik tenant, terisi = milik mitra (dikecualikan Fase 1)
+  // Hanya untuk voucher Promo Produsen (K23): produsen pemilik barang (server, dari products.producer_id) dan
+  // persentase bagian tenant TERKINI produsen itu. Pemanggil yang tidak mengisinya (invoice manual admin dst.)
+  // tidak pernah mencocokkan voucher Promo Produsen → fail-closed.
+  producerId?:   string | null;
+  sharePercent?: number | null;
 };
 
 export type VoucherRow = {
@@ -48,10 +53,12 @@ export type VoucherRow = {
   validFrom:              Date | null;
   validUntil:             Date | null;
   isActive:               boolean;
+  ownerProducerId:        string | null; // NULL = Promo Tenant (ditanggung tenant); terisi = Promo Produsen (ditanggung produsen itu)
 };
 
 export type VoucherApplicationResult = {
   voucher:         VoucherRow;
+  fundedBy:        "tenant" | "producer"; // penanggung potongan — dicatat per baris pesanan (invoice_items.discount_funded_by)
   perItemDiscount: Map<number, number>; // index di resolvedItems -> nominal potongan
   totalDiscount:   number;
 };
@@ -95,7 +102,27 @@ export async function findVoucherByCode(
     validFrom:             row.validFrom,
     validUntil:            row.validUntil,
     isActive:              row.isActive,
+    ownerProducerId:       row.ownerProducerId ?? null,
   };
+}
+
+// Persentase bagian tenant TERKINI per produsen (untuk batas Promo Produsen + snapshot checkout). Produsen tanpa
+// persentase valid (NULL / di luar 0–100) → null. Tidak melempar bila daftar kosong.
+export async function loadProducerSharePercents(
+  db: TenantDbOrTx,
+  schema: TenantDb["schema"],
+  producerIds: Array<string | null | undefined>,
+): Promise<Map<string, number | null>> {
+  const ids = [...new Set(producerIds.filter((x): x is string => !!x))];
+  const out = new Map<string, number | null>();
+  if (ids.length === 0) return out;
+  const rows = await db.select({ id: schema.producers.id, share: schema.producers.revenueSharePercent })
+    .from(schema.producers).where(inArray(schema.producers.id, ids));
+  for (const r of rows) {
+    const n = r.share === null || r.share === undefined ? null : parseFloat(String(r.share));
+    out.set(r.id, n !== null && Number.isFinite(n) && n > 0 && n < 100 ? n : null);
+  }
+  return out;
 }
 
 // ─── countCustomerRedemptions ─────────────────────────────────────────────────
@@ -178,11 +205,20 @@ export function computeVoucherDiscount(
     if (voucher.targetItemIds.length > 0 && !item.itemId) return;
     if (voucher.targetItemIds.length > 0 && item.itemId && !voucher.targetItemIds.includes(item.itemId)) return;
 
+    // Promo Produsen (K23): hanya barang MILIK produsen pemilik voucher, dan potongan tidak boleh melebihi persentase bagian
+    // tenant (batas dihitung dari persentase TERKINI — voucher lama otomatis ikut terpotong bila admin menurunkan persentase).
+    let cap = Infinity;
+    if (voucher.ownerProducerId) {
+      if (!item.producerId || item.producerId !== voucher.ownerProducerId) return;
+      if (!item.sharePercent || !(item.sharePercent > 0)) return;
+      cap = Math.floor(item.unitPrice * item.quantity * item.sharePercent) / 100;
+    }
+
     const lineTotal = item.unitPrice * item.quantity;
     const rawDiscount = voucher.discountType === "percentage"
       ? lineTotal * (voucher.discountValue / 100)
       : voucher.discountValue;
-    const discount = Math.min(lineTotal, Math.max(0, rawDiscount)); // clamp: tidak minus, tidak melebihi harga baris
+    const discount = Math.min(lineTotal, cap, Math.max(0, rawDiscount)); // clamp: tidak minus, tidak melebihi harga baris/batas produsen
 
     if (discount > 0) {
       perItemDiscount.set(index, discount);
@@ -194,5 +230,5 @@ export function computeVoucherDiscount(
     return { error: "Voucher tidak berlaku untuk item di keranjang Anda." };
   }
 
-  return { voucher, perItemDiscount, totalDiscount };
+  return { voucher, fundedBy: voucher.ownerProducerId ? "producer" : "tenant", perItemDiscount, totalDiscount };
 }

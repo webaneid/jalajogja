@@ -1277,11 +1277,14 @@ export async function createTenantSchemaInDb(
         valid_from               TIMESTAMPTZ,
         valid_until               TIMESTAMPTZ,
         is_active                BOOLEAN        NOT NULL DEFAULT TRUE,
+        -- Promo Produsen (K23): NULL = Promo Tenant (dibuat admin, ditanggung tenant); terisi = dibuat & DITANGGUNG produsen itu
+        owner_producer_id        UUID           REFERENCES "${s}".producers(id) ON DELETE RESTRICT,
         created_by               UUID           REFERENCES "${s}".users(id) ON DELETE SET NULL,
         created_at               TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at               TIMESTAMPTZ    NOT NULL DEFAULT NOW()
       )
     `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_vouchers_owner_producer ON "${s}".vouchers(owner_producer_id) WHERE owner_producer_id IS NOT NULL`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_vouchers_code ON "${s}".vouchers(code)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_vouchers_is_active ON "${s}".vouchers(is_active)`));
 
@@ -1404,7 +1407,10 @@ export async function createTenantSchemaInDb(
         discount_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
         voucher_id      UUID          REFERENCES "${s}".vouchers(id) ON DELETE SET NULL,
         -- Disalin dari cart_items.for_gabung_registration saat checkout
-        for_gabung_registration BOOLEAN NOT NULL DEFAULT false
+        for_gabung_registration BOOLEAN NOT NULL DEFAULT false,
+        -- SNAPSHOT untuk bagi hasil/pencairan (K25): persentase bagian tenant saat checkout (hanya baris ber-produsen) dan penanggung potongan voucher
+        producer_share_percent NUMERIC(5,2),
+        discount_funded_by     TEXT CHECK (discount_funded_by IN ('tenant','producer'))
       )
     `));
 
