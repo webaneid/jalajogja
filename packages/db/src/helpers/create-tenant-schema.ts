@@ -1570,6 +1570,7 @@ export async function createTenantSchemaInDb(
         buyer_confirmed_at TIMESTAMPTZ,   -- pembeli menekan "Sudah diterima" (0095)
         completed_at       TIMESTAMPTZ,   -- pengiriman SELESAI → kredit saldo produsen dibuat
         completion_source  TEXT CHECK (completion_source IN ('buyer','auto')),
+        payout_legacy      BOOLEAN NOT NULL DEFAULT FALSE,   -- pesanan model lama, tak pernah dicairkan lewat sistem baru (0097)
         payout_hold_at     TIMESTAMPTZ,   -- TAHAN pencairan (0096)
         payout_hold_reason TEXT,
         payout_hold_by     UUID,

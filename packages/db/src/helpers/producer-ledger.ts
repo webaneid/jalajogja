@@ -44,7 +44,7 @@ export type ShipmentCredit = {
   productAmount:  number;
   total:          number;
   /** Alasan tidak boleh dikreditkan otomatis; kosong = aman. */
-  blocker:        "belum_lunas" | "persentase_tidak_tercatat" | "tanpa_produk" | null;
+  blocker:        "pesanan_lama" | "belum_lunas" | "persentase_tidak_tercatat" | "tanpa_produk" | null;
   status:         string;                // status pengiriman (pending..delivered)
   shippedAt:      Date | null;
   buyerConfirmedAt: Date | null;
@@ -80,7 +80,7 @@ export async function loadShipmentCredit(tc: TxLike, shippingLineId: string): Pr
     cost: s.invoiceShippingLines.cost, freeDisc: s.invoiceShippingLines.freeShippingDiscount, status: s.invoiceShippingLines.status,
     shippedAt: s.invoiceShippingLines.shippedAt, buyerConfirmedAt: s.invoiceShippingLines.buyerConfirmedAt,
     completedAt: s.invoiceShippingLines.completedAt, completionSource: s.invoiceShippingLines.completionSource,
-    createdAt: s.invoiceShippingLines.createdAt,
+    createdAt: s.invoiceShippingLines.createdAt, legacy: s.invoiceShippingLines.payoutLegacy,
   }).from(s.invoiceShippingLines).where(eq(s.invoiceShippingLines.id, shippingLineId)).limit(1);
   if (!sl || !sl.producerId) return null;
 
@@ -105,7 +105,8 @@ export async function loadShipmentCredit(tc: TxLike, shippingLineId: string): Pr
   const shippingAmount = round2(parseFloat(String(sl.cost ?? "0")));
 
   let blocker: ShipmentCredit["blocker"] = null;
-  if (inv.status !== "paid") blocker = "belum_lunas";
+  if (sl.legacy) blocker = "pesanan_lama";
+  else if (inv.status !== "paid") blocker = "belum_lunas";
   else if (lines.length === 0) blocker = "tanpa_produk";
   else if (lines.some((l) => l.percent === null)) blocker = "persentase_tidak_tercatat";
 
@@ -120,7 +121,7 @@ export async function loadShipmentCredit(tc: TxLike, shippingLineId: string): Pr
 
 export type CompleteResult =
   | { ok: true; already: boolean; total: number }
-  | { ok: false; reason: "tidak_ditemukan" | "belum_lunas" | "persentase_tidak_tercatat" | "tanpa_produk" | "akun_belum_dikonfigurasi" };
+  | { ok: false; reason: "tidak_ditemukan" | "pesanan_lama" | "belum_lunas" | "persentase_tidak_tercatat" | "tanpa_produk" | "akun_belum_dikonfigurasi" };
 
 /**
  * Selesaikan satu pengiriman produsen → buat kredit ledger. Idempoten & aman bersamaan (kunci baris + indeks unik).
@@ -208,7 +209,7 @@ export async function sweepProducerSettlements(tc: TenantDb, opts: { limit?: num
   // Jumlahnya tetap DILAPORKAN lewat `blocked.persentase_tidak_tercatat` (dihitung terpisah, tanpa batas).
   const noPercent = sql`EXISTS (SELECT 1 FROM ${s.invoiceItems} ii WHERE ii.invoice_id = ${s.invoiceShippingLines.invoiceId} AND ii.producer_id = ${s.invoiceShippingLines.producerId} AND ii.item_type = 'product' AND ii.producer_share_percent IS NULL)`;
   const dueCond = and(
-    isNotNull(s.invoiceShippingLines.producerId), isNull(s.invoiceShippingLines.completedAt),
+    isNotNull(s.invoiceShippingLines.producerId), isNull(s.invoiceShippingLines.completedAt), eq(s.invoiceShippingLines.payoutLegacy, false),
     or(isNotNull(s.invoiceShippingLines.buyerConfirmedAt), and(isNotNull(s.invoiceShippingLines.shippedAt), lt(s.invoiceShippingLines.shippedAt, cutoff))),
   );
   const rows = await db.select({ id: s.invoiceShippingLines.id, confirmed: s.invoiceShippingLines.buyerConfirmedAt })
@@ -247,7 +248,7 @@ export async function getProducerBalance(tc: TxLike, producerId: string): Promis
 /** Pengiriman milik produsen (terbaru dulu). `onlyOpen` = hanya yang lunas & belum selesai. Semua dari `producerId` (sesi pemanggil). */
 export async function listProducerShipments(tc: TxLike, producerId: string, opts: { onlyOpen?: boolean; limit?: number } = {}): Promise<ShipmentCredit[]> {
   const { db, schema: s } = tc;
-  const conds = [eq(s.invoiceShippingLines.producerId, producerId)];
+  const conds = [eq(s.invoiceShippingLines.producerId, producerId), eq(s.invoiceShippingLines.payoutLegacy, false)];   // pesanan model lama tak tampil
   if (opts.onlyOpen) conds.push(isNull(s.invoiceShippingLines.completedAt));
   const ids = await db.select({ id: s.invoiceShippingLines.id }).from(s.invoiceShippingLines)
     .innerJoin(s.invoices, eq(s.invoices.id, s.invoiceShippingLines.invoiceId))

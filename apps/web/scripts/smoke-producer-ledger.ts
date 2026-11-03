@@ -134,6 +134,14 @@ try {
   const swLim = await sweepProducerSettlements(tc, { limit: 1 });
   ok("sapuan: pengiriman tanpa persentase yang lebih tua TIDAK menghabiskan batas (yang valid tetap selesai)", (await done(starveOk.lineIds[0])).completedAt !== null && (await done(starveNull.lineIds[0])).completedAt === null, JSON.stringify(swLim));
   ok("sapuan: yang tanpa persentase tetap dilaporkan (dihitung terpisah, tanpa batas)", (swLim.blocked.persentase_tidak_tercatat ?? 0) >= 2);
+  // Pesanan MODEL LAMA (payout_legacy): tak pernah dikreditkan, tak tampil di daftar, tak dilaporkan "perlu ditinjau"
+  const before = (await sweepProducerSettlements(tc, { limit: 500 })).blocked.persentase_tidak_tercatat ?? 0;
+  const legacy = await mkInvoice("paid", [{ producerId: pA, unit: 10000, percent: null }], [{ producerId: pA, cost: 2000, shippedAt: new Date(Date.now() - 40 * DAY) }]);
+  await db.update(s.invoiceShippingLines).set({ payoutLegacy: true }).where(eq(s.invoiceShippingLines.id, legacy.lineIds[0]));
+  const legRes = await completeProducerShipment(tc, legacy.lineIds[0], "auto");
+  ok("model lama: penyelesaian ditolak (pesanan_lama), tanpa ledger", !legRes.ok && legRes.reason === "pesanan_lama" && (await ledgerOf(legacy.lineIds[0])).length === 0);
+  ok("model lama: tak tampil di daftar saldo produsen", !(await listProducerShipments({ db, schema: s }, pA, { limit: 200 })).some((c) => c.shippingLineId === legacy.lineIds[0]));
+  ok("model lama: tidak dihitung 'perlu ditinjau' di sapuan", ((await sweepProducerSettlements(tc, { limit: 500 })).blocked.persentase_tidak_tercatat ?? 0) === before);
   const sw2 = await sweepProducerSettlements(tc, { limit: 500 });
   ok("sapuan: dijalankan ulang tidak membuat kredit ganda", sw2.completed === 0 && (await ledgerOf(old.lineIds[0])).length === 2);
 

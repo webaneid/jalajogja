@@ -375,6 +375,9 @@ export function createInvoiceShippingLinesTable(s: ReturnType<typeof pgSchema>) 
     completedAt:      timestamp("completed_at", { withTimezone: true }),
     completionSource: text("completion_source", { enum: ["buyer", "auto"] as const }),
     // TAHAN pencairan (sengketa/dugaan resi palsu): kredit pengiriman ini tidak ikut diajukan sampai admin melepas. Hak admin keuangan.
+    // Pesanan MODEL LAMA (sebelum sistem bagi hasil produsen: tanpa snapshot persentase) — TIDAK pernah dikreditkan/dicairkan lewat sistem baru,
+    // tidak tampil di saldo produsen, tidak dilaporkan sebagai "perlu ditinjau". Diisi migration 0097 (pesanan sebelum 2026-11-03).
+    payoutLegacy:     boolean("payout_legacy").notNull().default(false),
     payoutHoldAt:     timestamp("payout_hold_at", { withTimezone: true }),
     payoutHoldReason: text("payout_hold_reason"),
     payoutHoldBy:     uuid("payout_hold_by"),
