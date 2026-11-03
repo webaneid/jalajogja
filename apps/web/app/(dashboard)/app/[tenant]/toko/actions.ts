@@ -293,9 +293,10 @@ export async function createProductAction(
         stock:         data.stock,
         weightGram:    data.weightGram      ?? null,
         originId:      data.originId        ?? null,
-        freeShippingMode:      data.freeShippingMode      ?? "none",
-        freeShippingProvinces: data.freeShippingProvinces ?? [],
-        freeShippingCities:    data.freeShippingCities    ?? [],
+        // Produk milik produsen: gratis ongkir hak produsen, admin tak mengisinya (lihat updateProductAction).
+        freeShippingMode:      data.producerId ? "none" : (data.freeShippingMode ?? "none"),
+        freeShippingProvinces: data.producerId ? [] : (data.freeShippingProvinces ?? []),
+        freeShippingCities:    data.producerId ? [] : (data.freeShippingCities ?? []),
         pickupLocationName: data.pickupLocationName ?? null,
         pickupAddress:      data.pickupAddress      ?? null,
         pickupMapsUrl:      data.pickupMapsUrl       ?? null,
@@ -415,6 +416,21 @@ export async function updateProductAction(
     originIdValue = data.originId;
   }
 
+  // Gratis ongkir produk MILIK PRODUSEN = hak produsen (ditanggung produsen, pencairan docs/arsitektur-pencairan-produsen.md D14):
+  // admin tidak mengubahnya — nilai dari form admin diabaikan. Bila kepemilikan baru saja berpindah ke produsen → direset "none"
+  // (tidak mewarisi promo toko). Produk toko/mitra: perilaku lama.
+  // Berpindah pemilik (toko→produsen, produsen→toko, atau produsen lain) juga mereset: tak ada promo yang "terwarisi" pemilik baru.
+  const ownerChanged = data.producerId !== undefined && data.producerId !== curOwner.producerId && (!!effectiveProducer || !!curOwner.producerId);
+  const freeShippingUpdate = ownerChanged
+    ? { freeShippingMode: "none" as const, freeShippingProvinces: [], freeShippingCities: [] }
+    : effectiveProducer
+    ? {}
+    : {
+        freeShippingMode:      data.freeShippingMode      ?? "none",
+        freeShippingProvinces: data.freeShippingProvinces ?? [],
+        freeShippingCities:    data.freeShippingCities    ?? [],
+      };
+
   // Cek slug duplikat (kecuali produk ini sendiri)
   const [dup] = await db
     .select({ id: schema.products.id })
@@ -443,9 +459,7 @@ export async function updateProductAction(
         stock:           data.stock,
         weightGram:      data.weightGram   ?? null,
         originId:        originIdValue,
-        freeShippingMode:      data.freeShippingMode      ?? "none",
-        freeShippingProvinces: data.freeShippingProvinces ?? [],
-        freeShippingCities:    data.freeShippingCities    ?? [],
+        ...freeShippingUpdate,
         pickupLocationName: data.pickupLocationName ?? null,
         pickupAddress:      data.pickupAddress      ?? null,
         pickupMapsUrl:      data.pickupMapsUrl       ?? null,

@@ -753,7 +753,15 @@ export function ProductForm({
                     ? "Ongkir produk ini ditanggung PRODUSEN (Anda), bukan tenant — semua daerah, atau daerah tertentu saja."
                     : "Ongkir produk ini ditanggung toko — semua daerah, atau daerah tertentu saja."}
                 </p>
-                <FreeShippingPicker
+                {/* Produk milik produsen dikelola produsen sendiri — admin hanya melihat (docs/arsitektur-pencairan-produsen.md D14) */}
+                {!isProducer && producerId !== "internal" ? (
+                  <p className="rounded-lg bg-muted/50 p-2 text-[11px] text-muted-foreground">
+                    {freeShippingMode === "none" ? "Tidak ada gratis ongkir." : freeShippingMode === "all" ? "Gratis ongkir ke seluruh Indonesia."
+                      : `Gratis ongkir ke ${freeShippingProvinces.length} provinsi dan ${freeShippingCities.length} kabupaten/kota.`}
+                    {" "}Diatur oleh produsen — tidak bisa diubah dari sini.
+                  </p>
+                ) : (
+                  <FreeShippingPicker
                   mode={freeShippingMode}
                   provinces={freeShippingProvinces}
                   cities={freeShippingCities}
@@ -763,6 +771,7 @@ export function ProductForm({
                     setFreeShippingCities(cities);
                   }}
                 />
+                )}
               </div>
 
               {/* Lokasi Ambil Sendiri — override opsional dari default toko, KHUSUS produk
