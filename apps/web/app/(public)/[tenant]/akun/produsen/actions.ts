@@ -8,6 +8,7 @@ import {
   resolveApplicant, saveDraftFields, submitApplication, cancelPending, discardDraft, removeDraftItem,
 } from "@/lib/producer-application.server";
 import { parseDraftInput, type DraftInput, type DraftView } from "@/lib/producer-application";
+import { notifyApproversNewApplication } from "@/lib/producer-application-notify.server";
 
 type ViewResult  = { success: true; view: DraftView } | { success: false; error: string };
 type PlainResult = { success: true } | { success: false; error: string };
@@ -36,7 +37,14 @@ export async function submitApplicationAction(slug: string): Promise<ViewResult>
   if (!checkRateLimit(`prodapp-submit:${r.a.member.id}`, 5, DAY).allowed) return { success: false, error: "Batas pengiriman harian tercapai. Coba lagi besok." };
   try {
     const res = await submitApplication(r.a);
-    if (res.ok) refresh(slug);
+    if (res.ok) {
+      refresh(slug);
+      // Email ke penyetuju — fire-and-forget (compare-and-set pengiriman menjamin satu email per pengiriman sungguhan)
+      void notifyApproversNewApplication({
+        slug: r.a.tenant.slug, tenantClient: r.a.tenantClient, applicantMemberId: r.a.member.id,
+        applicantName: r.a.member.name, brand: res.view.brandName,
+      });
+    }
     return res.ok ? { success: true, view: res.view } : { success: false, error: res.error };
   } catch (e) {
     console.error("[submitApplication]", e);

@@ -4,10 +4,11 @@
 //  - Fire-and-forget: TIDAK PERNAH melempar dan tidak boleh menggagalkan/menunda keputusan. Kegagalan hanya dicatat (tanpa alamat/isi).
 //  - Semua teks dari pengguna (nama, brand, alasan) di-escape HTML.
 import "server-only";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db as publicDb, createTenantDb, members, user } from "@jalajogja/db";
 import { sendMailForTenant } from "@/lib/mail-dispatch.server";
 import { resolveOrgName, waAppUrl } from "@/lib/wa-notify";
+import { hasFullAccess, hasReadAccess } from "@/lib/permissions";
 
 type TenantDb = ReturnType<typeof createTenantDb>;
 
@@ -70,5 +71,59 @@ export async function notifyApplicationDecision(opts: {
     if (!res.ok) console.error("[producer-application-notify] gagal kirim email keputusan:", res.error);
   } catch (e) {
     console.error("[producer-application-notify]", e instanceof Error ? e.message : "unknown");
+  }
+}
+
+// ── Email ke PENYETUJU saat pengajuan baru masuk (K16: email saja; docs/arsitektur-produk-produsen.md § 8) ──────────────
+/** Pembentuk isi — MURNI. Sengaja TANPA data berkas/pribadi: hanya nama pemohon + brand + tautan ke halaman tinjauan. */
+export function buildNewApplicationEmail(input: { org: string; applicantName: string; brand: string; reviewUrl: string }): { subject: string; html: string } {
+  const org = esc(input.org), who = esc(input.applicantName), brand = esc(input.brand);
+  return {
+    subject: oneLine(`Pengajuan produsen baru menunggu tinjauan — ${input.org}`),
+    html: `<p>Halo,</p>
+<p><strong>${who}</strong> mengajukan diri menjadi produsen di <strong>${org}</strong> dengan brand <strong>${brand}</strong>.</p>
+<p>Silakan tinjau dan putuskan di sini: <a href="${esc(input.reviewUrl)}">${esc(input.reviewUrl)}</a></p>
+<p>Anda menerima email ini karena memiliki wewenang menyetujui pengajuan produsen.</p>
+<p>${org}</p>`,
+  };
+}
+
+const MAX_APPROVER_EMAILS = 20;
+
+/**
+ * Kirim email ke semua penyetuju tenant (izin `anggota:full` DAN `toko:read` — sama persis dengan aturan tinjauan).
+ * Pemohon sendiri tidak dikirimi. Fire-and-forget: TIDAK PERNAH melempar dan tidak menggagalkan pengiriman pengajuan.
+ */
+export async function notifyApproversNewApplication(opts: {
+  slug: string; tenantClient: TenantDb; applicantMemberId: string; applicantName: string; brand: string;
+}): Promise<void> {
+  try {
+    const { db: tdb, schema } = opts.tenantClient;
+    const users = await tdb.select({
+      role: schema.users.role, memberId: schema.users.memberId, authId: schema.users.betterAuthUserId, permissions: schema.customRoles.permissions,
+    }).from(schema.users).leftJoin(schema.customRoles, eq(schema.customRoles.id, schema.users.customRoleId));
+
+    const approvers = users.filter((u) => {
+      if (u.memberId && u.memberId === opts.applicantMemberId) return false;
+      const perm = { role: u.role, customRole: u.permissions ? { permissions: u.permissions } : null };
+      return hasFullAccess(perm, "anggota") && hasReadAccess(perm, "toko");
+    }).slice(0, MAX_APPROVER_EMAILS);
+    if (!approvers.length) return;
+
+    const rows = await publicDb.select({ email: user.email }).from(user).where(inArray(user.id, approvers.map((a) => a.authId)));
+    const emails = [...new Set(rows.map((r) => r.email).filter((e): e is string => !!e))];
+    if (!emails.length) return;
+
+    const org = await resolveOrgName(opts.tenantClient, opts.slug);
+    const { subject, html } = buildNewApplicationEmail({
+      org, applicantName: opts.applicantName, brand: opts.brand,
+      reviewUrl: `${APP_URL()}/app/${opts.slug}/toko/produsen/pengajuan`,
+    });
+    for (const to of emails) {
+      const res = await sendMailForTenant(opts.tenantClient, { to, subject, html });
+      if (!res.ok) console.error("[producer-application-notify] gagal kirim email ke penyetuju:", res.error);
+    }
+  } catch (e) {
+    console.error("[producer-application-notify] penyetuju:", e instanceof Error ? e.message : "unknown");
   }
 }
