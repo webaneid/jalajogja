@@ -268,6 +268,11 @@ export async function markPayoutPaid(tc: TenantDb, payoutId: string, actor: Acto
   const fee = round2(Number(input.transferFee ?? 0));
   if (!Number.isFinite(fee) || fee < 0 || fee > MAX_TRANSFER_FEE) return fail(`Biaya transfer harus 0 sampai Rp${MAX_TRANSFER_FEE.toLocaleString("id-ID")}.`);
 
+  // Biaya transfer harus salah satu angka pengaturan tenant (sesama/beda bank); angka lain hanya dengan CATATAN alasan (jejak audit).
+  const cfg = await getPayoutSettings(tc);
+  const note = input.note ? clean(input.note, 300) : "";
+  if (fee !== cfg.feeSameBank && fee !== cfg.feeOtherBank && note.length < 5) return fail("Biaya transfer berbeda dari pengaturan (Rp" + cfg.feeSameBank.toLocaleString("id-ID") + " sesama bank / Rp" + cfg.feeOtherBank.toLocaleString("id-ID") + " beda bank). Isi catatan alasannya.");
+
   const accts = await resolveProducerAccounts(tc.db, tc.schema);
   if (!accts.hutang || !accts.cash) return fail("Akun Hutang Produsen atau Kas/Bank belum dikonfigurasi di Keuangan.");
   const hutangAcc: string = accts.hutang, cashAcc: string = accts.cash;
@@ -308,10 +313,10 @@ export async function markPayoutPaid(tc: TenantDb, payoutId: string, actor: Acto
 
 // ── Refund → hutang produsen, pelunasan, tahan ───────────────────────────────────────────────────────────────
 /** Hutang produsen saat ini (positif = produsen berutang ke tenant): −Σ(refund_debt + pelunasan) pada entri available/reserved. */
-export async function getProducerDebt(tc: TxLike, producerId: string): Promise<number> {
+export async function getProducerDebt(tc: TxLike, producerId: string, opts: { onlyAvailable?: boolean } = {}): Promise<number> {
   const { db, schema: s } = tc;
   const [r] = await db.select({ sum: sql<string>`coalesce(sum(${s.producerLedgerEntries.amount}), 0)` }).from(s.producerLedgerEntries)
-    .where(and(eq(s.producerLedgerEntries.producerId, producerId), inArray(s.producerLedgerEntries.kind, ["refund_debt", "adjustment"]), inArray(s.producerLedgerEntries.status, ["available", "reserved"])));
+    .where(and(eq(s.producerLedgerEntries.producerId, producerId), inArray(s.producerLedgerEntries.kind, ["refund_debt", "adjustment"]), inArray(s.producerLedgerEntries.status, opts.onlyAvailable ? ["available"] : ["available", "reserved"])));
   return Math.max(0, round2(-num(r.sum)));
 }
 
@@ -368,8 +373,9 @@ export async function recordDebtRepayment(tc: TenantDb, input: { producerId: str
   return tc.db.transaction(async (tx) => {
     const s = tc.schema; const txl: TxLike = { db: tx as unknown as Db, schema: s };
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"prodpayout:" + input.producerId}))`);
-    const debt = await getProducerDebt(txl, input.producerId);
-    if (amount > debt + 0.005) return fail(`Nominal melebihi hutang produsen saat ini (Rp${debt.toLocaleString("id-ID")}).`);
+    // Hanya hutang yang BELUM masuk pengajuan berjalan (yang sudah ter-reserve akan dipotong dari pengajuan itu — jangan dibayar dua kali).
+    const debt = await getProducerDebt(txl, input.producerId, { onlyAvailable: true });
+    if (amount > debt + 0.005) return fail(`Nominal melebihi hutang yang bisa dilunasi saat ini (Rp${debt.toLocaleString("id-ID")}; hutang yang sudah masuk pengajuan berjalan dipotong otomatis).`);
     await tx.insert(s.producerLedgerEntries).values({
       producerId: input.producerId, kind: "adjustment", amount: amount.toFixed(2), status: "available",
       meta: { note: input.note ? clean(input.note, 200) : "transfer dari produsen", proofMediaId: String(input.proofMediaId), proofUrl: String(input.proofUrl), by: input.actorUserId },
@@ -395,6 +401,8 @@ export async function setShipmentHold(tc: TenantDb, shippingLineId: string, acto
     const [sl] = await tx.select({ id: s.invoiceShippingLines.id, producerId: s.invoiceShippingLines.producerId }).from(s.invoiceShippingLines)
       .where(eq(s.invoiceShippingLines.id, shippingLineId)).for("update").limit(1);
     if (!sl?.producerId) return fail("Pengiriman produsen tidak ditemukan.");
+    // Kunci yang SAMA dengan pengajuan/pelunasan: tahan tak bisa menyelinap di antara pembacaan hak dan pencadangan entri.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"prodpayout:" + sl.producerId}))`);
     if (reason) {
       if (reason.length < 5) return fail("Alasan tahan wajib diisi (minimal 5 karakter).");
       const [res] = await tx.select({ id: s.producerLedgerEntries.id }).from(s.producerLedgerEntries)

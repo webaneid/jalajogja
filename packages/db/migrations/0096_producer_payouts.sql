@@ -78,6 +78,12 @@ BEGIN
     EXECUTE format('CREATE INDEX IF NOT EXISTS producer_payouts_status_idx ON %I.producer_payouts(status)', t);
     EXECUTE format($f$CREATE UNIQUE INDEX IF NOT EXISTS producer_payouts_active_uniq ON %I.producer_payouts(producer_id) WHERE status IN ('requested','approved')$f$, t);
 
+    -- Pengaman DB lapis kedua untuk invarian uang (selain kode aplikasi)
+    EXECUTE format('ALTER TABLE %I.producer_payouts DROP CONSTRAINT IF EXISTS producer_payouts_money_chk', t);
+    EXECUTE format($f$ALTER TABLE %I.producer_payouts ADD CONSTRAINT producer_payouts_money_chk CHECK (
+      subtotal > 0 AND transfer_fee >= 0 AND (status <> 'paid' OR (proof_url IS NOT NULL AND proof_media_id IS NOT NULL AND transaction_id IS NOT NULL AND net_amount IS NOT NULL AND transfer_fee < subtotal AND net_amount = subtotal - transfer_fee))
+    )$f$, t);
+
     EXECUTE format($f$
       CREATE TABLE IF NOT EXISTS %I.producer_payout_lines (
         id                UUID          PRIMARY KEY DEFAULT gen_random_uuid(),

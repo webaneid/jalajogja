@@ -6,7 +6,7 @@ import { createTenantDb, requestPayout, cancelPayoutByProducer, setProducerBankA
 import { getProducerAccess } from "@/lib/producer-access.server";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isValidUuid } from "@/lib/is-uuid";
-import { notifyPayoutRequested, notifyBankChanged } from "@/lib/producer-payout-notify.server";
+import { notifyPayoutRequested, notifyBankChanged, notifyProducerBankChanged } from "@/lib/producer-payout-notify.server";
 
 export type PayoutActionResult = { success: true; message?: string; id?: string } | { success: false; error: string };
 const HOUR = 60 * 60_000;
@@ -21,9 +21,17 @@ export async function saveBankAccountAction(slug: string, input: unknown): Promi
     const tc = createTenantDb(access.tenant.slug);
     const res = await setProducerBankAccount(tc, access.producer.id, { bankCode: i.bankCode, accountNumber: i.accountNumber, holder: i.holder });
     if (!res.ok) return { success: false, error: res.error };
-    const { pending, active } = await getBankAccounts(tc, access.producer.id);
-    const shown = pending ?? active;
-    if (shown) void notifyBankChanged(access.tenant.slug, tc, { producerName: access.producer.displayName, bank: shown.bankName, last4: shown.accountLast4, effectiveAt: res.effectiveAt, immediate: res.immediate });
+    // Pasca-commit: tidak boleh membuat penyimpanan yang sudah berhasil tampak gagal.
+    void (async () => {
+      try {
+        const { pending, active } = await getBankAccounts(tc, access.producer.id);
+        const shown = pending ?? active;
+        if (!shown) return;
+        await notifyBankChanged(access.tenant.slug, tc, { producerName: access.producer.displayName, bank: shown.bankName, last4: shown.accountLast4, effectiveAt: res.effectiveAt, immediate: res.immediate });
+        // Pemilik rekening juga diberi tahu (bila sesinya dibajak, ia tahu) — email/WA ke kontak produsen sendiri.
+        await notifyProducerBankChanged(access.tenant.slug, tc, access.producer.id, { bank: shown.bankName, last4: shown.accountLast4, effectiveAt: res.effectiveAt, immediate: res.immediate });
+      } catch (e) { console.error("[saveBankAccountAction notif]", e instanceof Error ? e.message : "unknown"); }
+    })();
     refresh(access.tenant.slug);
     return { success: true, message: res.immediate ? "Rekening tersimpan dan langsung berlaku." : "Rekening baru tersimpan. Demi keamanan, baru berlaku 24 jam lagi; sebelum itu pencairan memakai rekening lama." };
   } catch (e) {
@@ -40,8 +48,12 @@ export async function requestPayoutAction(slug: string): Promise<PayoutActionRes
     const tc = createTenantDb(access.tenant.slug);
     const res = await requestPayout(tc, access.producer.id);
     if (!res.ok) return { success: false, error: res.error };
-    const d = await getPayoutWithLines(tc, res.payoutId, access.producer.id);
-    if (d) void notifyPayoutRequested(access.tenant.slug, tc, { id: d.payout.id, number: d.payout.number, subtotal: res.subtotal, producerName: access.producer.displayName, bank: d.payout.bankName, last4: d.payout.accountLast4, holder: d.payout.accountHolder });
+    void (async () => {
+      try {
+        const d = await getPayoutWithLines(tc, res.payoutId, access.producer.id);
+        if (d) await notifyPayoutRequested(access.tenant.slug, tc, { id: d.payout.id, number: d.payout.number, subtotal: res.subtotal, producerName: access.producer.displayName, bank: d.payout.bankName, last4: d.payout.accountLast4, holder: d.payout.accountHolder });
+      } catch (e) { console.error("[requestPayoutAction notif]", e instanceof Error ? e.message : "unknown"); }
+    })();
     refresh(access.tenant.slug);
     return { success: true, id: res.payoutId, message: `Pengajuan ${res.number} terkirim ke bendahara.` };
   } catch (e) {

@@ -1693,6 +1693,9 @@ export async function createTenantSchemaInDb(
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_payouts_producer_idx ON "${s}".producer_payouts(producer_id, requested_at)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_payouts_status_idx ON "${s}".producer_payouts(status)`));
     await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producer_payouts_active_uniq ON "${s}".producer_payouts(producer_id) WHERE status IN ('requested','approved')`));
+    // Pengaman DB lapis kedua untuk invarian uang (selain kode aplikasi) — sama dengan migration 0096
+    await tx.execute(sql.raw(`ALTER TABLE "${s}".producer_payouts DROP CONSTRAINT IF EXISTS producer_payouts_money_chk`));
+    await tx.execute(sql.raw(`ALTER TABLE "${s}".producer_payouts ADD CONSTRAINT producer_payouts_money_chk CHECK (subtotal > 0 AND transfer_fee >= 0 AND (status <> 'paid' OR (proof_url IS NOT NULL AND proof_media_id IS NOT NULL AND transaction_id IS NOT NULL AND net_amount IS NOT NULL AND transfer_fee < subtotal AND net_amount = subtotal - transfer_fee)))`));
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".producer_payout_lines (
         id                UUID          PRIMARY KEY DEFAULT gen_random_uuid(),

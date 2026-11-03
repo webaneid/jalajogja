@@ -124,6 +124,7 @@ try {
   ok("bayar: biaya transfer melebihi batas ditolak", !(await markPayoutPaid(tc, rq3.payoutId, bendahara, { transferFee: 60000, proofMediaId: randomUUID(), proofUrl: "https://x/y.png" })).ok);
   ok("bayar: biaya transfer negatif ditolak", !(await markPayoutPaid(tc, rq3.payoutId, bendahara, { transferFee: -1, proofMediaId: randomUUID(), proofUrl: "https://x/y.png" })).ok);
   ok("bayar: pemilik sendiri ditolak", !(await markPayoutPaid(tc, rq3.payoutId, { userId: actorUser, memberId: selfMember }, { transferFee: 7500, proofMediaId: randomUUID(), proofUrl: "https://x/y.png" })).ok);
+  ok("bayar: biaya transfer di luar pengaturan TANPA catatan ditolak", await (async () => { const r = await markPayoutPaid(tc, rq3.payoutId, bendahara, { transferFee: 1234, proofMediaId: randomUUID(), proofUrl: "https://x/y.png" }); return !r.ok && /catatan/i.test(r.error); })());
   const proofId = randomUUID();
   const paid = await markPayoutPaid(tc, rq3.payoutId, bendahara, { transferFee: 7500, proofMediaId: proofId, proofUrl: "https://example.test/bukti.png", sourceBankLabel: "BCA 123", note: "lunas" });
   ok("bayar: sukses, net = 250.000 − 7.500 = 242.500", paid.ok && paid.netAmount === 242500, paid.ok ? "" : paid.error);
@@ -175,11 +176,14 @@ try {
   await savePayoutSettings({ db, schema: s }, { minAmount: 200000, feeSameBank: 0, feeOtherBank: 7500, slaDays: 3 });
   const final = await requestPayout(tc, pA);
   ok("setelah minimum kembali 200.000: 240.000 bisa diajukan", final.ok);
+  ok("pelunasan: hutang yang sudah masuk pengajuan berjalan TIDAK bisa dilunasi lagi (tak bayar dua kali)", !(await recordDebtRepayment(tc, { producerId: pA, amount: 1000, proofMediaId: randomUUID(), proofUrl: "https://x/y.png", actorUserId: actorUser })).ok);
+  ok("pengaman DB: status 'paid' tanpa bukti ditolak oleh CHECK database", await (async () => { try { await db.update(s.producerPayouts).set({ status: "paid" }).where(eq(s.producerPayouts.id, (final as { payoutId: string }).payoutId)); return false; } catch { return true; } })());
+  ok("pengaman DB: subtotal ≤ 0 ditolak", await (async () => { try { await db.update(s.producerPayouts).set({ subtotal: "0" }).where(eq(s.producerPayouts.id, (final as { payoutId: string }).payoutId)); return false; } catch { return true; } })());
 } finally {
   const cleanup = async (label: string, fn: () => Promise<unknown>) => { try { await fn(); } catch (e) { console.error("cleanup", label, e instanceof Error ? e.message : e); fails++; } };
   const P = made.producers;
-  await cleanup("jurnal", () => db.delete(s.transactions).where(and(gte(s.transactions.createdAt, startedAt), or(like(s.transactions.description, "Pengakuan hutang produsen%"), like(s.transactions.description, "Pencairan produsen PRC-%"), like(s.transactions.description, "Refund dibebankan ke produsen%"), like(s.transactions.description, "Pelunasan hutang refund%")))));
   await cleanup("payouts", () => P.length ? db.delete(s.producerPayouts).where(inArray(s.producerPayouts.producerId, P)) : Promise.resolve());
+  await cleanup("jurnal", () => db.delete(s.transactions).where(and(gte(s.transactions.createdAt, startedAt), or(like(s.transactions.description, "Pengakuan hutang produsen%"), like(s.transactions.description, "Pencairan produsen PRC-%"), like(s.transactions.description, "Refund dibebankan ke produsen%"), like(s.transactions.description, "Pelunasan hutang refund%")))));
   await cleanup("ledger", () => P.length ? db.delete(s.producerLedgerEntries).where(inArray(s.producerLedgerEntries.producerId, P)) : Promise.resolve());
   await cleanup("rekening", () => P.length ? db.delete(s.producerBankAccounts).where(inArray(s.producerBankAccounts.producerId, P)) : Promise.resolve());
   await cleanup("shipping", () => made.invoices.length ? db.delete(s.invoiceShippingLines).where(inArray(s.invoiceShippingLines.invoiceId, made.invoices)) : Promise.resolve());

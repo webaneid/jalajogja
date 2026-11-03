@@ -101,6 +101,14 @@ export async function notifyBankChanged(slug: string, tc: Tc, p: { producerName:
   await notifyTreasurers(slug, tc, `Rekening pencairan produsen diganti — ${org}`, textBankChanged({ org, producerName: p.producerName, bank: p.bank, last4: p.last4, effective, url: `${APP_URL()}/app/${slug}/toko/pencairan` }));
 }
 
+/** Ke PEMILIK rekening sendiri: pengingat keamanan bahwa rekening pencairan diganti. */
+export async function notifyProducerBankChanged(slug: string, tc: Tc, producerId: string, p: { bank: string; last4: string; effectiveAt: Date; immediate: boolean }) {
+  const org = await resolveOrgName(tc, slug);
+  const when = p.immediate ? "sekarang" : new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(p.effectiveAt) + " WIB";
+  await notifyProducer(slug, tc, producerId, `Rekening pencairan Anda diganti — ${org}`,
+    `Rekening pencairan Anda di ${org} diganti ke ${safeText(p.bank, 30)} ••••${p.last4.replace(/\D/g, "").slice(-4)} (berlaku ${when}).\n\nJika ini BUKAN Anda, segera hubungi pengurus dan ganti kata sandi akun Anda: ${APP_URL()}/app/${slug}/portal-produsen/pencairan`);
+}
+
 export async function notifyPayoutDecision(slug: string, tc: Tc, kind: "approved" | "rejected" | "paid", p: {
   id: string; number: string; subtotal: number; producerId: string; producerName: string; slaDays?: number; reason?: string; fee?: number; net?: number; bank?: string; last4?: string;
 }) {

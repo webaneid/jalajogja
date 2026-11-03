@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { createTenantDb, completeProducerShipment } from "@jalajogja/db";
+import { isActiveTenant } from "@/lib/tenant-active";
 import { getAkunIdentity } from "@/lib/akun-identity";
 import { resolvePostHrefs } from "@/lib/post-permalink.server";
 
@@ -84,6 +85,7 @@ export async function confirmDeliveryAction(
     const identity = await getAkunIdentity(session.user.id);
     if (!identity)          return { success: false, error: "Akun tidak ditemukan." };
 
+    if (typeof slug !== "string" || !(await isActiveTenant(slug))) return { success: false, error: "Toko tidak ditemukan." };   // slug dari klien: validasi sebelum menyentuh schema tenant
     const tc = createTenantDb(slug);
     const { db: tenantDb, schema } = tc;
 

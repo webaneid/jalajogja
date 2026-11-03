@@ -139,3 +139,19 @@ Admin (Toko → Pencairan): `/app/{slug}/toko/pencairan` (daftar+ringkasan+penga
 - Refund TIDAK otomatis (tak ada alur refund invoice); admin mencatatnya manual lewat alat di atas.
 - Pengiriman produsen lama dikreditkan retroaktif oleh sapuan pertama (lihat § 12.1).
 - Laporan Keuangan (`splitIncomeByDomain`) belum memisahkan Hutang Produsen dari Pendapatan Toko pada periode lunas→selesai.
+
+### 13.6 Audit `security-auditor` (2026-11-04) — 0 Critical, 0 High, 2 Medium, 9 Low → semua yang penting DIPERBAIKI
+| Temuan | Tindakan |
+|---|---|
+| MEDIUM larangan memproses milik sendiri bisa dilewati (`member_id` NULL) & hanya menutup 3 dari 6 aksi | **Diperbaiki**: cek dua identitas (member DAN akun login Better Auth) di lapis aksi untuk SEMUA aksi uang (setujui, tolak, bayar, refund, pelunasan, tahan/lepas) |
+| MEDIUM bukti transfer tak terikat & bisa dihapus (route hapus media tanpa cek peran — pra-ada) | **Diperbaiki**: mime hanya jpeg/png/webp/PDF (tanpa SVG); bukti tak boleh dipakai ulang; bukti pencairan harus diunggah SETELAH pengajuan dibuat; `/api/media/delete` kini wajib akses penuh modul media (matriks CLAUDE.md) DAN menolak menghapus bukti pencairan/pelunasan (409) |
+| LOW biaya transfer bebas 0–50.000 | **Diperbaiki**: harus salah satu angka pengaturan, selain itu wajib CATATAN alasan |
+| LOW TOCTOU tahan vs pengajuan | **Diperbaiki**: `setShipmentHold` memakai kunci advisory produsen yang sama |
+| LOW aksi uang tampak gagal bila langkah pasca-commit error | **Diperbaiki**: notifikasi dijalankan terpisah (try/catch sendiri) |
+| LOW ganti rekening tak memberi tahu pemilik | **Diperbaiki**: pemilik rekening juga dikabari (pengingat keamanan) |
+| LOW pelunasan atas hutang yang sudah ter-reserve (bayar dua kali) | **Diperbaiki**: pelunasan hanya atas hutang `available` |
+| LOW tak ada CHECK DB untuk invarian uang | **Diperbaiki**: `producer_payouts_money_chk` (paid ⇒ bukti+jurnal+net konsisten; subtotal>0; fee<subtotal) di migration 0096 + DDL |
+| LOW `confirmDeliveryAction` memakai slug mentah | **Diperbaiki**: `isActiveTenant` sebelum menyentuh schema |
+| LOW akun jurnal tak divalidasi tipe/aktif; migration 0096 `ON CONFLICT (code) DO NOTHING` bisa memakai akun 2300 lama bermakna lain | **Dicatat**: cek di server sebelum deploy — `SELECT code,name,type FROM tenant_<slug>.accounts WHERE code='2300'` harus kosong atau "Hutang Produsen" |
+| LOW teks bebas (nama pemilik rekening) masuk pesan bendahara; limiter in-memory | **Dicatat** (tak ada XSS/relay; penerima tetap) |
+Catatan operasional dari auditor: pastikan `MEMBER_PII_ENCRYPTION_KEY` terisi & DICADANGKAN terpisah (hilang = semua rekening produsen tak terbaca); bucket MinIO tenant bersifat publik-baca → tautan bukti (UUID) bisa dibuka siapa pun yang memegangnya; belum ada pembalikan otomatis bila invoice lunas dibatalkan (alat Refund manual tersedia).
