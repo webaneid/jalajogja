@@ -188,7 +188,22 @@ Tidak ada IDOR, mass assignment, SQL injection, XSS baru, atau kebocoran lintas 
 | LOW — email penyetuju: batas hanya per anggota & di memori | Risiko diterima (isi email tanpa data pribadi; maks 20 penerima) |
 
 ### 13.5 Keputusan produk yang masih terbuka
-1. **Moderasi admin atas produk produsen.** K21 (langsung tayang) tidak memberi admin cara membekukan produk bermasalah tanpa menghapusnya: admin bisa mengarsipkan, tetapi produsen bisa mengaktifkannya lagi. Opsi: (a) status baru/penanda "dibekukan admin" yang tak bisa dibalik produsen; (b) biarkan (admin bisa menonaktifkan produsen seluruhnya).
+1. ~~Moderasi admin atas produk produsen~~ — **DIPUTUSKAN user 2026-11-03: admin boleh membekukan → K30 (§ 14).**
 2. Variasi produk produsen (PR-P4) dan harga dasar/batas voucher per variasi.
 3. Catatan riwayat perubahan persentase (K20).
 4. Nilai `memberPriceTenantOnly` bawaan produk produsen.
+
+
+## 14. K30 — Pembekuan produk oleh admin (diputuskan user 2026-11-03)
+**Keputusan:** admin boleh membekukan produk produsen; produsen tidak bisa membalikkannya.
+
+**Rancangan (sengaja minimal):**
+- Status produk baru **`frozen`** ("Dibekukan") — tidak ada kolom baru. Toko publik hanya menampilkan `active`, jadi produk beku otomatis hilang dari toko, pencarian, dan checkout (tanpa mengubah satu pun kueri publik).
+- **Migration `0094`** (wajib sebelum kode): CHECK `products.status` di tiap tenant diperluas dengan `'frozen'` (idempotent; DDL tenant baru di `create-tenant-schema.ts` ikut).
+- **Admin**: opsi "Dibekukan" di pilihan Status form produk — hanya untuk produk yang punya produsen (server menolak membekukan produk internal). Admin membuka kembali lewat Status → Aktif / tombol "Aktifkan".
+- **Produsen**: produk beku tampil berlabel "Dibekukan pengurus"; tombol Arsipkan/Aktifkan disembunyikan; server menolak pengubahan status dari portal dengan pesan jelas. **Ubah isi produk tetap boleh** (agar produsen bisa memperbaiki yang dipermasalahkan; status tidak ikut berubah). **Hapus tetap boleh** (aturan pesanan lunas tetap berlaku); produk beku tetap menghitung batas (K26).
+- Pesanan yang sudah ada tidak terpengaruh (snapshot).
+- Tidak ada alasan/catatan pembekuan (belum diminta; ditambahkan bila diperlukan).
+- **Checkout**: `resolveProductCartItem` menganggap produk beku TIDAK dapat dipesan (`producerActive=false`) → keranjang dan checkout publik menolak ("sedang tidak tersedia"), termasuk item yang sudah terlanjur di keranjang. Pemanggil admin (invoice manual) tidak terpengaruh.
+- **Status: KODE SELESAI + diuji** (`smoke-producer-products.ts`: 7 pengecekan beku; semua regresi lain lulus). **Deploy: migration `0094` DULU**, baru build/restart.
+- **Catatan terbuka (pra-ada, bukan bagian K30):** produk berstatus `archived`/`draft` yang sudah terlanjur di keranjang pembeli tidak ditolak checkout (hanya `frozen` & produsen nonaktif yang ditolak). Perlu keputusan bila mau diseragamkan.

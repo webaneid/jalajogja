@@ -1,9 +1,10 @@
 // Format & label bersama halaman produk tunggal (admin + produsen).
-export const STATUS_LABELS: Record<string, string> = { draft: "Draft", active: "Aktif", archived: "Diarsipkan" };
+export const STATUS_LABELS: Record<string, string> = { draft: "Draft", active: "Aktif", archived: "Diarsipkan", frozen: "Dibekukan" };
 export const STATUS_COLORS: Record<string, string> = {
   draft:    "bg-muted text-muted-foreground",
   active:   "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200",
   archived: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200",
+  frozen:   "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200",
 };
 
 export function rupiah(v: unknown): string {

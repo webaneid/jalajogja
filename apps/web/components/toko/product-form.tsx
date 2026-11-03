@@ -84,7 +84,7 @@ export type ProductFormProps = {
     images:          ProductImage[];
     categoryId:      string | null;
     producerId:      string | null;   // null = internal (tenant sendiri)
-    status:          "draft" | "active" | "archived";
+    status:          "draft" | "active" | "archived" | "frozen";
     productType:     "simple" | "variable";
     attributeGroups: AttributeGroup[];
     variations:      VariationLocal[];
@@ -102,10 +102,11 @@ export type ProductFormProps = {
 // ─── StatusBadge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
+  const map: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
     active:   { label: "Aktif",       variant: "default"   },
     draft:    { label: "Draft",       variant: "secondary" },
     archived: { label: "Diarsipkan",  variant: "outline"   },
+    frozen:   { label: "Dibekukan",   variant: "destructive" },
   };
   const { label, variant } = map[status] ?? { label: status, variant: "outline" };
   return <Badge variant={variant}>{label}</Badge>;
@@ -384,7 +385,7 @@ export function ProductForm({
     startToggle(async () => {
       const res = await toggleProductStatusAction(slug, productId);
       if (res.success) {
-        setStatus(res.data.newStatus as "draft" | "active" | "archived");
+        setStatus(res.data.newStatus as "draft" | "active" | "archived" | "frozen");
       } else {
         setError(res.error);
       }
@@ -410,6 +411,7 @@ export function ProductForm({
     draft:    { label: "Aktifkan",     icon: Globe,    variant: "default" as const },
     active:   { label: "Arsipkan",     icon: Archive,  variant: "outline" as const },
     archived: { label: "Aktifkan",     icon: Globe,    variant: "default" as const },
+    frozen:   { label: "Buka Pembekuan", icon: Globe,  variant: "default" as const },
   }[status] ?? { label: "Ubah Status", icon: Save, variant: "outline" as const };
   const ToggleIcon = toggleBtn.icon;
 
@@ -853,6 +855,7 @@ export function ProductForm({
                   <SelectItem value="draft">Draft</SelectItem>
                   <SelectItem value="active">Aktif</SelectItem>
                   <SelectItem value="archived">Diarsipkan</SelectItem>
+                  {(producerId !== "internal" || status === "frozen") && <SelectItem value="frozen">Dibekukan (oleh pengurus)</SelectItem>}
                 </SelectContent>
               </Select>
             </div>

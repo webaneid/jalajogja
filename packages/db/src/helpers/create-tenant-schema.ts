@@ -1062,7 +1062,7 @@ export async function createTenantSchemaInDb(
         schema_type     TEXT           NOT NULL DEFAULT 'Product',
         structured_data JSONB,
         status      TEXT           NOT NULL DEFAULT 'draft'
-                                   CHECK (status IN ('active','draft','archived')),
+                                   CHECK (status IN ('active','draft','archived','frozen')),
         category_id  UUID           REFERENCES "${s}".product_categories(id) ON DELETE SET NULL,
         view_count   INTEGER        NOT NULL DEFAULT 0,
         public_price      NUMERIC(15,2),

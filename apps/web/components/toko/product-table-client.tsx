@@ -23,6 +23,7 @@ const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondar
   active:   { label: "Aktif",      variant: "default"   },
   draft:    { label: "Draft",      variant: "secondary" },
   archived: { label: "Diarsipkan", variant: "outline"   },
+  frozen:   { label: "Dibekukan",  variant: "destructive" },
 };
 
 const TYPE_MAP: Record<string, string> = {

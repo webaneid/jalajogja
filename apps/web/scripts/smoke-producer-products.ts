@@ -7,7 +7,7 @@
 // nama "SMOKE-" dan dihapus di blok finally. Tenant uji default pc-ikpm-jogjakarta (env SMOKE_TENANT).
 import { randomUUID } from "crypto";
 import { and, eq, inArray, like } from "drizzle-orm";
-import { db as pdb, createTenantDb, tenants, members, memberMedia, tenantMemberships } from "@jalajogja/db";
+import { db as pdb, createTenantDb, resolveProductCartItem, tenants, members, memberMedia, tenantMemberships } from "@jalajogja/db";
 import { parseProductInput, computeBaseCost, buildProductSlug } from "../lib/producer-products";
 import {
   getProducerCommercials, createProducerProduct, updateProducerProduct, setProducerProductStatus, deleteProducerProduct, requireOwnedProduct, countOwnedProducts, hasPaidOrders, resolveProductImages, findMediaInUse, assertWithinLimit,
@@ -243,6 +243,17 @@ try {
   })());
   ok("status: klik ganda (sudah di status itu) idempoten", (await setProducerProductStatus(accC, mine.id, "active")).ok);
   ok("status: nilai di luar daftar ditolak", !(await setProducerProductStatus(accC, mine.id, "draft" as never)).ok);
+  // K30: dibekukan admin — produsen tidak bisa membalikkan (aktif/arsip), tetap bisa mengubah isi; produk tidak tampil publik
+  await db.update(s.products).set({ status: "frozen" }).where(eq(s.products.id, mine.id));
+  ok("beku: produsen tidak bisa mengaktifkan", await (async () => { const r = await setProducerProductStatus(accC, mine.id, "active"); return !r.ok && /dibekukan/i.test(r.error); })());
+  ok("beku: produsen tidak bisa mengarsipkan", !(await setProducerProductStatus(accC, mine.id, "archived")).ok);
+  ok("beku: status tetap frozen", (await db.select().from(s.products).where(eq(s.products.id, mine.id)))[0].status === "frozen");
+  ok("beku: ubah isi tetap boleh, status tidak ikut berubah", (await updateProducerProduct(accC, mine.id, edit)).ok && (await db.select().from(s.products).where(eq(s.products.id, mine.id)))[0].status === "frozen");
+  ok("beku: tetap dihitung batas (K26)", (await countOwnedProducts(tc, pC)) === 3);
+  ok("beku: tidak bisa dipesan (keranjang/checkout menolak)", (await resolveProductCartItem(db as never, s, mine.id))?.producerActive === false);
+  await db.update(s.products).set({ status: "active" }).where(eq(s.products.id, mine.id));   // admin membuka pembekuan
+  ok("beku: setelah dibuka, bisa dipesan lagi", (await resolveProductCartItem(db as never, s, mine.id))?.producerActive === true);
+  ok("beku: setelah admin membuka, produsen bisa mengarsipkan lagi", (await setProducerProductStatus(accC, mine.id, "archived")).ok && (await setProducerProductStatus(accC, mine.id, "active")).ok);
 
   // hapus
   ok("hapus: produk lain ditolak & tetap ada", !(await deleteProducerProduct(accC, b1)).ok && (await db.select().from(s.products).where(eq(s.products.id, b1))).length === 1);

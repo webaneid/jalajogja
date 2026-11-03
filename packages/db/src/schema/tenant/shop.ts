@@ -10,7 +10,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 
-export const PRODUCT_STATUSES   = ["active", "draft", "archived"] as const;
+export const PRODUCT_STATUSES   = ["active", "draft", "archived", "frozen"] as const;
 export const PRODUCT_TYPES      = ["simple", "variable"] as const;
 export type  ProductType        = typeof PRODUCT_TYPES[number];
 

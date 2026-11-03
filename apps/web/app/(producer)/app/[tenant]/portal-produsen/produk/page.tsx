@@ -10,10 +10,10 @@ import { escapeLike } from "@/lib/escape-like";
 import { getProducerCommercials, countOwnedProducts } from "@/lib/producer-products.server";
 
 const PAGE_SIZE = 20;
-const STATUSES = ["active", "draft", "archived"] as const;
-const STATUS_LABEL: Record<string, string> = { active: "Aktif", draft: "Draft", archived: "Diarsipkan" };
+const STATUSES = ["active", "draft", "archived", "frozen"] as const;
+const STATUS_LABEL: Record<string, string> = { active: "Aktif", draft: "Draft", archived: "Diarsipkan", frozen: "Dibekukan pengurus" };
 const STATUS_COLOR: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground", active: "bg-green-100 text-green-700", archived: "bg-orange-100 text-orange-700",
+  draft: "bg-muted text-muted-foreground", active: "bg-green-100 text-green-700", archived: "bg-orange-100 text-orange-700", frozen: "bg-red-100 text-red-700",
 };
 
 const rupiah = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n || 0);

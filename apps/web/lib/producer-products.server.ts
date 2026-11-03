@@ -275,8 +275,8 @@ export async function setProducerProductStatus(access: ProducerAccessLite, produ
   if (!com || !com.isActive) return { ok: false, error: "Akun produsen tidak aktif." };
   const P = tc.schema.products;
   // Transisi yang diizinkan HANYA active ⇄ archived. Produk berstatus draft (dipasang admin) tidak bisa ditayangkan produsen:
-  // statusnya ditentukan admin. (Catatan: belum ada penanda "dibekukan admin" — produsen masih bisa mengaktifkan produk yang
-  // diarsipkan admin; lihat docs/arsitektur-produk-produsen.md § 13.2.)
+  // statusnya ditentukan admin. Produk 'frozen' (dibekukan admin, K30) tidak
+  // cocok dengan `from` mana pun sehingga tak bisa dibalik dari sini; lihat docs/arsitektur-produk-produsen.md § 14.
   const from = status === "archived" ? "active" : "archived";
   const upd = await tc.db.update(P).set({ status, updatedAt: new Date() })
     .where(and(eq(P.id, productId), eq(P.producerId, access.producer.id), isNull(P.mitraId), eq(P.status, from))).returning({ id: P.id });
@@ -284,6 +284,7 @@ export async function setProducerProductStatus(access: ProducerAccessLite, produ
   const [cur] = await tc.db.select({ status: P.status }).from(P).where(and(eq(P.id, productId), eq(P.producerId, access.producer.id), isNull(P.mitraId))).limit(1);
   if (!cur) return NOT_FOUND;
   if (cur.status === status) return { ok: true };   // sudah di status itu (klik ganda / dua tab) — idempoten
+  if (cur.status === "frozen") return { ok: false, error: "Produk ini dibekukan pengurus sehingga tidak bisa diaktifkan atau diarsipkan dari portal. Hubungi pengurus." };
   return { ok: false, error: "Status produk ini tidak bisa diubah dari portal. Hubungi pengurus." };
 }
 

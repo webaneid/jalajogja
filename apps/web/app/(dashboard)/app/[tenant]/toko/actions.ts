@@ -65,7 +65,7 @@ export type ProductData = {
   productType?:    "simple" | "variable";
   attributeGroups?: import("@jalajogja/db").AttributeGroup[];
   categoryId?:  string | null;
-  status:       "draft" | "active" | "archived";
+  status:       "draft" | "active" | "archived" | "frozen";
   // SEO
   metaTitle?:      string | null;
   metaDesc?:       string | null;
@@ -266,6 +266,10 @@ export async function createProductAction(
       return { success: false, error: "Asal kirim tidak valid untuk produsen produk ini." };
   }
 
+  // K30: "Dibekukan" hanya bermakna untuk produk milik produsen (moderasi); produk internal cukup diarsipkan.
+  if (data.status === "frozen" && !data.producerId)
+    return { success: false, error: "Hanya produk milik produsen yang bisa dibekukan. Untuk produk toko, pilih Diarsipkan." };
+
   const [dup] = await db
     .select({ id: schema.products.id })
     .from(schema.products)
@@ -402,6 +406,8 @@ export async function updateProductAction(
     .from(schema.products).where(eq(schema.products.id, productId)).limit(1);
   if (!curOwner) return { success: false, error: "Produk tidak ditemukan." };
   const effectiveProducer = data.producerId !== undefined ? data.producerId : curOwner.producerId;
+  if (data.status === "frozen" && !effectiveProducer)
+    return { success: false, error: "Hanya produk milik produsen yang bisa dibekukan. Untuk produk toko, pilih Diarsipkan." };
   let originIdValue: string | null = null;
   if (!curOwner.mitraId && data.originId) {
     if (!isValidUuid(data.originId) || !(await originBelongsTo({ db, schema }, data.originId, effectiveProducer ?? null)))
@@ -471,7 +477,7 @@ export async function updateProductAction(
 }
 
 /**
- * Siklus status: draft → active → archived → draft
+ * Siklus status: draft → active → archived → draft (frozen → active = buka pembekuan)
  */
 export async function toggleProductStatusAction(
   slug: string,
@@ -495,6 +501,7 @@ export async function toggleProductStatusAction(
     draft:    "active",
     active:   "archived",
     archived: "draft",
+    frozen:   "active",   // K30: membuka pembekuan (hanya admin yang sampai sini)
   };
   const newStatus = CYCLE[product.status] ?? "draft";
 

@@ -22,6 +22,7 @@ const STATUS_LABEL: Record<string, string> = {
   draft:    "Draft",
   active:   "Aktif",
   archived: "Diarsipkan",
+  frozen:   "Dibekukan",
 };
 
 const PAGE_SIZE = 20;
@@ -94,7 +95,7 @@ export default async function ProdukPage({
     return `/app/${slug}/toko/produk?${sp.toString()}`;
   };
 
-  const statuses = ["all", "active", "draft", "archived"];
+  const statuses = ["all", "active", "draft", "archived", "frozen"];
 
   // Ambil thumbnail pertama dari JSONB images — pakai square (400×400) untuk grid admin
   function getFirstImage(images: unknown): string | null {
