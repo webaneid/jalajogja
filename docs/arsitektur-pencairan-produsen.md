@@ -1,6 +1,6 @@
 # Pencairan Dana Produsen — RENCANA (belum ada kode)
 
-> Status: **RENCANA 2026-11-04** — keputusan D1–D8 diberikan user; T1–T6 masih TERBUKA (jawab dulu sebelum kode).
+> Status: **RENCANA 2026-11-04** — keputusan D1–D8 + jawaban T1–T6 (putaran 2) sudah masuk; sisa 2 pertanyaan di § 10 (T7–T8) sebelum kode C1.
 > Konteks: bagi hasil K18–K25 di `docs/arsitektur-produk-produsen.md`; pengiriman per produsen ADR-0005; keuangan `docs/arsitektur-keuangan.md`;
 > notifikasi PJ `docs/arsitektur-notifikasi-pengurus.md`. Pembayaran tetap MANUAL (ADR-0002) — tidak ada transfer otomatis lewat API bank.
 
@@ -14,9 +14,13 @@ dari baris-barisnya (append-only), dan angka tiap baris dibekukan (snapshot K25)
 |---|---|
 | **D1** | **Produsen membayar kurir sendiri** (produsen yang wajib mengirim). Ongkir yang DIBAYAR pembeli diteruskan penuh ke produsen = `invoice_shipping_lines.cost` (snapshot; tanpa input manual). Gratis ongkir (K39) → ongkir pembeli Rp0 → tidak ada yang diteruskan; produsen menanggung ongkirnya. Selisih ongkir kutipan vs tagihan kurir sebenarnya = risiko/untung produsen, TIDAK mengubah angka pencairan → tenant tidak pernah menombok ("over budget" mustahil by design). |
 | **D2** | Pesanan **selesai** = **pembeli mengonfirmasi** barang diterima. Bila pembeli lupa: pelacakan RajaOngkir dipakai sebagai patokan (lihat T2 — kuota API sangat terbatas) dan ada batas waktu otomatis. |
-| **D3** | Pembayaran dieksekusi **hanya hari Senin** (satu batch mingguan) — karena keterbatasan SDM tenant. |
-| **D4** | **Biaya transfer ditanggung produsen**, dipotong dari pencairannya (contoh: BRI → BCA ±Rp7.500). Besarnya diatur tenant (T4). |
+| **D3** (direvisi putaran 2) | Janji ke produsen: pengajuan diproses **maksimal 3 hari kerja** (informasi, bukan batas teknis). Bila bendahara siap, boleh dicairkan LEBIH CEPAT kapan saja. Hari Senin = jadwal standar tenant untuk memproses & pengingat ke bendahara (keterbatasan SDM), bukan pembatas sistem. |
+| **D4** | **Biaya transfer ditanggung produsen**, dipotong dari pencairannya. Ada KOLOM biaya transfer saat bendahara memproses: terisi otomatis **Rp0 bila sesama bank, Rp7.500 (bawaan; diatur tenant) bila beda bank** — dideteksi dari kode bank rekening produsen vs rekening sumber yang dipilih bendahara — dan bendahara boleh mengubahnya sebelum konfirmasi (dengan batas atas). Nilai akhir disimpan sebagai snapshot di pencairan. |
 | **D5** | **Minimum pencairan Rp200.000** (saldo yang bisa dicairkan). |
+| **D9** (baru) | **Pencairan per KELOMPOK PENGIRIMAN** (satu invoice × satu produsen). Setiap pengiriman punya status sendiri: Menunggu → Bisa dicairkan → Diajukan → **Sudah dicairkan (nomor pencairan)**, sehingga jelas pengiriman mana yang sudah/belum cair. Produsen **mengajukan** pencairan (manual) sesuai haknya dan melihat **laporan lengkap per pengiriman**: harga dibayar pembeli, persentase tenant, bagian produsen, ongkir diteruskan, potongan hutang/biaya transfer, total. |
+| **D10** (baru) | **Pengingat saldo menganggur:** bila ada saldo ≥ minimum yang bisa dicairkan tetapi tak ada pengajuan selama **30 hari**, kirim **email** ke produsen (bukan WA) memberi tahu nominalnya dan mengajak mengajukan; diulang paling sering sekali per 30 hari. |
+| **D2b** | Otomatis selesai bila pembeli lupa: **maksimal 10 hari sejak dikirim**; "lebih cepat lebih baik" → bila pelacakan RajaOngkir menyatakan terkirim, selesai +2 hari (dalam anggaran kuota § 10 T2). **Tanpa masa tahan tambahan** setelah selesai (T1). |
+| **D11** | **Pengajuan manual oleh produsen** (T5); batas Hutang refund tak terlunasi: cukup dicatat & ditandai, ditagih di luar sistem (T6). |
 | **D6** | Yang menyetujui **Bendahara atau Ketua** (salah satu cukup). Usulan pengaman: pengurus yang sekaligus produsen tidak boleh menyetujui pencairannya sendiri. |
 | **D7** | **Refund setelah dana cair → menjadi hutang produsen.** Dua cara pelunasan: (a) **dipotong otomatis** dari pencairan/pesanan berikutnya, atau (b) **produsen mentransfer** dan bendahara mencatat penerimaannya. Refund SEBELUM cair hanya membatalkan kredit pesanan itu. |
 | **D8** | Bagian produsen = **hutang tenant** (akun kewajiban "Hutang Produsen"), bukan pendapatan. Dicatat sejak pembayaran pembeli dikonfirmasi (preseden: donasi → "Dana Titipan" 2200 lewat `resolveIncomeSplitForBilling`, `finance/actions.ts`). |
@@ -42,6 +46,7 @@ Pengajuan pencairan: `diajukan → disetujui (bendahara/ketua) → ditransfer (b
 ## 5. Model data (usulan; migration additif, aman tenant lama)
 - `producer_ledger_entries` (append-only): `producer_id, kind (sale|shipping|refund_debt|transfer_fee|payout|adjustment), amount (bertanda), invoice_id, shipping_line_id, status (pending|available|reserved|paid|void), available_at, payout_id, note`. **Unik per (`shipping_line_id`, `kind`)** agar tidak pernah ganda (idempoten).
 - `producer_bank_accounts`: bank, no. rekening (**terenkripsi** seperti kunci SMTP), nama pemilik, `effective_at` (jeda aktif), riwayat.
+- `producer_payout_lines`: snapshot per kelompok pengiriman (`shipping_line_id`, harga dibayar, persen, bagian produsen, ongkir, status cair + `payout_id`) — dasar laporan lengkap D9.
 - `producer_payouts`: nomor, `producer_id`, bruto, potongan hutang, biaya transfer, neto, `scheduled_for` (Senin), status, snapshot rekening, `requested_at`, `approved_by/at`, `paid_at`, bukti, `disbursement_id`.
 - `invoice_shipping_lines`: `buyer_confirmed_at`, `completion_source (buyer|tracking|auto)`.
 - Pengaturan tenant (`settings`, group `payment`/`toko`): minimum, biaya transfer, hari eksekusi, cut-off, batas otomatis selesai.
@@ -68,10 +73,12 @@ Pengajuan masuk → bendahara & ketua (kanal PJ yang sudah ada: WA bila aktif, j
 | **C4** | Notifikasi bendahara/produsen + pengingat |
 | **C5** | Refund → hutang, pelunasan (potong otomatis / transfer) |
 
-## 10. TERBUKA — dijawab user sebelum kode
-- **T1** Masa tahan setelah "selesai": langsung bisa dicairkan (usul) atau tambah N hari?
-- **T2** Bila pembeli tak konfirmasi: tracking RajaOngkir menyatakan "delivered" → selesai (usul +2 hari), dan batas otomatis N hari sejak dikirim (usul 10 hari). **Kuota gratis RajaOngkir = 100 panggilan/hari dibagi SEMUA tenant** (`docs/arsitektur-alamat.md` § 21) — pengecekan massal tidak boleh; usul: jatah `track` terpisah dalam `ro_api_usage`, hanya pengiriman yang lewat hari ke-3 tanpa konfirmasi, maks. sekali sehari per pengiriman.
-- **T3** Cut-off pengajuan agar ikut Senin (usul: Minggu 23.59 WIB).
-- **T4** Biaya transfer: dua angka — sesama bank (usul Rp0) dan beda bank (usul Rp7.500) — diatur tenant?
-- **T5** Pengajuan manual oleh produsen (usul, sesuai permintaan awal) — atau semua saldo ≥ minimum otomatis masuk daftar Senin?
-- **T6** Hutang refund yang tak kunjung bisa dipotong (produsen berhenti berjualan): ditagih di luar sistem — cukup dicatat dan ditandai?
+## 10. Status pertanyaan
+Terjawab (putaran 2): T1 tanpa masa tahan; 3 hari = informasi SLA maksimal, bendahara boleh lebih cepat (D3). T2 10 hari maksimal, lebih cepat lebih baik (D2b) — pelacakan dibatasi anggaran: jatah `track` terpisah di `ro_api_usage` (kuota gratis RajaOngkir **100 panggilan/hari dibagi SEMUA tenant**, `docs/arsitektur-alamat.md` § 21), hanya pengiriman yang lewat hari ke-3 tanpa konfirmasi, maks. sekali/hari per pengiriman. T3 cut-off dibatalkan oleh D3 revisi (tak ada batch kaku). T4 kolom biaya transfer (D4). T5 manual (D11). T6 dicatat saja (D11).
+**TERBUKA:**
+- **T7** "Ongkir aktual" pada laporan per pengiriman = **ongkir yang dibayar pembeli** (usul/D1; angka dari checkout, tanpa input) — atau **tagihan kurir sebenarnya** yang diinput produsen? Bila yang kedua, butuh bukti + batas atas agar tidak melebihi anggaran (ongkir kutipan), dan ini mengubah D1.
+- **T8** Konfirmasi aturan waktu: SLA "maks. 3 hari kerja" ditampilkan ke produsen; hari Senin hanya jadwal standar/pengingat digest ke bendahara (tak ada cut-off Minggu). Setuju?
+
+## 11. Draf teks email pengingat saldo (D10)
+Subjek: `Saldo Anda di {Tenant} siap dicairkan — Rp {nominal}`
+Isi: "Halo {nama}, saat ini ada **Rp {nominal}** dari {n} pengiriman yang sudah selesai dan siap Anda cairkan. Dana ini hak Anda dan tersimpan di {Tenant}. Silakan ajukan pencairan lewat Portal Produsen → Pencairan; pengajuan diproses paling lambat 3 hari kerja. [Ajukan Pencairan]" (tautan ke portal; tanpa data rekening di email).
