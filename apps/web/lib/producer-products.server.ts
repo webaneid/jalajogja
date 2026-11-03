@@ -350,6 +350,10 @@ const SEO_COLS = (seo: ProducerProductInput["seo"]) => ({
   ogTitle: seo.ogTitle, ogDescription: seo.ogDescription, twitterCard: seo.twitterCard,
 });
 
+const FREE_COLS = (f: ProducerProductInput["freeShipping"]) => ({
+  freeShippingMode: f.mode, freeShippingProvinces: f.provinces, freeShippingCities: f.cities,
+});
+
 /** Slug/SKU produk harus unik di tenant ini (kolom unik DB). Mengembalikan pesan galat atau null. */
 async function checkSlugSku(tc: TenantDb, input: ProducerProductInput, exceptId: string | null): Promise<string | null> {
   const P = tc.schema.products;
@@ -395,6 +399,7 @@ export async function createProducerProduct(access: ProducerAccessLite, input: P
           slug:        input.slug ?? buildProductSlug(input.name, randomUUID().slice(0, 8)),
           sku:         input.sku,
           ...SEO_COLS(input.seo),
+          ...FREE_COLS(input.freeShipping),
           name:        input.name,
           description: input.description || null,
           price:       computeBaseCost(input.publicPrice, pct).toFixed(2),   // K24: read-only, bukan input
@@ -459,6 +464,7 @@ export async function updateProducerProduct(access: ProducerAccessLite, productI
       ...(input.slug ? { slug: input.slug } : {}),   // kosong = slug lama dipertahankan (tautan publik tidak putus)
       sku:         input.sku,
       ...SEO_COLS(input.seo),
+      ...FREE_COLS(input.freeShipping),
       description: input.description || null,
       price:       computeBaseCost(input.publicPrice, pct).toFixed(2),   // K24: dihitung ulang dari persentase TERKINI
       publicPrice: input.publicPrice.toFixed(2),

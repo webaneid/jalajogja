@@ -24,7 +24,7 @@ const ok = (n: string, v: boolean, x = "") => { console.log((v ? "PASS " : "FAIL
 
 // ── Bagian MURNI ──
 const SEO0 = { metaTitle: null, metaDesc: null, focusKeyword: null, ogTitle: null, ogDescription: null, twitterCard: "summary_large_image" as const };
-const EXTRA = { status: "active" as const, originId: null, productType: "simple" as const, attributeGroups: [] as never[], variations: [] as never[], slug: null, sku: null, seo: SEO0 };
+const EXTRA = { status: "active" as const, originId: null, productType: "simple" as const, attributeGroups: [] as never[], variations: [] as never[], slug: null, sku: null, seo: SEO0, freeShipping: { mode: "none" as const, provinces: [] as never[], cities: [] as never[] } };
 const valid = { name: "Sajadah Uji", description: "", categoryId: null, images: [{ mediaId: randomUUID(), alt: "a" }], publicPrice: 100000, memberPrice: 90000, stock: 5, weightGram: 500 };
 ok("parse: input sah", parseProductInput(valid).ok);
 ok("parse: bukan objek ditolak", !parseProductInput(null).ok && !parseProductInput("x").ok && !parseProductInput([]).ok);
@@ -405,6 +405,19 @@ try {
   ok("deskripsi: gambar sendiri → src dari DB (bukan dari klien)", saved.includes(m1) && !saved.includes("evil.example") && /"src":"https?:\/\//.test(saved));
   ok("deskripsi: gambar milik anggota lain DIBUANG", foreign ? !saved.includes(foreign) : true);
   ok("foto dipakai: gambar di deskripsi dihitung dipakai", (await findMediaInUse(mem.id, [m1])).has(m1));
+
+  // ── Gratis Ongkir produsen (K39) ──
+  const fsP = (fsv: unknown) => parseProductInput({ ...valid, freeShipping: fsv });
+  ok("gratis ongkir: bawaan none", (() => { const r = parseProductInput(valid); return r.ok && r.value.freeShipping.mode === "none"; })());
+  ok("gratis ongkir: regions tanpa daerah ditolak", !fsP({ mode: "regions", provinces: [], cities: [] }).ok);
+  ok("gratis ongkir: id/nama tak valid & terlalu banyak ditolak", !fsP({ mode: "regions", provinces: [{ id: "x", name: "A" }] }).ok && !fsP({ mode: "regions", provinces: [{ id: 1, name: "" }] }).ok && !fsP({ mode: "regions", provinces: Array.from({ length: 41 }, (_, i) => ({ id: i + 1, name: "P" })) }).ok);
+  ok("gratis ongkir: mode sembarang → none; daftar dikosongkan bila bukan regions", (() => { const a = fsP({ mode: "evil", provinces: [{ id: 1, name: "A" }] }); const b = fsP({ mode: "all", provinces: [{ id: 1, name: "A" }] }); return a.ok && a.value.freeShipping.mode === "none" && b.ok && b.value.freeShipping.provinces.length === 0; })());
+  ok("gratis ongkir: duplikat id dibuang", (() => { const r = fsP({ mode: "regions", provinces: [{ id: 5, name: "JAWA" }, { id: 5, name: "JAWA" }], cities: [{ id: 9, name: "KOTA X" }] }); return r.ok && r.value.freeShipping.provinces.length === 1; })());
+  const fsIn = { ...slugIn, freeShipping: { mode: "regions" as const, provinces: [{ id: 5, name: "DI YOGYAKARTA" }], cities: [{ id: 9, name: "KOTA BANDUNG" }] } };
+  ok("gratis ongkir: simpan sukses", (await updateProducerProduct(accC, mine.id, fsIn)).ok);
+  const [fx] = await db.select().from(s.products).where(eq(s.products.id, mine.id));
+  ok("gratis ongkir: tersimpan (mode + provinsi + kota)", fx.freeShippingMode === "regions" && (fx.freeShippingProvinces as unknown[]).length === 1 && (fx.freeShippingCities as unknown[]).length === 1);
+  ok("gratis ongkir: kembali none → daftar kosong", (await updateProducerProduct(accC, mine.id, { ...fsIn, freeShipping: { mode: "none", provinces: [], cities: [] } })).ok && (await db.select().from(s.products).where(eq(s.products.id, mine.id)))[0].freeShippingMode === "none");
 
   // hapus
   ok("hapus: produk lain ditolak & tetap ada", !(await deleteProducerProduct(accC, b1)).ok && (await db.select().from(s.products).where(eq(s.products.id, b1))).length === 1);

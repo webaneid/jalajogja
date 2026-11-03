@@ -50,6 +50,9 @@ export function producerInitialData(product: NonNullable<ProductRow>, variations
     stock: product.stock, weightGram: product.weightGram ?? null, originId: product.originId ?? null,
     images: Array.isArray(product.images) ? (product.images as ProductImage[]) : [],
     categoryId: product.categoryId ?? null, status: product.status,
+    freeShippingMode: (product.freeShippingMode ?? "none") as "none" | "all" | "regions",
+    freeShippingProvinces: Array.isArray(product.freeShippingProvinces) ? product.freeShippingProvinces as { id: number; name: string }[] : [],
+    freeShippingCities: Array.isArray(product.freeShippingCities) ? product.freeShippingCities as { id: number; name: string }[] : [],
     seo: {
       ...EMPTY_SEO, metaTitle: product.metaTitle ?? "", metaDesc: product.metaDesc ?? "", focusKeyword: product.focusKeyword ?? "",
       ogTitle: product.ogTitle ?? "", ogDescription: product.ogDescription ?? "",

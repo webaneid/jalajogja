@@ -336,6 +336,7 @@ export function ProductForm({
     if (producer) {
       if (!name.trim()) { setError("Nama produk wajib diisi."); return; }
       if (!productSlug.trim()) { setError("Slug wajib diisi."); return; }
+      if (freeShippingMode === "regions" && freeShippingProvinces.length + freeShippingCities.length === 0) { setError("Gratis ongkir daerah tertentu: pilih minimal 1 provinsi atau kabupaten/kota."); return; }
       if (publicNum <= 0) { setError("Harga jual wajib diisi."); return; }
       if (memberNum > publicNum) { setError("Harga Anggota tidak boleh lebih tinggi dari Harga Jual."); return; }
       if (!(parseInt(weightGram) > 0)) { setError("Berat (gram) wajib diisi."); return; }
@@ -346,6 +347,7 @@ export function ProductForm({
       const toImg = (i: ProductImage) => ({ mediaId: i.id, alt: i.alt || name.trim() });
       const payload = {
         name: name.trim(), slug: productSlug.trim(), sku: sku.trim() || null,
+        freeShipping: { mode: freeShippingMode, provinces: freeShippingProvinces, cities: freeShippingCities },
         seo: { metaTitle: seo.metaTitle, metaDesc: seo.metaDesc, focusKeyword: seo.focusKeyword, ogTitle: seo.ogTitle, ogDescription: seo.ogDescription, twitterCard: seo.twitterCard },
         description: description || "", categoryId: categoryId === "none" ? null : categoryId,
         images: images.map(toImg), publicPrice, memberPrice: memberPrice.trim() === "" ? null : memberPrice,
@@ -587,63 +589,63 @@ export function ProductForm({
               {/* Card Harga — 3 tier dalam 1 card */}
               <div className="rounded-xl border border-border bg-card divide-y divide-border">
 
-                {/* Harga Dasar (modal) */}
-                <div className="flex items-center gap-3 px-3 py-2.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium leading-none">Harga Dasar {!producer && <span className="text-destructive">*</span>}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                {/* Harga Dasar (modal) — tiap harga berbentuk KOLOM: label + keterangan di atas, isian selebar kartu di bawah (K40) */}
+                <div className="space-y-1.5 px-3 py-3">
+                  <div>
+                    <p className="text-sm font-semibold leading-tight">Harga Dasar {!producer && <span className="text-destructive">*</span>}</p>
+                    <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
                       {producer ? `Otomatis dari bagi hasil (${producer.sharePercent}% untuk tenant) — tidak bisa diubah` : "Modal / harga dari produsen — tidak tampil ke pembeli"}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-xs text-muted-foreground">Rp</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Rp</span>
                     {producer ? (
-                      <Input readOnly disabled value={Number(publicPrice) > 0 ? computeBaseCost(Number(publicPrice), producer.sharePercent).toLocaleString("id-ID") : "—"} className="h-7 text-xs w-28 px-2" />
+                      <Input readOnly disabled value={Number(publicPrice) > 0 ? computeBaseCost(Number(publicPrice), producer.sharePercent).toLocaleString("id-ID") : "—"} className="h-9 w-full text-sm" />
                     ) : (
                       <Input
                         type="number" min="0" step="1"
                         value={price}
                         onChange={(e) => setPrice(e.target.value)}
                         placeholder="0"
-                        className="h-7 text-xs w-28 px-2"
+                        className="h-9 w-full text-sm"
                       />
                     )}
                   </div>
                 </div>
 
                 {/* Harga Publik */}
-                <div className="flex items-center gap-3 px-3 py-2.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium leading-none">{producer ? "Harga Jual" : "Harga Publik"} <span className="text-destructive">*</span></p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Harga jual untuk semua orang (login maupun tidak)</p>
+                <div className="space-y-1.5 px-3 py-3">
+                  <div>
+                    <p className="text-sm font-semibold leading-tight">{producer ? "Harga Jual" : "Harga Publik"} <span className="text-destructive">*</span></p>
+                    <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">Harga jual untuk semua orang (login maupun tidak)</p>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-xs text-muted-foreground">Rp</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Rp</span>
                     <Input
                       type="number" min="0" step="1"
                       value={publicPrice}
                       onChange={(e) => setPublicPrice(e.target.value)}
                       placeholder="0"
-                      className="h-7 text-xs w-28 px-2"
+                      className="h-9 w-full text-sm"
                     />
                   </div>
                 </div>
 
                 {/* Harga Anggota */}
-                <div className="px-3 py-2.5 space-y-2">
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium leading-none">Harga Anggota</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Opsional — kosong = anggota membayar Harga Publik</p>
+                <div className="space-y-2 px-3 py-3">
+                  <div className="space-y-1.5">
+                    <div>
+                      <p className="text-sm font-semibold leading-tight">Harga Anggota</p>
+                      <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">Opsional — kosong = anggota membayar Harga Publik</p>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-xs text-muted-foreground">Rp</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Rp</span>
                       <Input
                         type="number" min="0" step="1"
                         value={memberPrice}
                         onChange={(e) => setMemberPrice(e.target.value)}
                         placeholder="—"
-                        className="h-7 text-xs w-28 px-2"
+                        className="h-9 w-full text-sm"
                       />
                     </div>
                   </div>
@@ -742,12 +744,14 @@ export function ProductForm({
                 })()}
               </div>
 
-              {/* Gratis Ongkir — diskon proporsional-berat saat checkout, bukan hard Rp0.
-                  KHUSUS produk tenant sendiri, sama alasan Kota Asal Pengiriman di atas. */}
-              {!isProducer && <div className="rounded-xl border border-border bg-card p-3 space-y-1.5">
+              {/* Gratis Ongkir — diskon proporsional-berat saat checkout, bukan hard Rp0. Produk mitra dikecualikan di checkout.
+                  Admin & produsen (K39): ditanggung pemilik produk; produsen tidak membebani tenant. */}
+              <div className="rounded-xl border border-border bg-card p-3 space-y-1.5">
                 <p className="text-xs font-medium leading-none">Gratis Ongkir</p>
                 <p className="text-[10px] text-muted-foreground">
-                  Ongkir produk ini ditanggung toko — semua daerah, atau daerah tertentu saja.
+                  {isProducer || producerId !== "internal"
+                    ? "Ongkir produk ini ditanggung PRODUSEN (Anda), bukan tenant — semua daerah, atau daerah tertentu saja."
+                    : "Ongkir produk ini ditanggung toko — semua daerah, atau daerah tertentu saja."}
                 </p>
                 <FreeShippingPicker
                   mode={freeShippingMode}
@@ -759,7 +763,7 @@ export function ProductForm({
                     setFreeShippingCities(cities);
                   }}
                 />
-              </div>}
+              </div>
 
               {/* Lokasi Ambil Sendiri — override opsional dari default toko, KHUSUS produk
                   tenant sendiri (bukan mitra — mitra atur lokasi sendiri di profil mitra).

@@ -16,6 +16,9 @@ export const PRODUCER_PRODUCT_LIMITS = {
   attributeNameMax:   40,
   skuMax:         64,
   slugMax:        80,
+  freeProvincesMax: 40,
+  freeCitiesMax:    300,
+  regionNameMax:    80,
   metaTitleMax:   120,
   metaDescMax:    320,
   keywordMax:     80,
@@ -48,8 +51,16 @@ export type ProducerAttributeGroup = { name: string; values: string[] };
 /** SEO terbatas produsen: tanpa OG Image/Canonical/Robots/Schema (canonical & robots bisa membelokkan mesin pencari tenant). */
 export type ProducerSeoInput = { metaTitle: string | null; metaDesc: string | null; focusKeyword: string | null; ogTitle: string | null; ogDescription: string | null; twitterCard: "summary" | "summary_large_image" };
 
+/** Gratis Ongkir produk (K39) — ditanggung produsen. Nama daerah dicocokkan checkout by NAMA (lihat free-shipping-match.ts). */
+export type ProducerFreeShippingInput = {
+  mode: "none" | "all" | "regions";
+  provinces: { id: number; name: string }[];
+  cities: { id: number; name: string }[];
+};
+
 export type ProducerProductInput = {
   name:        string;
+  freeShipping: ProducerFreeShippingInput;
   slug:        string | null;                // null/"" = dibuat otomatis dari nama + akhiran acak
   sku:         string | null;
   seo:         ProducerSeoInput;
@@ -350,9 +361,29 @@ export function parseProductInput(input: unknown): Parsed<ProducerProductInput> 
   const fk = txt(rs.focusKeyword, L.keywordMax, "Focus keyword"); if (!fk.ok) return fk;
   const ot = txt(rs.ogTitle, L.metaTitleMax, "OG title"); if (!ot.ok) return ot;
   const od = txt(rs.ogDescription, L.metaDescMax, "OG description"); if (!od.ok) return od;
+  const fs = isRecord(input.freeShipping) ? input.freeShipping : {};
+  const fsMode = fs.mode === "all" || fs.mode === "regions" ? fs.mode : "none";
+  const regionList = (raw: unknown, max: number, label: string): Parsed<{ id: number; name: string }[]> => {
+    if (raw === undefined || raw === null) return { ok: true, value: [] };
+    if (!Array.isArray(raw) || raw.length > max) return { ok: false, error: `Daftar ${label} gratis ongkir terlalu banyak (maks. ${max}).` };
+    const seen = new Set<number>(), out: { id: number; name: string }[] = [];
+    for (const r of raw) {
+      if (!isRecord(r) || typeof r.id !== "number" || !Number.isInteger(r.id) || r.id < 1 || typeof r.name !== "string") return { ok: false, error: `Data ${label} gratis ongkir tidak valid.` };
+      const name = r.name.trim().replace(/[\u0000-\u001f\u007f]/g, " ");
+      if (!name || name.length > L.regionNameMax) return { ok: false, error: `Nama ${label} gratis ongkir tidak valid.` };
+      if (seen.has(r.id)) continue;
+      seen.add(r.id); out.push({ id: r.id, name });
+    }
+    return { ok: true, value: out };
+  };
+  const fsProv = regionList(fs.provinces, L.freeProvincesMax, "provinsi"); if (!fsProv.ok) return fsProv;
+  const fsCity = regionList(fs.cities, L.freeCitiesMax, "kabupaten/kota"); if (!fsCity.ok) return fsCity;
+  if (fsMode === "regions" && fsProv.value.length === 0 && fsCity.value.length === 0) return { ok: false, error: "Gratis ongkir daerah tertentu: pilih minimal 1 provinsi atau kabupaten/kota." };
+  const freeShipping: ProducerFreeShippingInput = fsMode === "regions" ? { mode: fsMode, provinces: fsProv.value, cities: fsCity.value } : { mode: fsMode, provinces: [], cities: [] };
+
   const seo: ProducerSeoInput = { metaTitle: mt.value, metaDesc: md.value, focusKeyword: fk.value, ogTitle: ot.value, ogDescription: od.value, twitterCard: rs.twitterCard === "summary" ? "summary" : "summary_large_image" };
 
-  return { ok: true, value: { name, slug, sku, seo, description, categoryId, images, publicPrice, memberPrice, stock: productType === "variable" ? 0 : stock, weightGram, status, originId, productType, attributeGroups, variations } };
+  return { ok: true, value: { name, freeShipping, slug, sku, seo, description, categoryId, images, publicPrice, memberPrice, stock: productType === "variable" ? 0 : stock, weightGram, status, originId, productType, attributeGroups, variations } };
 }
 
 /**
