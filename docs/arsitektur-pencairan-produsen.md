@@ -1,6 +1,6 @@
 # Pencairan Dana Produsen — RENCANA (belum ada kode)
 
-> Status: **RENCANA 2026-11-04** — keputusan D1–D8 + jawaban T1–T6 (putaran 2) sudah masuk; sisa 2 pertanyaan di § 10 (T7–T8) sebelum kode C1.
+> Status: **RENCANA 2026-11-04** — keputusan D1–D8 + jawaban T1–T6 (putaran 2) sudah masuk; SEMUA pertanyaan terjawab (T7–T8, D12) — siap mulai C1 bila user bilang mulai.
 > Konteks: bagi hasil K18–K25 di `docs/arsitektur-produk-produsen.md`; pengiriman per produsen ADR-0005; keuangan `docs/arsitektur-keuangan.md`;
 > notifikasi PJ `docs/arsitektur-notifikasi-pengurus.md`. Pembayaran tetap MANUAL (ADR-0002) — tidak ada transfer otomatis lewat API bank.
 
@@ -20,6 +20,8 @@ dari baris-barisnya (append-only), dan angka tiap baris dibekukan (snapshot K25)
 | **D9** (baru) | **Pencairan per KELOMPOK PENGIRIMAN** (satu invoice × satu produsen). Setiap pengiriman punya status sendiri: Menunggu → Bisa dicairkan → Diajukan → **Sudah dicairkan (nomor pencairan)**, sehingga jelas pengiriman mana yang sudah/belum cair. Produsen **mengajukan** pencairan (manual) sesuai haknya dan melihat **laporan lengkap per pengiriman**: harga dibayar pembeli, persentase tenant, bagian produsen, ongkir diteruskan, potongan hutang/biaya transfer, total. |
 | **D10** (baru) | **Pengingat saldo menganggur:** bila ada saldo ≥ minimum yang bisa dicairkan tetapi tak ada pengajuan selama **30 hari**, kirim **email** ke produsen (bukan WA) memberi tahu nominalnya dan mengajak mengajukan; diulang paling sering sekali per 30 hari. |
 | **D2b** | Otomatis selesai bila pembeli lupa: **maksimal 10 hari sejak dikirim**; "lebih cepat lebih baik" → bila pelacakan RajaOngkir menyatakan terkirim, selesai +2 hari (dalam anggaran kuota § 10 T2). **Tanpa masa tahan tambahan** setelah selesai (T1). |
+| **D12** (putaran 3) | **Satuan pencairan = PENGIRIMAN** (satu invoice × satu produsen = `invoice_shipping_lines` per produsen), BUKAN produk dan BUKAN batch. Alasan: peristiwa "selesai" (barang diterima/terlacak) dan ongkir melekat pada paket; batch pengiriman hanya pengelompokan operasional produsen (cetak label, bisa memuat banyak invoice & berubah) sehingga tak cocok jadi dasar uang. **Tampilan tetap berurutan Produk → Pesanan → Dibayar → Bagi hasil**: satu baris pengiriman bisa dibuka dan menampilkan baris produknya masing-masing (harga dibayar, persen tenant, bagian produsen). Perhitungan memang per baris produk (snapshot K25) lalu dijumlah per pengiriman; refund satu produk = baris ledger pengurang untuk produk itu saja. |
+| **D13** | **Ongkir = milik produsen penuh** (T7 jawaban user): ongkir yang dibayar pembeli diteruskan seluruhnya ke produsen (D1), produsen menanggung biaya kurir. Tak ada input ongkir aktual. |
 | **D11** | **Pengajuan manual oleh produsen** (T5); batas Hutang refund tak terlunasi: cukup dicatat & ditandai, ditagih di luar sistem (T6). |
 | **D6** | Yang menyetujui **Bendahara atau Ketua** (salah satu cukup). Usulan pengaman: pengurus yang sekaligus produsen tidak boleh menyetujui pencairannya sendiri. |
 | **D7** | **Refund setelah dana cair → menjadi hutang produsen.** Dua cara pelunasan: (a) **dipotong otomatis** dari pencairan/pesanan berikutnya, atau (b) **produsen mentransfer** dan bendahara mencatat penerimaannya. Refund SEBELUM cair hanya membatalkan kredit pesanan itu. |
@@ -76,8 +78,8 @@ Pengajuan masuk → bendahara & ketua (kanal PJ yang sudah ada: WA bila aktif, j
 ## 10. Status pertanyaan
 Terjawab (putaran 2): T1 tanpa masa tahan; 3 hari = informasi SLA maksimal, bendahara boleh lebih cepat (D3). T2 10 hari maksimal, lebih cepat lebih baik (D2b) — pelacakan dibatasi anggaran: jatah `track` terpisah di `ro_api_usage` (kuota gratis RajaOngkir **100 panggilan/hari dibagi SEMUA tenant**, `docs/arsitektur-alamat.md` § 21), hanya pengiriman yang lewat hari ke-3 tanpa konfirmasi, maks. sekali/hari per pengiriman. T3 cut-off dibatalkan oleh D3 revisi (tak ada batch kaku). T4 kolom biaya transfer (D4). T5 manual (D11). T6 dicatat saja (D11).
 **TERBUKA:**
-- **T7** "Ongkir aktual" pada laporan per pengiriman = **ongkir yang dibayar pembeli** (usul/D1; angka dari checkout, tanpa input) — atau **tagihan kurir sebenarnya** yang diinput produsen? Bila yang kedua, butuh bukti + batas atas agar tidak melebihi anggaran (ongkir kutipan), dan ini mengubah D1.
-- **T8** Konfirmasi aturan waktu: SLA "maks. 3 hari kerja" ditampilkan ke produsen; hari Senin hanya jadwal standar/pengingat digest ke bendahara (tak ada cut-off Minggu). Setuju?
+- ~~**T7**~~ (TERJAWAB: D13) "Ongkir aktual" pada laporan per pengiriman = **ongkir yang dibayar pembeli** (usul/D1; angka dari checkout, tanpa input) — atau **tagihan kurir sebenarnya** yang diinput produsen? Bila yang kedua, butuh bukti + batas atas agar tidak melebihi anggaran (ongkir kutipan), dan ini mengubah D1.
+- ~~**T8**~~ (TERJAWAB: setuju, D3) Konfirmasi aturan waktu: SLA "maks. 3 hari kerja" ditampilkan ke produsen; hari Senin hanya jadwal standar/pengingat digest ke bendahara (tak ada cut-off Minggu). Setuju?
 
 ## 11. Draf teks email pengingat saldo (D10)
 Subjek: `Saldo Anda di {Tenant} siap dicairkan — Rp {nominal}`
