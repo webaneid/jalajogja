@@ -32,6 +32,8 @@ export type ProducerItem = {
   couriers: string[] | null;
   /** Hasil pengajuan produsen: batas produk (null = tanpa batas), bagi hasil disepakati (%), brand */
   terms: { productLimit: number | null; sharePercent: string | null; brand: string | null };
+  /** Riwayat perubahan persentase bagi hasil (terbaru dulu, maks. 5) */
+  shareHistory: { oldPercent: string | null; newPercent: string; at: string; by: string | null }[];
   edit: { name: string; whatsapp: string; addressDetail: string; provinceId?: number; regencyId?: number; districtId?: number; villageId?: number; postalCode: string; notes: string };
 };
 
@@ -239,6 +241,18 @@ export function ProducerManageClient({ slug, internal, internalProductCount, ite
               <SharePercentForm key={shareFor.view.id as string} initial={shareFor.terms.sharePercent}
                 onSave={(p) => setProducerSharePercentAction(slug, shareFor.view.id as string, p)}
                 onDone={() => { setShareFor(null); router.refresh(); }} />
+              {shareFor.shareHistory.length > 0 && (
+                <div className="space-y-1 border-t border-border pt-3">
+                  <p className="text-xs font-medium">Riwayat perubahan</p>
+                  <ul className="space-y-0.5 text-[11px] text-muted-foreground">
+                    {shareFor.shareHistory.map((h, i) => (
+                      <li key={i}>
+                        {new Date(h.at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })} · {h.oldPercent === null ? "ditetapkan" : `${h.oldPercent}%`} → <b className="text-foreground">{h.newPercent}%</b>{h.by ? ` · oleh ${h.by}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </>
           )}
         </DialogContent>

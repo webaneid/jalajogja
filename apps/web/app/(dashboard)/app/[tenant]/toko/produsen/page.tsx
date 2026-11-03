@@ -7,6 +7,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { sanitizeCouriers } from "@/lib/producer-couriers";
 import { resolveProducers, resolveInternalProducer } from "@/lib/producer.server";
+import { pgErrorCode } from "@/lib/pg-error";
 import { ProducerManageClient, type ProducerItem } from "@/components/toko/producer-manage-client";
 
 export default async function ProdusenPage({ params }: { params: Promise<{ tenant: string }> }) {
@@ -50,6 +51,34 @@ export default async function ProdusenPage({ params }: { params: Promise<{ tenan
     : [];
   const hasAccount = new Set(accountRows.filter((m) => !!m.acc).map((m) => m.id));
 
+  // Riwayat persentase bagi hasil (K20): 5 perubahan terakhir per produsen + nama pengubah (pengurus → anggota). Tenant yang belum
+  // menjalankan migration 0095 → tabel tak ada → riwayat kosong (halaman tetap jalan).
+  type Hist = { oldPercent: string | null; newPercent: string; at: string; by: string | null };
+  const historyMap = new Map<string, Hist[]>();
+  try {
+    // Per produsen (5 terbaru masing-masing) supaya produsen yang sering berubah tidak menghabiskan jatah produsen lain.
+    const perProducer = await Promise.all(rows.map((r) =>
+      db.select().from(schema.producerPercentHistory).where(eq(schema.producerPercentHistory.producerId, r.id))
+        .orderBy(desc(schema.producerPercentHistory.createdAt)).limit(5)));
+    const hist = perProducer.flat();
+    const byIds = [...new Set(hist.map((h) => h.changedBy).filter((x): x is string => !!x))];
+    const nameOf = new Map<string, string>();
+    if (byIds.length) {
+      const us = await db.select({ id: schema.users.id, memberId: schema.users.memberId }).from(schema.users).where(inArray(schema.users.id, byIds));
+      const mIds = us.map((u) => u.memberId).filter((x): x is string => !!x);
+      const ms = mIds.length ? await publicDb.select({ id: members.id, name: members.name }).from(members).where(inArray(members.id, mIds)) : [];
+      const mName = new Map(ms.map((m) => [m.id, m.name]));
+      for (const u of us) if (u.memberId && mName.has(u.memberId)) nameOf.set(u.id, mName.get(u.memberId)!);
+    }
+    for (const h of hist) {
+      const list = historyMap.get(h.producerId) ?? [];
+      list.push({ oldPercent: h.oldPercent === null ? null : String(Number(h.oldPercent)), newPercent: String(Number(h.newPercent)), at: h.createdAt.toISOString(), by: h.changedBy ? nameOf.get(h.changedBy) ?? null : null });
+      historyMap.set(h.producerId, list);
+    }
+  } catch (e) {
+    if (pgErrorCode(e) !== "42P01") throw e;   // hanya "tabel belum ada" (0095 belum jalan) yang dimaklumi
+  }
+
   const items: ProducerItem[] = rows.flatMap((r) => {
     const view = views.get(r.id);
     if (!view) return [];
@@ -57,6 +86,7 @@ export default async function ProdusenPage({ params }: { params: Promise<{ tenan
       view,
       productCount: countMap.get(r.id) ?? 0,
       couriers: sanitizeCouriers(r.couriers),
+      shareHistory: historyMap.get(r.id) ?? [],
       terms: { productLimit: r.productLimit ?? null, sharePercent: r.revenueSharePercent != null ? String(Number(r.revenueSharePercent)) : null, brand: r.brandName ?? null },
       portal: r.type === "member" ? { granted: grantedSet.has(r.id), ownerHasAccount: !!r.memberId && hasAccount.has(r.memberId) } : null,
       edit: {

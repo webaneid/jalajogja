@@ -353,9 +353,18 @@ export async function setProducerSharePercentAction(slug: string, producerId: st
   try {
     const { db, schema } = createTenantDb(slug);
     const out = await db.transaction(async (tx) => {
-      const upd = await tx.update(schema.producers).set({ revenueSharePercent: p.toFixed(2), updatedAt: new Date() })
-        .where(eq(schema.producers.id, producerId)).returning({ id: schema.producers.id });
-      if (upd.length === 0) return null;
+      // Kunci baris produsen lalu baca persentase LAMA di transaksi yang sama (riwayat K20: siapa, kapan, lama → baru).
+      const [cur] = await tx.select({ id: schema.producers.id, old: schema.producers.revenueSharePercent })
+        .from(schema.producers).where(eq(schema.producers.id, producerId)).for("update").limit(1);
+      if (!cur) return null;
+      await tx.update(schema.producers).set({ revenueSharePercent: p.toFixed(2), updatedAt: new Date() })
+        .where(eq(schema.producers.id, producerId));
+      const oldNum = cur.old === null || cur.old === undefined ? null : Number(cur.old);
+      if (oldNum === null || Math.abs(oldNum - p) > 0.0001) {
+        await tx.insert(schema.producerPercentHistory).values({
+          producerId, oldPercent: oldNum === null ? null : oldNum.toFixed(2), newPercent: p.toFixed(2), changedBy: g.access.tenantUser.id,
+        });
+      }
       return syncBaseCosts({ db: tx as unknown as TenantDb["db"], schema }, producerId, p);
     });
     if (out === null) return { success: false, error: "Produsen tidak ditemukan." };

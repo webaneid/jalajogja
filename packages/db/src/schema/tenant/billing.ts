@@ -369,6 +369,11 @@ export function createInvoiceShippingLinesTable(s: ReturnType<typeof pgSchema>) 
     processingNotifiedAt: timestamp("processing_notified_at", { withTimezone: true }),
     codConfirmedAt:  timestamp("cod_confirmed_at", { withTimezone: true }),
     codPaymentId:    uuid("cod_payment_id"), // referensi ke payments.id, tanpa FK constraint
+    // Penyelesaian pengiriman untuk pencairan produsen (docs/arsitektur-pencairan-produsen.md § 12). `status = delivered` TIDAK dipakai
+    // sebagai dasar uang (admin/produsen bisa mengisinya) — hanya pembeli (buyer_confirmed_at) atau batas waktu otomatis.
+    buyerConfirmedAt: timestamp("buyer_confirmed_at", { withTimezone: true }),
+    completedAt:      timestamp("completed_at", { withTimezone: true }),
+    completionSource: text("completion_source", { enum: ["buyer", "auto"] as const }),
     createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   }, (t) => ({

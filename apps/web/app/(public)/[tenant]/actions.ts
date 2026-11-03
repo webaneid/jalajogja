@@ -4,7 +4,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { createTenantDb } from "@jalajogja/db";
+import { createTenantDb, completeProducerShipment } from "@jalajogja/db";
 import { getAkunIdentity } from "@/lib/akun-identity";
 import { resolvePostHrefs } from "@/lib/post-permalink.server";
 
@@ -84,7 +84,8 @@ export async function confirmDeliveryAction(
     const identity = await getAkunIdentity(session.user.id);
     if (!identity)          return { success: false, error: "Akun tidak ditemukan." };
 
-    const { db: tenantDb, schema } = createTenantDb(slug);
+    const tc = createTenantDb(slug);
+    const { db: tenantDb, schema } = tc;
 
     // Verifikasi invoice milik akun ini
     const whereInvoice =
@@ -117,10 +118,17 @@ export async function confirmDeliveryAction(
 
     if (!sl) return { success: false, error: "Pengiriman belum dikirim atau sudah dikonfirmasi." };
 
-    await tenantDb
+    const upd = await tenantDb
       .update(schema.invoiceShippingLines)
-      .set({ status: "delivered", deliveredAt: new Date(), updatedAt: new Date() })
-      .where(eq(schema.invoiceShippingLines.id, shippingLineId));
+      .set({ status: "delivered", deliveredAt: new Date(), buyerConfirmedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(schema.invoiceShippingLines.id, shippingLineId), eq(schema.invoiceShippingLines.status, "shipped")))
+      .returning({ id: schema.invoiceShippingLines.id });
+    if (upd.length === 0) return { success: false, error: "Pengiriman belum dikirim atau sudah dikonfirmasi." };   // klik ganda: yang kedua kalah
+
+    // Pencairan produsen: konfirmasi PEMBELI = pengiriman selesai → kredit saldo produsen terbit (idempoten). Kegagalan di sini
+    // tidak boleh menggagalkan konfirmasi pembeli — sapuan harian (/api/cron/producer-settlement) mengulang. Docs: arsitektur-pencairan-produsen.md § 12.
+    try { await completeProducerShipment(tc, shippingLineId, "buyer"); }
+    catch (e) { console.error("[confirmDelivery] gagal menyelesaikan pengiriman produsen:", e instanceof Error ? e.message : e); }
 
     revalidatePath(`/${slug}/akun/transaksi`);
     return { success: true };

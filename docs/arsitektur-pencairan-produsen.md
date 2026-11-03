@@ -101,3 +101,16 @@ Temuan penyelidikan kode yang menentukan rancangan:
 6. Riwayat persentase (K20): tabel `producer_percent_history` (siapa, kapan, lama → baru), ditulis di `setProducerSharePercentAction` dalam transaksi yang sama; ditampilkan di dialog "Bagi hasil" admin.
 ### Risiko & pengaman
 Kredit ganda (unik + kunci baris), invoice belum lunas (tidak dikreditkan), persen hilang (ditandai), pembeli palsu mengonfirmasi (kepemilikan invoice dari sesi sudah ada), produsen melihat produsen lain (semua query berfilter `producer_id` sesi). Uji: `scripts/smoke-producer-ledger.ts` dengan data nyata DB lokal (rumus K23 kedua jenis voucher, variasi, gratis ongkir, idempoten, belum lunas, persen null, otomatis 10 hari).
+
+### 12.1 Status C1a (2026-11-04) — KODE SELESAI; audit `security-auditor` 0 Critical, 0 High, 3 Medium, 3 Low
+Teruji data nyata DB lokal: `scripts/smoke-producer-ledger.ts` (rumus K23 kedua jenis voucher, ongkir/gratis ongkir, idempoten, balapan 6 penyelesaian bersamaan → kredit sekali, invoice belum lunas, persentase hilang, sapuan 10 hari, isolasi antar-produsen, indeks unik) + `scripts/smoke-cron-auth.ts` (cron fail-closed). Migration `0095` dijalankan ulang → idempoten.
+| Temuan | Tindakan |
+|---|---|
+| MEDIUM cron `producer-settlement` belum ada | **Diperbaiki**: dibuat fail-closed + timing-safe (pola cleanup-pengajuan-produsen), tenant gagal dilaporkan; teruji 5 kasus |
+| MEDIUM auto-selesai 10 hari memakai `shipped_at` yang bisa diisi produsen/admin sendiri (resi palsu → saldo terbit tanpa barang tiba) | **Risiko diterima untuk C1a (hanya baca, belum ada uang keluar). WAJIB sebelum C3**: mekanisme TAHAN (admin menahan satu pengiriman bermasalah/dalam sengketa; pengiriman tertahan tak ikut dicairkan) + jejak siapa mengisi `shipped_at` |
+| MEDIUM tak ada pembalikan kredit bila invoice dibatalkan/refund SETELAH selesai | **WAJIB sebelum C3** (= PR C5 dimajukan): pembatalan/refund → baris `refund_debt`/void; saat ini aman karena belum ada pencairan |
+| LOW `confirmDeliveryAction` UPDATE tak bersyarat status | **Diperbaiki** (UPDATE `WHERE status='shipped'` + `returning`; klik ganda yang kedua kalah) |
+| LOW `ON CONFLICT DO NOTHING` tanpa target menelan pelanggaran unik apa pun | **Diperbaiki**: setelah insert, jumlah baris diverifikasi; kurang → transaksi dibatalkan (pengiriman tak ditandai selesai) |
+| LOW riwayat persentase: 500 baris global + `catch` menelan semua galat | **Diperbaiki**: 5 terbaru PER produsen; hanya galat 42P01 (tabel belum ada) yang dimaklumi |
+**Perilaku yang perlu diketahui sebelum deploy:** pengiriman produsen LAMA (sebelum 0095) punya `completed_at` NULL → sapuan pertama akan mengkreditkan secara retroaktif semua yang dikirim > 10 hari lalu, lunas, dan persentasenya tercatat (yang persentasenya kosong → "perlu ditinjau"). Itu hak produsen yang sah; bila ada data uji yang tak boleh ikut, bersihkan dulu.
+**Deploy C1a:** migration `0095` DULU (`docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/0095_producer_ledger.sql`; harapkan `NOTICE: OK tenant_<slug>`), baru build/restart; tambah crontab harian `GET /api/cron/producer-settlement` dengan header `x-cron-secret` (pola cron lain).

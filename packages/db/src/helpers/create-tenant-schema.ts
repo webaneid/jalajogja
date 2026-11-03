@@ -1567,6 +1567,9 @@ export async function createTenantSchemaInDb(
         processing_notified_at TIMESTAMPTZ,
         cod_confirmed_at TIMESTAMPTZ,
         cod_payment_id   UUID,
+        buyer_confirmed_at TIMESTAMPTZ,   -- pembeli menekan "Sudah diterima" (0095)
+        completed_at       TIMESTAMPTZ,   -- pengiriman SELESAI → kredit saldo produsen dibuat
+        completion_source  TEXT CHECK (completion_source IN ('buyer','auto')),
         created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
       )
@@ -1602,6 +1605,39 @@ export async function createTenantSchemaInDb(
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_items_producer ON "${s}".invoice_items(producer_id) WHERE producer_id IS NOT NULL`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_shipping_producer ON "${s}".invoice_shipping_lines(producer_id) WHERE producer_id IS NOT NULL`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_shipment_invoices_batch_idx ON "${s}".producer_shipment_invoices(batch_id)`));
+
+    // ── Saldo produsen (docs/arsitektur-pencairan-produsen.md § 5/§ 12, migration 0095) ──
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".producer_ledger_entries (
+        id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+        producer_id      UUID          NOT NULL REFERENCES "${s}".producers(id) ON DELETE RESTRICT,
+        kind             TEXT          NOT NULL CHECK (kind IN ('sale','shipping','refund_debt','transfer_fee','payout','adjustment')),
+        amount           NUMERIC(15,2) NOT NULL,
+        invoice_id       UUID          REFERENCES "${s}".invoices(id) ON DELETE RESTRICT,
+        invoice_item_id  UUID          REFERENCES "${s}".invoice_items(id) ON DELETE RESTRICT,
+        shipping_line_id UUID          REFERENCES "${s}".invoice_shipping_lines(id) ON DELETE RESTRICT,
+        status           TEXT          NOT NULL DEFAULT 'available' CHECK (status IN ('available','reserved','paid','void')),
+        payout_id        UUID,
+        meta             JSONB,
+        note             TEXT,
+        available_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        created_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_ledger_producer_idx ON "${s}".producer_ledger_entries(producer_id, status)`));
+    await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producer_ledger_sale_uniq ON "${s}".producer_ledger_entries(kind, invoice_item_id) WHERE invoice_item_id IS NOT NULL`));
+    await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producer_ledger_ship_uniq ON "${s}".producer_ledger_entries(kind, shipping_line_id) WHERE shipping_line_id IS NOT NULL AND invoice_item_id IS NULL`));
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".producer_percent_history (
+        id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        producer_id UUID         NOT NULL REFERENCES "${s}".producers(id) ON DELETE CASCADE,
+        old_percent NUMERIC(5,2),
+        new_percent NUMERIC(5,2) NOT NULL,
+        changed_by  UUID,
+        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_percent_history_producer_idx ON "${s}".producer_percent_history(producer_id, created_at)`));
 
     // ── 39. SEO Page Overrides (Fase 3, docs/arsitektur-seo.md § 3.3) ───────
     await tx.execute(sql.raw(`

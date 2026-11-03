@@ -115,3 +115,8 @@ export { syncAutoTenantMemberships } from "./helpers/member-sync";
 // search — pakai hashPiiForLookup() untuk exact-match).
 export { encryptPii, decryptPii, hashPiiForLookup } from "./helpers/pii-crypto";
 
+export {
+  computeLineCredit, loadShipmentCredit, completeProducerShipment, sweepProducerSettlements,
+  getProducerBalance, listProducerShipments, AUTO_COMPLETE_DAYS,
+  type ShipmentCredit, type ShipmentCreditLine, type ProducerBalance, type CompleteResult,
+} from "./helpers/producer-ledger";

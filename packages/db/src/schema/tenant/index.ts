@@ -30,6 +30,7 @@ import { createMitraApplicationsTable, createMitrasTable } from "./mitra";
 import { createProducersTable } from "./producers";
 import { createProducerTermsTable, createProducerTermAcceptancesTable } from "./producer-terms";
 import { createProducerApplicationsTable } from "./producer-applications";
+import { createProducerLedgerEntriesTable, createProducerPercentHistoryTable } from "./producer-ledger";
 import { createShippingOriginsTable } from "./shipping-origins";
 import { createProducerShipmentBatchesTable, createProducerShipmentInvoicesTable } from "./producer-shipments";
 import {
@@ -119,6 +120,8 @@ function buildTenantSchema(slug: string) {
     shippingOrigins:    createShippingOriginsTable(s),
     producerShipmentBatches:  createProducerShipmentBatchesTable(s),
     producerShipmentInvoices: createProducerShipmentInvoicesTable(s),
+    producerLedgerEntries:    createProducerLedgerEntriesTable(s),
+    producerPercentHistory:   createProducerPercentHistoryTable(s),
     // Settings & navigasi
     settings: createSettingsTable(s),
     menus: createMenusTable(s),
@@ -165,6 +168,7 @@ export * from "./mitra";
 export * from "./producers";
 export * from "./producer-terms";
 export * from "./producer-applications";
+export * from "./producer-ledger";
 export * from "./shipping-origins";
 export * from "./producer-shipments";
 export * from "./seo";
