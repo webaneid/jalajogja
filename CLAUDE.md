@@ -246,7 +246,7 @@ pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
 | Portal Produsen + Profil/Gudang + Cetak Label + Buat Batch masal + Pengiriman per Produsen (F1–F5) + **Syarat & Ketentuan Produsen + TTD digital (§ 28, kode SELESAI 2026-11-03)** — baca "PETA STATUS" di bagian atas dokumen (deploy: sampai § 24 F3, 2026-11-01; uji browser F2–F3 belum); definisi fitur terkunci § 18 | `docs/arsitektur-portal-produsen.md` |
 | Pengajuan Produsen (anggota mengajukan, kurasi pengurus, batas produk, produsen multi-tenant) — **KODE SELESAI P1–P7 + deployed 2026-11-03**; asumsi terbuka di § 19 | `docs/arsitektur-pengajuan-produsen.md` |
 | Produk & Voucher dikelola Produsen (buat/ubah/hapus produk, voucher dua jenis, bagi hasil K18–K29) — **KODE SELESAI 2026-11-03, belum deploy** | `docs/arsitektur-produk-produsen.md` |
-| Pencairan dana produsen (saldo/ledger per pengiriman, hutang refund) — **C1a KODE SELESAI 2026-11-04 (migration 0095 + cron, belum deploy)**; C1b akuntansi/C2–C5 belum; keputusan D1–D14 terkunci | `docs/arsitektur-pencairan-produsen.md` |
+| Pencairan dana produsen (saldo/ledger per pengiriman, rekening, pengajuan→setujui→transfer+bukti wajib, refund→hutang, tahan, notifikasi) — **KODE SELESAI C1a–C5 2026-11-04 (migration 0095+0096, 2 cron baru, belum push/deploy)**; runbook § 13.4 | `docs/arsitektur-pencairan-produsen.md` |
 | Penulis & Editor Post (byline system) | `docs/arsitektur-penulis-post.md` |
 | Data Pesantren anggota | `docs/arsitektur-pesantren.md` |
 | Data Profesional anggota — perencanaan, belum dieksekusi | `docs/arsitektur-profesional.md` |
@@ -1189,6 +1189,7 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 > Ini status singkat yang di-OVERWRITE tiap kali berubah, BUKAN log yang ditambah terus.
 > Riwayat detail tiap perbaikan ada di `docs/lessons-learned.md` dan `docs/arsitektur-*.md` masing-masing modul.
 
+- **2026-11-04 — PENCAIRAN DANA PRODUSEN (KODE SELESAI penuh C1a–C5, belum push/deploy)**: saldo per pengiriman (konfirmasi pembeli / 10 hari), rekening produsen terenkripsi (ganti rekening berlaku 24 jam), pengajuan → bendahara/ketua setujui → transfer dengan **bukti wajib** (biaya transfer dipotong dari produsen; sesama bank Rp0 / beda bank Rp7.500 diatur tenant), jurnal otomatis (Hutang Produsen 2300), refund → hutang (potong otomatis / pelunasan transfer), tahan pengiriman bermasalah, notifikasi bendahara & produsen, pengingat saldo 30 hari. **Deploy: migration `0095` lalu `0096` DULU, baru build; 2 crontab baru.** Detail + runbook: `docs/arsitektur-pencairan-produsen.md` § 12–13.
 - **2026-11-03 — Syarat & Ketentuan Produsen + tanda tangan digital** (KODE SELESAI T1–T4, type-check + build bersih, audit `security-auditor` 0 Critical/High; PUSHED ke main (sampai `575bcf0`) dan DEPLOYED di VPS 2026-11-03 — migration `0090` jalan; user mengonfirmasi hasil deploy/uji "sementara sesuai", rincian langkah uji browser yang sudah dicoba belum dirinci).
   Teks syarat dikelola di `/toko/pengaturan` (draf → terbit, versi tak bisa diedit); produsen wajib membaca + tanda tangan digital (satu sisi) sebelum portal terbuka; terbit versi baru = SEMUA produsen tanda tangan ulang.
   Penjaga `getProducerAccess` fail-closed bila syarat belum ditandatangani; halaman portal dialihkan ke `/portal-produsen/syarat`; bukti diverifikasi lewat `/{slug}/verify/{hash}`.

@@ -6,7 +6,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, ClipboardList, Truck, UserCircle, FileText, Ticket, Wallet, Menu, X } from "lucide-react";
+import { LayoutDashboard, Package, ClipboardList, Truck, UserCircle, FileText, Ticket, Wallet, Banknote, Menu, X } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Dashboard",  icon: LayoutDashboard, path: "dashboard"  },
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { label: "Pesanan",    icon: ClipboardList,   path: "pesanan"    },
   { label: "Pengiriman", icon: Truck,           path: "pengiriman" },
   { label: "Saldo",      icon: Wallet,          path: "saldo"      },
+  { label: "Pencairan",  icon: Banknote,        path: "pencairan"  },
   { label: "Voucher",    icon: Ticket,          path: "voucher"    },
   { label: "Profil",     icon: UserCircle,      path: "profil"     },
   { label: "Syarat",     icon: FileText,        path: "syarat"     },

@@ -13,6 +13,7 @@ import {
   Settings2,
   MapPin,
   ClipboardCheck,
+  Banknote,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { label: "Mitra",       icon: Handshake,       path: "/mitra"       },
   { label: "Produsen",    icon: Factory,         path: "/produsen"    },
   { label: "Pengajuan",   icon: ClipboardCheck,  path: "/produsen/pengajuan" },
+  { label: "Pencairan",   icon: Banknote,        path: "/pencairan"   },
   { label: "Asal Kirim",  icon: MapPin,          path: "/asal-kirim"  },
   { label: "Pengaturan",  icon: Settings2,       path: "/pengaturan"  },
 ] as const;

@@ -45,7 +45,7 @@ export default async function ProducerBalancePage({ params }: { params: Promise<
       {balance.reviewCount > 0 && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{balance.reviewCount} pengiriman perlu ditinjau pengurus (persentase bagi hasil belum tercatat) dan belum dihitung.</p>
       )}
-      <p className="text-xs text-muted-foreground">Pengajuan pencairan akan tersedia pada tahap berikutnya.</p>
+      <p className="text-xs"><a href={`/app/${access.tenant.slug}/portal-produsen/pencairan`} className="font-medium text-primary hover:underline">Ajukan pencairan →</a></p>
 
       <div className="space-y-2">
         <h2 className="text-sm font-semibold">Laporan per pengiriman</h2>

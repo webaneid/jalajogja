@@ -131,7 +131,7 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-async function deliverToRecipient(opts: {
+export async function deliverToRecipient(opts: {
   slug:      string;
   tenantDb:  TenantDbHandle;
   event:     WaNotifKey;
