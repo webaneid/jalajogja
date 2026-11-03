@@ -40,6 +40,8 @@ export interface TiptapEditorProps {
   editable?: boolean;
   /** Batas karakter untuk SEO warning (opsional) */
   charLimit?: number;
+  /** true = toolbar dasar saja (tanpa gambar/embed/galeri/tabel/tautan terkait/code) — dipakai editor Produsen */
+  basic?: boolean;
 }
 
 // ── Editor ────────────────────────────────────────────────────────────────────
@@ -51,6 +53,7 @@ export function TiptapEditor({
   slug,
   editable = true,
   charLimit,
+  basic = false,
 }: TiptapEditorProps) {
   const editor = useEditor({
     extensions: [
@@ -189,7 +192,7 @@ export function TiptapEditor({
     <div className="flex flex-col rounded-lg border border-border bg-background overflow-hidden">
       {/* Fixed toolbar — insert operations */}
       {editable && editor && (
-        <EditorToolbar editor={editor} slug={slug} />
+        <EditorToolbar editor={editor} slug={slug} basic={basic} />
       )}
 
       {/* Editor area */}

@@ -43,6 +43,8 @@ import { toast } from "sonner";
 interface ToolbarProps {
   editor: Editor;
   slug: string;
+  /** true = tanpa sisip gambar/embed/galeri/tabel/tautan terkait/code block (editor produsen: bukan pengguna tenant, tak punya akses Media Library tenant) */
+  basic?: boolean;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -516,7 +518,7 @@ function QuoteDialog({
 
 // ── FixedToolbar ──────────────────────────────────────────────────────────────
 
-function FixedToolbar({ editor, slug }: ToolbarProps) {
+function FixedToolbar({ editor, slug, basic = false }: ToolbarProps) {
   const [mediaOpen, setMediaOpen] = useState(false);
   const [embedOpen, setEmbedOpen] = useState(false);
   const [relatedOpen, setRelatedOpen] = useState(false);
@@ -549,6 +551,7 @@ function FixedToolbar({ editor, slug }: ToolbarProps) {
     <div className="flex items-center gap-0.5 flex-wrap px-2 py-1.5 border-b border-border bg-muted/30">
 
       {/* Insert: Image, Embed, Table, Gallery, Baca Juga */}
+      {!basic && (<>
       <ToolBtn onClick={() => setMediaOpen(true)} title="Sisipkan Gambar">
         <ImagePlus className="h-4 w-4" />
       </ToolBtn>
@@ -577,6 +580,7 @@ function FixedToolbar({ editor, slug }: ToolbarProps) {
       )}
 
       <Separator />
+      </>)}
 
       {/* Text align */}
       <ToolBtn
@@ -626,13 +630,13 @@ function FixedToolbar({ editor, slug }: ToolbarProps) {
         </ToolBtn>
       </div>
 
-      <ToolBtn
+      {!basic && <ToolBtn
         onClick={() => editor.chain().focus().toggleCodeBlock().run()}
         active={editor.isActive("codeBlock")}
         title="Code block"
       >
         <Code2 className="h-4 w-4" />
-      </ToolBtn>
+      </ToolBtn>}
       <ToolBtn
         onClick={() => editor.chain().focus().setHorizontalRule().run()}
         title="Garis pemisah"
@@ -641,33 +645,33 @@ function FixedToolbar({ editor, slug }: ToolbarProps) {
       </ToolBtn>
 
       {/* MediaPicker */}
-      <MediaPicker
+      {!basic && <MediaPicker
         slug={slug}
         open={mediaOpen}
         onClose={() => setMediaOpen(false)}
         onSelect={handleMediaSelect}
         module="website"
         accept={["image/"]}
-      />
+      />}
 
       {/* Embed Dialog */}
-      <EmbedDialog
+      {!basic && <EmbedDialog
         open={embedOpen}
         onClose={() => setEmbedOpen(false)}
         onInsert={(data) => {
           editor.chain().focus().insertEmbed(data).run();
         }}
-      />
+      />}
 
       {/* Related Link Dialog */}
-      <RelatedLinkDialog
+      {!basic && <RelatedLinkDialog
         open={relatedOpen}
         slug={slug}
         onClose={() => setRelatedOpen(false)}
         onInsert={(data) => {
           editor.chain().focus().insertRelatedLink(data).run();
         }}
-      />
+      />}
 
       {/* Quote Citation Dialog */}
       <QuoteDialog
@@ -684,11 +688,11 @@ function FixedToolbar({ editor, slug }: ToolbarProps) {
 
 // ── EditorToolbar (export utama) ──────────────────────────────────────────────
 
-export function EditorToolbar({ editor, slug }: ToolbarProps) {
+export function EditorToolbar({ editor, slug, basic }: ToolbarProps) {
   return (
     <>
       <BubbleToolbar editor={editor} />
-      <FixedToolbar editor={editor} slug={slug} />
+      <FixedToolbar editor={editor} slug={slug} basic={basic} />
     </>
   );
 }

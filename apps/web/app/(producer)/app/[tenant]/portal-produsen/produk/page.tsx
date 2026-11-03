@@ -7,6 +7,7 @@ import { Package } from "lucide-react";
 import { createTenantDb, mergeVariationPrices, publicSellingPrice, minMax } from "@jalajogja/db";
 import { getProducerPageAccess } from "@/lib/producer-access.server";
 import { escapeLike } from "@/lib/escape-like";
+import { getProducerCommercials, countOwnedProducts } from "@/lib/producer-products.server";
 
 const PAGE_SIZE = 20;
 const STATUSES = ["active", "draft", "archived"] as const;
@@ -51,7 +52,7 @@ export default async function ProducerProductsPage({
     query ? ilike(schema.products.name, `%${escapeLike(query)}%`) : undefined,
   );
 
-  const [rows, [{ total }]] = await Promise.all([
+  const [rows, [{ total }], com, usedSlots] = await Promise.all([
     db.select({
       id: schema.products.id, name: schema.products.name, sku: schema.products.sku, status: schema.products.status,
       productType: schema.products.productType, stock: schema.products.stock,
@@ -59,6 +60,8 @@ export default async function ProducerProductsPage({
       images: schema.products.images, updatedAt: schema.products.updatedAt,
     }).from(schema.products).where(where).orderBy(desc(schema.products.updatedAt)).limit(PAGE_SIZE).offset((currentPage - 1) * PAGE_SIZE),
     db.select({ total: count() }).from(schema.products).where(where),
+    getProducerCommercials({ db, schema }, access.producer.id),
+    countOwnedProducts({ db, schema }, access.producer.id),
   ]);
 
   // Produk bervariasi: harga = rentang variasi aktif, stok = jumlah stok variasi aktif (aturan project)
@@ -99,9 +102,16 @@ export default async function ProducerProductsPage({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Produk Saya</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">{Number(total)} produk · hanya untuk dilihat. Perubahan produk dilakukan oleh admin.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Produk Saya</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {Number(total)} produk{com ? ` · slot terpakai ${usedSlots}/${com.productLimit} (produk arsip tetap dihitung)` : ""}
+          </p>
+        </div>
+        <Link href={`${`/app/${slug}/portal-produsen/produk`}/baru`} className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90">
+          Tambah Produk
+        </Link>
       </div>
 
       <form action={base} method="get" className="flex flex-wrap items-center gap-2">
@@ -118,7 +128,7 @@ export default async function ProducerProductsPage({
 
       {view.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-          {query || statusFilter ? "Tidak ada produk yang cocok." : "Belum ada produk yang didaftarkan admin atas nama Anda."}
+          {query || statusFilter ? "Tidak ada produk yang cocok." : "Belum ada produk. Klik \"Tambah Produk\" untuk mulai."}
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border bg-card">

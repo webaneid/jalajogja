@@ -16,6 +16,7 @@ import { ProductDetailTabNav, productTabs, resolveActiveTab } from "@/components
 import { TabRingkasan } from "@/components/toko/product-detail/tab-ringkasan";
 import { TabPesanan } from "@/components/toko/product-detail/tab-pesanan";
 import { TabDetail } from "@/components/toko/product-detail/tab-detail";
+import { ProducerProductActions } from "@/components/producer/producer-product-actions";
 
 export default async function ProducerProductDetailPage({
   params, searchParams,
@@ -63,8 +64,8 @@ export default async function ProducerProductDetailPage({
 
   return (
     <div className="space-y-6">
-      <ProductDetailHeader product={detail} backHref={`/app/${slug}/portal-produsen/produk`} backLabel="Produk Saya" />
-      <p className="text-xs text-muted-foreground -mt-4">Hanya untuk dilihat. Perubahan produk dilakukan oleh admin.</p>
+      <ProductDetailHeader product={detail} backHref={`/app/${slug}/portal-produsen/produk`} backLabel="Produk Saya"
+        actions={<ProducerProductActions slug={access.tenant.slug} productId={detail.id} status={detail.status} editHref={`${`/app/${slug}/portal-produsen/produk/${detail.id}`}/ubah`} listHref={`/app/${slug}/portal-produsen/produk`} />} />
       <ProductDetailTabNav basePath={basePath} tabs={tabs} active={active} />
 
       {active === "ringkasan" && <TabRingkasan counts={counts} />}

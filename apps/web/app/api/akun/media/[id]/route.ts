@@ -5,6 +5,7 @@ import { db, members, memberMedia }  from "@jalajogja/db";
 import { auth }                      from "@/lib/auth";
 import { deleteFile }                from "@/lib/minio";
 import { createTenantDb }            from "@jalajogja/db";
+import { findMediaInUse }            from "@/lib/producer-products.server";
 
 async function getSessionMember(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -43,6 +44,18 @@ export async function DELETE(
 
   if (!file) {
     return NextResponse.json({ error: "File tidak ditemukan." }, { status: 404 });
+  }
+
+  // Foto yang sedang dipakai produk (di tenant mana pun anggota ini menjadi produsen) TIDAK boleh dihapus — foto produk akan rusak.
+  // Gagal memeriksa = jangan hapus (fail-closed).
+  try {
+    const inUse = await findMediaInUse(member!.id, [id]);
+    if (inUse.has(id)) {
+      return NextResponse.json({ error: "Foto ini sedang dipakai oleh produk Anda. Ganti fotonya di produk (atau hapus produknya) terlebih dahulu." }, { status: 409 });
+    }
+  } catch (e) {
+    console.error("[akun/media DELETE] cek pemakaian foto gagal:", e instanceof Error ? e.message : "unknown");
+    return NextResponse.json({ error: "Tidak dapat memeriksa pemakaian foto. Coba lagi nanti." }, { status: 503 });
   }
 
   const pathsToDelete = file.variants
