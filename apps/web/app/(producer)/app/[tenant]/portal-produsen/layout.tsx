@@ -42,7 +42,7 @@ export default async function ProducerPortalLayout({
             <UserMenu name={session.user.name} email={session.user.email} role="Produsen" />
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+        <main className="relative flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

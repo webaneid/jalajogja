@@ -23,7 +23,8 @@ let fails = 0;
 const ok = (n: string, v: boolean, x = "") => { console.log((v ? "PASS " : "FAIL ") + n + (x ? "  " + x : "")); if (!v) fails++; };
 
 // ── Bagian MURNI ──
-const EXTRA = { status: "active" as const, originId: null, productType: "simple" as const, attributeGroups: [] as never[], variations: [] as never[] };
+const SEO0 = { metaTitle: null, metaDesc: null, focusKeyword: null, ogTitle: null, ogDescription: null, twitterCard: "summary_large_image" as const };
+const EXTRA = { status: "active" as const, originId: null, productType: "simple" as const, attributeGroups: [] as never[], variations: [] as never[], slug: null, sku: null, seo: SEO0 };
 const valid = { name: "Sajadah Uji", description: "", categoryId: null, images: [{ mediaId: randomUUID(), alt: "a" }], publicPrice: 100000, memberPrice: 90000, stock: 5, weightGram: 500 };
 ok("parse: input sah", parseProductInput(valid).ok);
 ok("parse: bukan objek ditolak", !parseProductInput(null).ok && !parseProductInput("x").ok && !parseProductInput([]).ok);
@@ -61,7 +62,7 @@ ok("parse variasi: kombinasi di luar atribut / ganda / kurang ditolak", !parsePr
 ok("parse variasi: harga anggota > harga jual efektif ditolak (milik sendiri & ikut induk)", !parseProductInput(varIn([VAR({ publicPrice: 1000, memberPrice: 2000 })])).ok && !parseProductInput(varIn([VAR({ memberPrice: 100001 })])).ok && parseProductInput(varIn([VAR({ memberPrice: 100000 })])).ok);
 ok("parse variasi: stok negatif/desimal, harga 0, berat 0, id bukan uuid, foto bukan uuid ditolak", !parseProductInput(varIn([VAR({ stock: -1 })])).ok && !parseProductInput(varIn([VAR({ stock: 1.5 })])).ok && !parseProductInput(varIn([VAR({ publicPrice: 0 })])).ok && !parseProductInput(varIn([VAR({ weightGram: 0 })])).ok && !parseProductInput(varIn([VAR({ id: "x" })])).ok && !parseProductInput(varIn([VAR({ images: [{ mediaId: "x", alt: "" }] })])).ok);
 ok("parse variasi: >3 atribut, >100 variasi, atribut kembar ditolak", !parseProductInput(varIn([VAR()], [1, 2, 3, 4].map((i) => ({ name: `A${i}`, values: ["x"] })))).ok && !parseProductInput(varIn(Array.from({ length: 101 }, (_, i) => VAR({}, "S")))).ok && !parseProductInput(varIn([VAR()], [{ name: "Ukuran", values: ["S"] }, { name: "ukuran", values: ["S"] }])).ok);
-ok("deskripsi: node berbahaya dibuang (gambar/embed/galeri/script/tabel)", (() => {
+ok("deskripsi: node berbahaya dibuang (gambar tanpa mediaId/embed/galeri/script/code)", (() => {
   const bad = JSON.stringify({ type: "doc", content: [
     { type: "paragraph", content: [{ type: "text", text: "halo", marks: [{ type: "bold" }, { type: "textStyle", attrs: { color: 'red" onmouseover="x' } }, { type: "link", attrs: { href: "javascript:alert(1)" } }] }] },
     { type: "image", attrs: { src: "javascript:1" } }, { type: "embedBlock", attrs: { html: "<script>x</script>" } }, { type: "galleryBlock", attrs: { items: [] } },
@@ -70,7 +71,7 @@ ok("deskripsi: node berbahaya dibuang (gambar/embed/galeri/script/tabel)", (() =
   const r = parseProductInput({ ...valid, description: bad });
   if (!r.ok) return false;
   const d = r.value.description;
-  return d.includes("halo") && d.includes("judul") && d.includes("bold") && !/image|embed|gallery|table|codeBlock|textStyle|javascript|onmouseover|onclick|script/i.test(d);
+  return d.includes("halo") && d.includes("judul") && d.includes("bold") && !/image|embed|gallery|codeBlock|textStyle|javascript|onmouseover|onclick|script/i.test(d);
 })());
 ok("deskripsi: link https dipertahankan, level heading di luar 2–4 dikoreksi", (() => {
   const r = parseProductInput({ ...valid, description: JSON.stringify({ type: "doc", content: [
@@ -372,6 +373,38 @@ try {
   }
   await db.update(s.products).set({ status: "active" }).where(eq(s.products.id, mine.id));
   ok("beku: setelah admin membuka, produsen bisa mengarsipkan lagi", (await setProducerProductStatus(accC, mine.id, "archived")).ok && (await setProducerProductStatus(accC, mine.id, "active")).ok);
+
+  // ── Slug / SKU / SEO / gambar & tabel di deskripsi (permintaan user 2026-11-03) ──
+  ok("parse: slug tidak valid ditolak", !parseProductInput({ ...valid, slug: "Ada Spasi!" }).ok && !parseProductInput({ ...valid, slug: "-x-" }).ok);
+  ok("parse: slug/SKU/SEO sah diterima", (() => { const r = parseProductInput({ ...valid, slug: "sajadah-uji", sku: "SJD-1", seo: { metaTitle: "T", metaDesc: "D", twitterCard: "summary" } }); return r.ok && r.value.slug === "sajadah-uji" && r.value.sku === "SJD-1" && r.value.seo.twitterCard === "summary"; })());
+  ok("parse: meta terlalu panjang ditolak", !parseProductInput({ ...valid, seo: { metaDesc: "x".repeat(400) } }).ok);
+  ok("parse: canonical/robots/ogImage dari klien diabaikan", (() => { const r = parseProductInput({ ...valid, seo: { canonicalUrl: "https://evil.example", robots: "noindex", ogImageId: randomUUID() } }); return r.ok && !("canonicalUrl" in r.value.seo) && !("robots" in r.value.seo) && !("ogImageId" in r.value.seo); })());
+  const b1Sku = `SMOKE-B1-${randomUUID().slice(0, 6)}`;
+  await db.update(s.products).set({ sku: b1Sku }).where(eq(s.products.id, b1));
+  const b1Slug = (await db.select().from(s.products).where(eq(s.products.id, b1)))[0].slug;
+  const slugIn = { ...edit, slug: `uji-slug-${randomUUID().slice(0, 6)}`, sku: `SKU-${randomUUID().slice(0, 6)}`, seo: { ...SEO0, metaTitle: "Judul SEO", metaDesc: "Deskripsi SEO", focusKeyword: "sajadah" } };
+  ok("slug/SKU/SEO: ubah sukses", (await updateProducerProduct(accC, mine.id, slugIn)).ok);
+  const [sx] = await db.select().from(s.products).where(eq(s.products.id, mine.id));
+  ok("slug/SKU/SEO: tersimpan", sx.slug === slugIn.slug && sx.sku === slugIn.sku && sx.metaTitle === "Judul SEO" && sx.metaDesc === "Deskripsi SEO" && sx.focusKeyword === "sajadah");
+  ok("SEO: canonical/robots/OG image tetap bawaan (tak dari produsen)", sx.canonicalUrl === null && sx.ogImageId === null && sx.robots === "index,follow");
+  ok("slug: kosong → slug lama dipertahankan", (await updateProducerProduct(accC, mine.id, { ...slugIn, slug: null })).ok && (await db.select().from(s.products).where(eq(s.products.id, mine.id)))[0].slug === slugIn.slug);
+  ok("slug: bentrok dengan produk lain ditolak", !(await updateProducerProduct(accC, mine.id, { ...slugIn, slug: b1Slug })).ok);
+  ok("SKU: bentrok dengan produk lain ditolak", !(await updateProducerProduct(accC, mine.id, { ...slugIn, sku: b1Sku })).ok);
+  // deskripsi: tabel boleh; gambar hanya milik anggota (src dibangun ulang); node terlarang dibuang
+  const doc = (nodes: unknown[]) => JSON.stringify({ type: "doc", content: nodes });
+  const img = (mediaId: string) => ({ type: "image", attrs: { src: "https://evil.example/x.png", alt: "a", mediaId } });
+  const tbl = { type: "table", content: [{ type: "tableRow", content: [{ type: "tableHeader", content: [{ type: "paragraph", content: [{ type: "text", text: "H" }] }] }] }] };
+  const descIn = { ...slugIn, description: doc([tbl, img(m1), ...(foreign ? [img(foreign)] : []), { type: "embedBlock", attrs: { html: "<script>x</script>" } }, { type: "paragraph", content: [{ type: "text", text: "teks" }] }]) };
+  const pd = parseProductInput({ ...descIn, images: descIn.images });
+  ok("deskripsi: parse menerima tabel + gambar, membuang embed", pd.ok && pd.value.description.includes("tableRow") && !pd.value.description.includes("embedBlock") && !pd.value.description.includes("evil.example"));
+  ok("deskripsi: simpan sukses", (await updateProducerProduct(accC, mine.id, pd.ok ? pd.value : (descIn as never))).ok);
+  const [dd] = await db.select().from(s.products).where(eq(s.products.id, mine.id));
+  const saved = String(dd.description);
+  ok("deskripsi: mediaId huruf besar dinormalisasi (guard foto dipakai tak terlewati)", (() => { const r = parseProductInput({ ...valid, description: doc([img(m1.toUpperCase())]) }); return r.ok && r.value.description.includes(m1) && !r.value.description.includes(m1.toUpperCase()); })());
+  ok("deskripsi: tabel tersimpan", saved.includes('"table"'));
+  ok("deskripsi: gambar sendiri → src dari DB (bukan dari klien)", saved.includes(m1) && !saved.includes("evil.example") && /"src":"https?:\/\//.test(saved));
+  ok("deskripsi: gambar milik anggota lain DIBUANG", foreign ? !saved.includes(foreign) : true);
+  ok("foto dipakai: gambar di deskripsi dihitung dipakai", (await findMediaInUse(mem.id, [m1])).has(m1));
 
   // hapus
   ok("hapus: produk lain ditolak & tetap ada", !(await deleteProducerProduct(accC, b1)).ok && (await db.select().from(s.products).where(eq(s.products.id, b1))).length === 1);

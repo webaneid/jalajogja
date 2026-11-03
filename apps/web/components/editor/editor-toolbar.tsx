@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
+import { MemberMediaPicker } from "@/components/media/member-media-picker";
 import { fetchOEmbed, type OEmbedResult } from "./embed-block-ext";
 import { toast } from "sonner";
 
@@ -551,23 +552,12 @@ function FixedToolbar({ editor, slug, basic = false }: ToolbarProps) {
     <div className="flex items-center gap-0.5 flex-wrap px-2 py-1.5 border-b border-border bg-muted/30">
 
       {/* Insert: Image, Embed, Table, Gallery, Baca Juga */}
-      {!basic && (<>
       <ToolBtn onClick={() => setMediaOpen(true)} title="Sisipkan Gambar">
         <ImagePlus className="h-4 w-4" />
-      </ToolBtn>
-      <ToolBtn onClick={() => setEmbedOpen(true)} title="Embed Media (YouTube, Instagram, TikTok, dll)">
-        <Film className="h-4 w-4" />
-      </ToolBtn>
-      <ToolBtn onClick={() => setRelatedOpen(true)} title="Sisipkan Block 'Baca Juga' / Link Terkait">
-        <BookOpen className="h-4 w-4" />
       </ToolBtn>
       <ToolBtn onClick={handleInsertTable} title="Sisipkan Tabel">
         <Table className="h-4 w-4" />
       </ToolBtn>
-      <ToolBtn onClick={handleInsertGallery} title="Sisipkan Galeri Foto">
-        <Images className="h-4 w-4" />
-      </ToolBtn>
-
       {/* Hapus tabel — hanya tampil saat cursor di dalam tabel */}
       {editor.isActive("table") && (
         <ToolBtn
@@ -578,9 +568,20 @@ function FixedToolbar({ editor, slug, basic = false }: ToolbarProps) {
           <Trash2 className="h-4 w-4" />
         </ToolBtn>
       )}
+      {!basic && (<>
+      <ToolBtn onClick={() => setEmbedOpen(true)} title="Embed Media (YouTube, Instagram, TikTok, dll)">
+        <Film className="h-4 w-4" />
+      </ToolBtn>
+      <ToolBtn onClick={() => setRelatedOpen(true)} title="Sisipkan Block 'Baca Juga' / Link Terkait">
+        <BookOpen className="h-4 w-4" />
+      </ToolBtn>
+      <ToolBtn onClick={handleInsertGallery} title="Sisipkan Galeri Foto">
+        <Images className="h-4 w-4" />
+      </ToolBtn>
 
-      <Separator />
+
       </>)}
+      <Separator />
 
       {/* Text align */}
       <ToolBtn
@@ -645,14 +646,24 @@ function FixedToolbar({ editor, slug, basic = false }: ToolbarProps) {
       </ToolBtn>
 
       {/* MediaPicker */}
-      {!basic && <MediaPicker
-        slug={slug}
-        open={mediaOpen}
-        onClose={() => setMediaOpen(false)}
-        onSelect={handleMediaSelect}
-        module="website"
-        accept={["image/"]}
-      />}
+      {basic ? (
+        // Mode produsen: gambar dari Media Library ANGGOTA (bukan tenant). Server membangun ulang src dari mediaId & menolak yang bukan miliknya.
+        <MemberMediaPicker
+          slug={slug}
+          open={mediaOpen}
+          onClose={() => setMediaOpen(false)}
+          onSelect={(item) => editor.chain().focus().insertMediaImage({ src: item.variants?.large ?? item.url, alt: item.originalName, mediaId: item.id }).run()}
+        />
+      ) : (
+        <MediaPicker
+          slug={slug}
+          open={mediaOpen}
+          onClose={() => setMediaOpen(false)}
+          onSelect={handleMediaSelect}
+          module="website"
+          accept={["image/"]}
+        />
+      )}
 
       {/* Embed Dialog */}
       {!basic && <EmbedDialog

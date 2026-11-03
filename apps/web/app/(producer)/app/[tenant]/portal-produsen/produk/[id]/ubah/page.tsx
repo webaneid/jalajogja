@@ -37,7 +37,7 @@ export default async function EditProducerProductPage({ params }: { params: Prom
     : [];
 
   return (
-    <div className="-m-4 h-[calc(100%+2rem)] md:-m-6 md:h-[calc(100%+3rem)]">
+    <div className="absolute inset-0">
       <ProductForm
         slug={access.tenant.slug}
         tenantName={access.tenant.name}

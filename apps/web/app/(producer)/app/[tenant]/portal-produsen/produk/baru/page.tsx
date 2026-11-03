@@ -33,8 +33,9 @@ export default async function NewProducerProductPage({ params }: { params: Promi
   if (used >= com.productLimit) return <Notice>Batas produk tercapai ({used}/{com.productLimit}). Produk yang diarsipkan tetap dihitung; hapus produk yang tidak diperlukan atau minta pengurus menaikkan batas Anda.</Notice>;
 
   return (
-    // Form admin dirancang memenuhi area konten tanpa padding; portal punya padding sendiri → ditiadakan di sini.
-    <div className="-m-4 h-[calc(100%+2rem)] md:-m-6 md:h-[calc(100%+3rem)]">
+    // Form admin dirancang memenuhi area konten tanpa padding: menempel penuh ke <main> (relative) — bukan trik margin negatif + tinggi persen,
+    // yang membuat form lebih tinggi dari area konten sehingga header form menutupi judul/sidebar.
+    <div className="absolute inset-0">
       <ProductForm
         slug={access.tenant.slug}
         tenantName={access.tenant.name}

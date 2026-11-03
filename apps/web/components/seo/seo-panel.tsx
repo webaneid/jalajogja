@@ -61,6 +61,8 @@ export interface SeoPanelProps {
   content?: string;
   values: SeoValues;
   onChange: (values: SeoValues) => void;
+  /** Mode Produsen: OG Image (butuh Media Library tenant), Canonical, Robots & Schema disembunyikan — server juga mengabaikannya. */
+  restricted?: boolean;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -157,6 +159,7 @@ export function SeoPanel({
   content,
   values,
   onChange,
+  restricted = false,
 }: SeoPanelProps) {
   const [isOpen,         setIsOpen]         = useState(false);
   const [snippetMode,    setSnippetMode]     = useState<"desktop" | "mobile">("desktop");
@@ -215,7 +218,7 @@ export function SeoPanel({
               <TabsList>
                 <TabsTrigger value="seo">SEO Dasar</TabsTrigger>
                 <TabsTrigger value="og">Open Graph</TabsTrigger>
-                <TabsTrigger value="advanced">Advanced</TabsTrigger>
+                {!restricted && <TabsTrigger value="advanced">Advanced</TabsTrigger>}
               </TabsList>
             </div>
 
@@ -357,7 +360,7 @@ export function SeoPanel({
               </div>
 
               {/* OG Image */}
-              <div className="space-y-1.5">
+              {!restricted && <div className="space-y-1.5">
                 <Label>OG Image</Label>
                 {values.ogImageUrl ? (
                   <div className="space-y-2">
@@ -403,7 +406,7 @@ export function SeoPanel({
                 <p className="text-xs text-muted-foreground">
                   Ukuran ideal: 1200 × 630 px. Tampil saat link dibagikan di sosial media.
                 </p>
-              </div>
+              </div>}
 
               {/* Social Preview */}
               <div className="space-y-2">
@@ -442,7 +445,7 @@ export function SeoPanel({
               </div>
 
               {/* MediaPicker — di luar Dialog agar z-index tidak bentrok */}
-              <MediaPicker
+              {!restricted && <MediaPicker
                 slug={slug}
                 open={mediaPickerOpen}
                 onClose={() => setMediaPickerOpen(false)}
@@ -451,11 +454,11 @@ export function SeoPanel({
                 }}
                 module="website"
                 accept={["image/"]}
-              />
+              />}
             </TabsContent>
 
             {/* ────────────── TAB 3: Advanced ────────────── */}
-            <TabsContent value="advanced" className="px-4 pb-5 pt-4 space-y-5 m-0">
+            {!restricted && <TabsContent value="advanced" className="px-4 pb-5 pt-4 space-y-5 m-0">
 
               {/* Canonical URL */}
               <div className="space-y-1.5">
@@ -514,7 +517,7 @@ export function SeoPanel({
                   Override JSON-LD otomatis. Kosongkan untuk menggunakan generator bawaan.
                 </p>
               </div>
-            </TabsContent>
+            </TabsContent>}
           </Tabs>
         </div>
       )}

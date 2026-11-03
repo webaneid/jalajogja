@@ -335,6 +335,7 @@ export function ProductForm({
     // ── MODE PRODUSEN: payload sempit ke Server Action produsen (harga dasar TIDAK dikirim — dihitung server) ──
     if (producer) {
       if (!name.trim()) { setError("Nama produk wajib diisi."); return; }
+      if (!productSlug.trim()) { setError("Slug wajib diisi."); return; }
       if (publicNum <= 0) { setError("Harga jual wajib diisi."); return; }
       if (memberNum > publicNum) { setError("Harga Anggota tidak boleh lebih tinggi dari Harga Jual."); return; }
       if (!(parseInt(weightGram) > 0)) { setError("Berat (gram) wajib diisi."); return; }
@@ -344,7 +345,9 @@ export function ProductForm({
       if (productType === "variable" && variations.length === 0) { setError("Produk bervariasi butuh minimal satu variasi. Isi atribut lalu klik Generate Variasi."); return; }
       const toImg = (i: ProductImage) => ({ mediaId: i.id, alt: i.alt || name.trim() });
       const payload = {
-        name: name.trim(), description: description || "", categoryId: categoryId === "none" ? null : categoryId,
+        name: name.trim(), slug: productSlug.trim(), sku: sku.trim() || null,
+        seo: { metaTitle: seo.metaTitle, metaDesc: seo.metaDesc, focusKeyword: seo.focusKeyword, ogTitle: seo.ogTitle, ogDescription: seo.ogDescription, twitterCard: seo.twitterCard },
+        description: description || "", categoryId: categoryId === "none" ? null : categoryId,
         images: images.map(toImg), publicPrice, memberPrice: memberPrice.trim() === "" ? null : memberPrice,
         stock, weightGram, status: status === "frozen" ? "draft" : status,   // status beku tidak dikirim berubah: server mempertahankan
         originId: mineOrigins.some((o) => o.id === originId) ? originId : null,
@@ -510,18 +513,18 @@ export function ProductForm({
             />
           </div>
 
-          {/* Slug — disembunyikan untuk produsen (dibuat otomatis server) */}
-          {!isProducer && <div className="flex items-center gap-2">
+          {/* Slug */}
+          <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground shrink-0">Slug:</span>
             <Input
               value={productSlug}
               onChange={(e) => handleSlugChange(slugify(e.target.value))}
               className="font-mono text-xs border-none shadow-none px-0 h-auto py-0 focus-visible:ring-0 text-muted-foreground"
             />
-          </div>}
+          </div>
 
-          {/* SKU — disembunyikan untuk produsen */}
-          {!isProducer && <div className="grid grid-cols-2 gap-4">
+          {/* SKU */}
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs text-muted-foreground mb-1">SKU (opsional)</label>
               <Input
@@ -530,7 +533,7 @@ export function ProductForm({
                 placeholder="mis. PRD-001"
               />
             </div>
-          </div>}
+          </div>
 
           <Separator />
 
@@ -546,21 +549,18 @@ export function ProductForm({
             />
           </div>
 
-          {!isProducer && (
-            <>
-              <Separator />
+          <Separator />
 
-              {/* SEO Panel — tidak tersedia untuk produsen (K27) */}
-              <SeoPanel
-                slug={slug}
-                contentType="product"
-                values={seo}
-                onChange={setSeo}
-                title={name}
-                content={description}
-              />
-            </>
-          )}
+          {/* SEO Panel — produsen: versi terbatas (tanpa OG Image/Canonical/Robots/Schema) */}
+          <SeoPanel
+            slug={slug}
+            contentType="product"
+            values={seo}
+            onChange={setSeo}
+            title={name}
+            content={description}
+            restricted={isProducer}
+          />
         </div>
 
         {/* ── Sidebar ── */}

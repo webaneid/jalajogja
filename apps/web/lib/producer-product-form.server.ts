@@ -50,6 +50,11 @@ export function producerInitialData(product: NonNullable<ProductRow>, variations
     stock: product.stock, weightGram: product.weightGram ?? null, originId: product.originId ?? null,
     images: Array.isArray(product.images) ? (product.images as ProductImage[]) : [],
     categoryId: product.categoryId ?? null, status: product.status,
+    seo: {
+      ...EMPTY_SEO, metaTitle: product.metaTitle ?? "", metaDesc: product.metaDesc ?? "", focusKeyword: product.focusKeyword ?? "",
+      ogTitle: product.ogTitle ?? "", ogDescription: product.ogDescription ?? "",
+      twitterCard: product.twitterCard === "summary" ? "summary" : "summary_large_image",
+    },
     productType: (product.productType ?? "simple") as "simple" | "variable",
     attributeGroups: Array.isArray(product.attributeGroups) ? (product.attributeGroups as import("@jalajogja/db").AttributeGroup[]) : [],
     variations: variations.map((v) => ({

@@ -248,3 +248,21 @@ Tidak bisa diverifikasi dari kode: unique index pada `sku` (galat 23505 di creat
 
 ## 16. K34 — Keranjang/checkout publik hanya menerima produk berstatus `active` (disetujui user 2026-11-03)
 `resolveProductCartItem` → `producerActive` kini juga `false` bila `products.status` bukan `active` (draft/arsip/dibekukan), selain produsen dinonaktifkan. Berlaku di `addToCartAction` dan `checkoutAction` (item di keranjang yang terlanjur draft/arsip ditolak: "sedang tidak tersedia"). Invoice manual admin tidak memakai flag ini → tetap boleh. Berlaku untuk SEMUA produk (bukan hanya produsen). Teruji di `smoke-producer-products.ts`. Tanpa migration.
+
+## 17. Perbaikan hasil uji browser (2026-11-03) — K35–K38 (arahan user; sebagian merevisi K27/K31)
+Setelah deploy R1–R3, uji browser menemukan 5 hal sederhana:
+| # | Temuan | Keputusan / perbaikan |
+|---|---|---|
+| 1–2 | Slug & SKU tidak ada di form produsen | **K35** (merevisi K31): kolom Slug & SKU kini tampil sama dengan admin. Slug opsional (kosong saat buat = otomatis dari nama + akhiran acak; kosong saat ubah = slug lama dipertahankan), format `a-z0-9-` maks. 80, unik per tenant; SKU maks. 64, unik per tenant. Bentrok → pesan jelas (dicek sebelum simpan). |
+| 3 | Tidak ada SEO & Meta | **K36** (merevisi K27): `SeoPanel` yang SAMA, dengan prop `restricted` untuk produsen. Boleh: Meta title/description, Focus keyword, OG title/description, Twitter card. **Disembunyikan & diabaikan server**: OG Image (butuh Media Library tenant), Canonical URL & Robots (bisa membelokkan/menghilangkan produk dari mesin pencari tenant), Schema/structured data. Teks dibatasi panjang & karakter kontrol dibuang. |
+| 4 | Editor tanpa tabel & gambar dari media library | **K37** (merevisi K21/K28): toolbar produsen punya Tabel dan Gambar. Gambar dipilih lewat `MemberMediaPicker` (Media Library ANGGOTA). Server menyimpan node gambar HANYA sebagai `{mediaId, alt}`, lalu `resolveDescriptionImages` membangun ulang `src` dari baris `member_media` milik anggota pemilik produsen — `src` dari klien tak pernah dipakai, gambar milik orang lain/bertujuan khusus dibuang; maks. 20 gambar. Tabel hanya struktur (colspan/rowspan 1–10). Embed, galeri, tautan terkait, code tetap tak tersedia. Gambar di deskripsi dihitung "sedang dipakai" oleh `findMediaInUse` (foto tak bisa dihapus dari Media Library selama dipakai). |
+| 5 | Header form (breadcrumb "Produk" + badge status) menutupi judul & sidebar ("Harga & Stok") | **K38**: penyebab = pembungkus `-m-4 h-[calc(100%+2rem)]` (tinggi persen terhadap `<main>` yang tak punya tinggi pasti → form lebih tinggi dari area). Diganti `<main className="relative">` + pembungkus `absolute inset-0`, sehingga form menempel tepat pada area konten (sama seperti di dashboard admin). **Belum diverifikasi visual di browser.** |
+Teruji: `smoke-producer-products.ts` (parse slug/SKU/SEO, simpan, bentrok slug/SKU, SEO terlarang diabaikan, tabel/gambar deskripsi, gambar orang lain dibuang, gambar deskripsi dihitung dipakai). Tanpa migration (kolom sudah ada).
+
+### 17.1 Audit K35–K38 (subagen `security-auditor`, 2026-11-03) — 0 Critical, 0 High, 0 Medium, 4 Low
+Gambar/URL asing di deskripsi, canonical/robots/OG image lewat payload, IDOR slug/SKU, dan injeksi LIKE dinyatakan aman.
+- LOW mediaId huruf besar melewati guard "foto dipakai" → **diperbaiki** (`mediaId` di-lowercase saat sanitasi; teruji).
+- LOW 23505 pada update (balapan slug/SKU) → **diperbaiki** (pesan jelas).
+- LOW pesan "slug/SKU sudah dipakai" menjadi oracle keberadaan slug/SKU produk lain → **diterima** (trade-off UX, dibatasi rate limit; slug publik toh terlihat).
+- LOW gambar deskripsi sisipan admin (Media Library tenant) hilang bila produsen menyimpan → **dicatat** (fail-closed; admin sebaiknya tak menyisipkan gambar di deskripsi produk produsen).
+- Catatan: produsen boleh menaruh tautan `https://` eksternal di teks (bukan XSS); slug produk beku masih bisa diubah produsen — keputusan produk bila ingin dikunci.

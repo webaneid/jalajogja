@@ -15,6 +15,10 @@ export const PRODUCER_PRODUCT_LIMITS = {
   attributeValuesMax: 20,
   attributeNameMax:   40,
   skuMax:         64,
+  slugMax:        80,
+  metaTitleMax:   120,
+  metaDescMax:    320,
+  keywordMax:     80,
   priceMax:       1_000_000_000,   // Rp1 miliar per unit — batas kewajaran, bukan aturan bisnis
   stockMax:       1_000_000,
   weightMaxGram:  200_000,         // 200 kg
@@ -41,8 +45,14 @@ export type ProducerVariationInput = {
 };
 export type ProducerAttributeGroup = { name: string; values: string[] };
 
+/** SEO terbatas produsen: tanpa OG Image/Canonical/Robots/Schema (canonical & robots bisa membelokkan mesin pencari tenant). */
+export type ProducerSeoInput = { metaTitle: string | null; metaDesc: string | null; focusKeyword: string | null; ogTitle: string | null; ogDescription: string | null; twitterCard: "summary" | "summary_large_image" };
+
 export type ProducerProductInput = {
   name:        string;
+  slug:        string | null;                // null/"" = dibuat otomatis dari nama + akhiran acak
+  sku:         string | null;
+  seo:         ProducerSeoInput;
   description: string;                       // JSON Tiptap ("" = kosong)
   categoryId:  string | null;
   images:      ProducerProductImageInput[];  // urutan = urutan tampil; [0] = foto utama
@@ -72,16 +82,19 @@ function toInt(v: unknown): number | null {
 }
 
 // ── Deskripsi: daftar putih node/mark Tiptap untuk produsen ─────────────────────────────────────────────────
-// Produsen BUKAN pengguna tenant: tanpa gambar/embed/galeri/tabel/tautan terkait/code (toolbar `basic` menyembunyikannya, tetapi
+// Produsen BUKAN pengguna tenant: tanpa embed/galeri/tautan terkait/code (toolbar `basic` menyembunyikannya, tetapi
 // JSON bisa dikirim langsung ke Server Action → server membuang semua yang di luar daftar, bukan sekadar percaya klien).
-const ALLOWED_NODES = new Set(["doc", "paragraph", "heading", "text", "bulletList", "orderedList", "listItem", "blockquote", "hardBreak", "horizontalRule"]);
+// Tabel boleh (hanya struktur). Gambar boleh HANYA berupa {mediaId, alt}: `src` dari klien DIBUANG, lalu server membangun ulang
+// src dari Media Library anggota pemilik (resolveDescriptionImages di producer-products.server.ts) — gambar bukan miliknya dibuang.
+const ALLOWED_NODES = new Set(["doc", "paragraph", "heading", "text", "bulletList", "orderedList", "listItem", "blockquote", "hardBreak", "horizontalRule", "table", "tableRow", "tableHeader", "tableCell", "image"]);
+const MAX_DESC_IMAGES = 20;
 const ALLOWED_MARKS = new Set(["bold", "italic", "underline", "strike", "link"]);
 const ALIGNS = new Set(["left", "center", "right", "justify"]);
 const MAX_NODES = 3000, MAX_DEPTH = 12, MAX_TEXT_NODE = 5000;
 
 type TNode = { type?: unknown; text?: unknown; attrs?: unknown; marks?: unknown; content?: unknown };
 
-function cleanNode(n: unknown, depth: number, budget: { left: number }): Record<string, unknown> | null {
+function cleanNode(n: unknown, depth: number, budget: { left: number; images: number }): Record<string, unknown> | null {
   if (!isRecord(n) || depth > MAX_DEPTH || budget.left-- <= 0) return null;
   const node = n as TNode;
   const type = node.type;
@@ -103,6 +116,19 @@ function cleanNode(n: unknown, depth: number, budget: { left: number }): Record<
       if (marks.length) out.marks = marks;
     }
     return out;
+  }
+
+  if (type === "image") {
+    const a = isRecord(node.attrs) ? node.attrs : {};
+    if (typeof a.mediaId !== "string" || !isValidUuid(a.mediaId) || budget.images-- <= 0) return null;
+    out.attrs = { mediaId: a.mediaId.toLowerCase(), alt: typeof a.alt === "string" ? a.alt.trim().slice(0, PRODUCER_PRODUCT_LIMITS.altMax) : "" };
+    return out;
+  }
+
+  if (type === "tableCell" || type === "tableHeader") {
+    const span = (v: unknown) => { const x = Number(v); return Number.isInteger(x) && x >= 1 && x <= 10 ? x : 1; };
+    const a = isRecord(node.attrs) ? node.attrs : {};
+    out.attrs = { colspan: span(a.colspan), rowspan: span(a.rowspan) };
   }
 
   if (type === "heading" || type === "paragraph") {
@@ -131,7 +157,7 @@ export function sanitizeDescription(raw: string): { ok: true; value: string } | 
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { return { ok: false, error: "Format deskripsi tidak valid." }; }
   if (!isRecord(parsed) || parsed.type !== "doc") return { ok: false, error: "Format deskripsi tidak valid." };
-  const cleaned = cleanNode(parsed, 0, { left: MAX_NODES }) ?? { type: "doc" };
+  const cleaned = cleanNode(parsed, 0, { left: MAX_NODES, images: MAX_DESC_IMAGES }) ?? { type: "doc" };
   return { ok: true, value: JSON.stringify(cleaned) };
 }
 
@@ -301,7 +327,32 @@ export function parseProductInput(input: unknown): Parsed<ProducerProductInput> 
     return { ok: false, error: "Tipe produk tidak valid." };
   }
 
-  return { ok: true, value: { name, description, categoryId, images, publicPrice, memberPrice, stock: productType === "variable" ? 0 : stock, weightGram, status, originId, productType, attributeGroups, variations } };
+  let slug: string | null = null;
+  if (typeof input.slug === "string" && input.slug.trim() !== "") {
+    slug = input.slug.trim();
+    if (slug.length > L.slugMax || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) return { ok: false, error: "Slug hanya boleh huruf kecil, angka, dan tanda hubung (maks. 80 karakter)." };
+  }
+  let sku: string | null = null;
+  if (typeof input.sku === "string" && input.sku.trim() !== "") {
+    sku = input.sku.trim();
+    if (sku.length > L.skuMax) return { ok: false, error: "SKU terlalu panjang." };
+  }
+  const rs = isRecord(input.seo) ? input.seo : {};
+  const txt = (v: unknown, max: number, label: string): Parsed<string | null> => {
+    if (v === null || v === undefined || v === "") return { ok: true, value: null };
+    if (typeof v !== "string") return { ok: false, error: `${label} tidak valid.` };
+    const t = v.trim().replace(/[\u0000-\u001f\u007f]/g, " ");
+    if (t.length > max) return { ok: false, error: `${label} terlalu panjang (maks. ${max} karakter).` };
+    return { ok: true, value: t || null };
+  };
+  const mt = txt(rs.metaTitle, L.metaTitleMax, "Meta title"); if (!mt.ok) return mt;
+  const md = txt(rs.metaDesc, L.metaDescMax, "Meta description"); if (!md.ok) return md;
+  const fk = txt(rs.focusKeyword, L.keywordMax, "Focus keyword"); if (!fk.ok) return fk;
+  const ot = txt(rs.ogTitle, L.metaTitleMax, "OG title"); if (!ot.ok) return ot;
+  const od = txt(rs.ogDescription, L.metaDescMax, "OG description"); if (!od.ok) return od;
+  const seo: ProducerSeoInput = { metaTitle: mt.value, metaDesc: md.value, focusKeyword: fk.value, ogTitle: ot.value, ogDescription: od.value, twitterCard: rs.twitterCard === "summary" ? "summary" : "summary_large_image" };
+
+  return { ok: true, value: { name, slug, sku, seo, description, categoryId, images, publicPrice, memberPrice, stock: productType === "variable" ? 0 : stock, weightGram, status, originId, productType, attributeGroups, variations } };
 }
 
 /**

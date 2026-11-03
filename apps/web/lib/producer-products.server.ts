@@ -109,10 +109,47 @@ export async function resolveProductImages(memberId: string, input: ProducerProd
   });
 }
 
+// ── Gambar di dalam deskripsi ────────────────────────────────────────────────────────────────────────────────
+/**
+ * Deskripsi (JSON Tiptap, SUDAH lewat sanitizeDescription) → bangun ulang `src` tiap node `image` dari Media Library anggota
+ * `memberId`. Gambar yang bukan milik anggota ini / bertujuan khusus (resi) / belum selesai diproses DIBUANG. src dari klien tak pernah dipakai.
+ */
+export async function resolveDescriptionImages(memberId: string, description: string): Promise<string> {
+  if (!description) return description;
+  const doc = JSON.parse(description) as { content?: unknown[] };
+  const ids = new Set<string>();
+  const collect = (n: unknown) => {
+    if (!n || typeof n !== "object") return;
+    const node = n as { type?: string; attrs?: { mediaId?: string }; content?: unknown[] };
+    if (node.type === "image" && node.attrs?.mediaId) ids.add(node.attrs.mediaId);
+    node.content?.forEach(collect);
+  };
+  collect(doc);
+  if (ids.size === 0) return description;
+  const rows = await publicDb.select().from(memberMedia)
+    .where(and(inArray(memberMedia.id, [...ids]), eq(memberMedia.memberId, memberId), isNull(memberMedia.purpose), eq(memberMedia.processingStatus, "done")));
+  const urlById = new Map(rows.map((m) => {
+    const v = m.variants as Record<string, string> | null;
+    const path = v?.large ?? v?.medium ?? m.path;
+    return [m.id, publicUrl(m.sourceTenantSlug, path)] as const;
+  }));
+  const rebuild = (n: unknown): unknown => {
+    if (!n || typeof n !== "object") return n;
+    const node = n as { type?: string; attrs?: Record<string, unknown>; content?: unknown[] };
+    if (node.content) node.content = node.content.map(rebuild).filter((c) => c !== null);
+    if (node.type === "image") {
+      const url = urlById.get(String(node.attrs?.mediaId));
+      return url ? { ...node, attrs: { src: url, alt: node.attrs?.alt ?? "", mediaId: node.attrs?.mediaId } } : null;
+    }
+    return node;
+  };
+  return JSON.stringify(rebuild(doc));
+}
+
 // ── Foto dipakai di mana? (hapus Media Library) ─────────────────────────────────────────────────────────────
 /**
- * Dari `mediaIds` milik `memberId`, kembalikan id yang SEDANG dipakai produk (foto utama/galeri `products.images` atau foto
- * variasi `product_variations.images`, termasuk produk arsip) di SEMUA tenant tempat anggota ini punya produk.
+ * Dari `mediaIds` milik `memberId`, kembalikan id yang SEDANG dipakai produk (foto utama/galeri `products.images`, foto
+ * variasi `product_variations.images`, atau gambar di deskripsi, termasuk produk arsip) di SEMUA tenant tempat anggota ini punya produk.
  * Tenant yang belum punya tabel produsen (42P01) dilewati; galat lain DILEMPAR (jangan fail-open → foto dipakai terhapus).
  */
 export async function findMediaInUse(memberId: string, mediaIds: string[]): Promise<Set<string>> {
@@ -145,6 +182,12 @@ export async function findMediaInUse(memberId: string, mediaIds: string[]): Prom
           inArray(s.products.producerId, pids),
           sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${s.productVariations.images}) e WHERE e->>'id' IN (${inList}))`,
         ));
+      // Foto yang disisipkan di DESKRIPSI (node image menyimpan "mediaId":"<uuid>") juga dihitung dipakai.
+      for (const id of wanted) {
+        const [d] = await db.select({ id: s.products.id }).from(s.products)
+          .where(and(inArray(s.products.producerId, pids), sql`${s.products.description} LIKE ${'%"mediaId":"' + id + '"%'}`)).limit(1);
+        if (d) used.add(id);
+      }
       for (const r of [...inProducts, ...inVariations]) {
         for (const img of (Array.isArray(r.images) ? r.images : []) as Array<{ id?: string }>) {
           if (img?.id && wanted.includes(img.id)) used.add(img.id);
@@ -302,6 +345,26 @@ async function resolveVariationImages(memberId: string, productId: string | null
   return out;
 }
 
+const SEO_COLS = (seo: ProducerProductInput["seo"]) => ({
+  metaTitle: seo.metaTitle, metaDesc: seo.metaDesc, focusKeyword: seo.focusKeyword,
+  ogTitle: seo.ogTitle, ogDescription: seo.ogDescription, twitterCard: seo.twitterCard,
+});
+
+/** Slug/SKU produk harus unik di tenant ini (kolom unik DB). Mengembalikan pesan galat atau null. */
+async function checkSlugSku(tc: TenantDb, input: ProducerProductInput, exceptId: string | null): Promise<string | null> {
+  const P = tc.schema.products;
+  const notSelf = exceptId ? ne(P.id, exceptId) : undefined;
+  if (input.slug) {
+    const [d] = await tc.db.select({ id: P.id }).from(P).where(and(eq(P.slug, input.slug), notSelf)).limit(1);
+    if (d) return "Slug sudah digunakan produk lain.";
+  }
+  if (input.sku) {
+    const [d] = await tc.db.select({ id: P.id }).from(P).where(and(eq(P.sku, input.sku), notSelf)).limit(1);
+    if (d) return "SKU sudah digunakan produk lain.";
+  }
+  return null;
+}
+
 export async function createProducerProduct(access: ProducerAccessLite, input: ProducerProductInput): Promise<{ ok: true; productId: string } | { ok: false; error: string }> {
   const tc = createTenantDb(access.tenant.slug);
   const com = await requireCommercials(tc, access.producer.id);
@@ -309,11 +372,15 @@ export async function createProducerProduct(access: ProducerAccessLite, input: P
 
   const images = await resolveProductImages(com.c.memberId, input.images);
   if (!images) return { ok: false, error: "Foto tidak valid. Pilih foto dari Media Library Anda sendiri." };
+  if (!com.c.memberId) return { ok: false, error: "Akun produsen belum tertaut ke anggota." };
+  input = { ...input, description: await resolveDescriptionImages(com.c.memberId, input.description) };
   const varImages = await resolveVariationImages(com.c.memberId, null, tc, input.variations);
   if (!varImages) return { ok: false, error: "Foto variasi tidak valid. Pilih foto dari Media Library Anda sendiri." };
   if (!(await categoryExists(tc, input.categoryId))) return { ok: false, error: "Kategori tidak ditemukan." };
   const originErr = await checkOrigin(tc, access.producer.id, input.originId);
   if (originErr) return { ok: false, error: originErr };
+  const dupErr = await checkSlugSku(tc, input, null);
+  if (dupErr) return { ok: false, error: dupErr };
 
   const P = tc.schema.products;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -325,7 +392,9 @@ export async function createProducerProduct(access: ProducerAccessLite, input: P
         if (over) return { error: over, id: undefined as string | undefined };
         const pct = await shareInTx(txl, access.producer.id, com.c.sharePercent);
         const [row] = await tx.insert(P).values({
-          slug:        buildProductSlug(input.name, randomUUID().slice(0, 8)),
+          slug:        input.slug ?? buildProductSlug(input.name, randomUUID().slice(0, 8)),
+          sku:         input.sku,
+          ...SEO_COLS(input.seo),
           name:        input.name,
           description: input.description || null,
           price:       computeBaseCost(input.publicPrice, pct).toFixed(2),   // K24: read-only, bukan input
@@ -347,7 +416,7 @@ export async function createProducerProduct(access: ProducerAccessLite, input: P
       if (out.error || !out.id) return { ok: false, error: out.error ?? "Gagal membuat produk." };
       return { ok: true, productId: out.id };
     } catch (e) {
-      if (pgErrorCode(e) === "23505") continue;   // slug bentrok (sangat jarang) → coba akhiran baru
+      if (pgErrorCode(e) === "23505") { if (input.slug || input.sku) return { ok: false, error: "Slug atau SKU sudah digunakan produk lain." }; continue; }   // slug otomatis bentrok (sangat jarang) → coba akhiran baru
       throw e;
     }
   }
@@ -367,14 +436,19 @@ export async function updateProducerProduct(access: ProducerAccessLite, productI
 
   const images = await mergeImages(com.c.memberId, row.images, input.images);
   if (!images) return { ok: false, error: "Foto tidak valid. Pilih foto dari Media Library Anda sendiri." };
+  if (!com.c.memberId) return { ok: false, error: "Akun produsen belum tertaut ke anggota." };
+  input = { ...input, description: await resolveDescriptionImages(com.c.memberId, input.description) };
   const varImages = await resolveVariationImages(com.c.memberId, productId, tc, input.variations);
   if (!varImages) return { ok: false, error: "Foto variasi tidak valid. Pilih foto dari Media Library Anda sendiri." };
   if (!(await categoryExists(tc, input.categoryId))) return { ok: false, error: "Kategori tidak ditemukan." };
   const originErr = await checkOrigin(tc, access.producer.id, input.originId);
   if (originErr) return { ok: false, error: originErr };
+  const dupErr = await checkSlugSku(tc, input, productId);
+  if (dupErr) return { ok: false, error: dupErr };
 
   const P = tc.schema.products;
-  return tc.db.transaction(async (tx) => {
+  try {
+  return await tc.db.transaction(async (tx) => {
     const txl = { db: tx as unknown as TenantDb["db"], schema: tc.schema };
     const [cur] = await tx.select({ id: P.id, status: P.status }).from(P)
       .where(and(eq(P.id, productId), eq(P.producerId, access.producer.id), isNull(P.mitraId))).for("update").limit(1);
@@ -382,6 +456,9 @@ export async function updateProducerProduct(access: ProducerAccessLite, productI
     const pct = await shareInTx(txl, access.producer.id, com.c.sharePercent);   // dibaca SETELAH baris produk terkunci
     const upd = await tx.update(P).set({
       name:        input.name,
+      ...(input.slug ? { slug: input.slug } : {}),   // kosong = slug lama dipertahankan (tautan publik tidak putus)
+      sku:         input.sku,
+      ...SEO_COLS(input.seo),
       description: input.description || null,
       price:       computeBaseCost(input.publicPrice, pct).toFixed(2),   // K24: dihitung ulang dari persentase TERKINI
       publicPrice: input.publicPrice.toFixed(2),
@@ -405,6 +482,10 @@ export async function updateProducerProduct(access: ProducerAccessLite, productI
     }
     return { ok: true as const };
   });
+  } catch (e) {
+    if (pgErrorCode(e) === "23505") return { ok: false, error: "Slug atau SKU sudah digunakan produk lain." };   // balapan setelah checkSlugSku
+    throw e;
+  }
 }
 
 /**
