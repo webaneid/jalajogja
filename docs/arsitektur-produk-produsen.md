@@ -240,8 +240,11 @@ Tidak ada mass-assignment/IDOR (harga dasar, `producerId`, `frozen` tak bisa dik
 | Temuan | Tindakan |
 |---|---|
 | MEDIUM — produk beku bisa DIHAPUS produsen lalu dibuat ulang (pembekuan terlewati + slot kembali) | **Diperbaiki**: `deleteProducerProduct` menolak produk `frozen`; teruji |
-| MEDIUM — keranjang/checkout tidak memeriksa `status='active'` (draft/arsip hanya tersembunyi dari halaman publik; pra-ada) | **TERBUKA — butuh keputusan user.** Dengan K32 produsen mengandalkan draft/arsip sebagai kontrol penjualan. Usulan: `resolveProductCartItem` menolak status selain `active` (jalur publik saja; invoice manual admin tetap boleh). Akibat: item draft/arsip yang terlanjur di keranjang pembeli ditolak saat checkout |
+| MEDIUM — keranjang/checkout tidak memeriksa `status='active'` (draft/arsip hanya tersembunyi dari halaman publik; pra-ada) | **DIPUTUSKAN user & DIPERBAIKI (K34, 2026-11-03)** — semula: dengan K32 produsen mengandalkan draft/arsip sebagai kontrol penjualan. Usulan: `resolveProductCartItem` menolak status selain `active` (jalur publik saja; invoice manual admin tetap boleh). Akibat: item draft/arsip yang terlanjur di keranjang pembeli ditolak saat checkout |
 | LOW — variasi yang sudah ada di pesanan ikut terhapus | **Diperbaiki**: hanya dinonaktifkan bila dirujuk `invoice_items`/`order_items` (juga saat kembali ke produk sederhana); teruji |
 | LOW — persentase dibaca di luar transaksi (harga dasar bisa basi bila admin mengubah persentase persis di sela) | **Diperbaiki**: dibaca di dalam transaksi dengan kunci baca pada baris produsen |
 | LOW — nama/SKU/atribut tanpa pembatasan karakter (formula injection di ekspor CSV) | Dicatat. Render React aman; belum ditemukan ekspor CSV yang memakai kolom ini (satu-satunya `text/csv` di `lib/` bukan ekspor produk). Cek bila ekspor baru dibuat |
 Tidak bisa diverifikasi dari kode: unique index pada `sku` (galat 23505 di create diasumsikan bentrok slug dan diulang 3×).
+
+## 16. K34 — Keranjang/checkout publik hanya menerima produk berstatus `active` (disetujui user 2026-11-03)
+`resolveProductCartItem` → `producerActive` kini juga `false` bila `products.status` bukan `active` (draft/arsip/dibekukan), selain produsen dinonaktifkan. Berlaku di `addToCartAction` dan `checkoutAction` (item di keranjang yang terlanjur draft/arsip ditolak: "sedang tidak tersedia"). Invoice manual admin tidak memakai flag ini → tetap boleh. Berlaku untuk SEMUA produk (bukan hanya produsen). Teruji di `smoke-producer-products.ts`. Tanpa migration.

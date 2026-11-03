@@ -21,7 +21,7 @@
  * di sini korektnes butuh SATU sumber kebenaran, sama seperti voucher.ts sendiri).
  */
 
-import { eq, ne, and, type ExtractTablesWithRelations } from "drizzle-orm";
+import { eq, and, type ExtractTablesWithRelations } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 import type { TenantDb } from "../tenant-client";
@@ -47,8 +47,8 @@ export type ResolvedProductCartItem = {
   mitraId:   string | null;
   // Produsen pemilik produk (products.producer_id; null = toko/internal). Dasar pengiriman per produsen — ADR-0005. Selalu dari DB.
   producerId: string | null;
-  // false = produsen produk ini DINONAKTIFKAN admin ATAU produknya DIBEKUKAN admin (status 'frozen', K30) → tidak boleh
-  // dipesan (keranjang/checkout publik menolak, termasuk item yang sudah terlanjur di keranjang). Pemanggil admin
+  // false = produsen produk ini DINONAKTIFKAN admin ATAU status produk BUKAN 'active' (draft/arsip/dibekukan, K30+K34)
+  // → tidak boleh dipesan (keranjang/checkout publik menolak, termasuk item yang sudah terlanjur di keranjang). Pemanggil admin
   // (invoice manual) boleh mengabaikan. Lihat product-orderable.ts.
   producerActive: boolean;
 };
@@ -57,7 +57,7 @@ async function isProducerActive(db: TenantDbOrTx, schema: TenantDb["schema"], pr
   const [row] = await db
     .select({ id: schema.products.id })
     .from(schema.products)
-    .where(and(eq(schema.products.id, productId), producerActiveSql(schema), ne(schema.products.status, "frozen")))
+    .where(and(eq(schema.products.id, productId), producerActiveSql(schema), eq(schema.products.status, "active")))
     .limit(1);
   return !!row;
 }

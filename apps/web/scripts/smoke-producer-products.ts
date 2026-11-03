@@ -366,6 +366,11 @@ try {
   ok("beku: tidak bisa dipesan (keranjang/checkout menolak)", (await resolveProductCartItem(db as never, s, mine.id))?.producerActive === false);
   await db.update(s.products).set({ status: "active" }).where(eq(s.products.id, mine.id));   // admin membuka pembekuan
   ok("beku: setelah dibuka, bisa dipesan lagi", (await resolveProductCartItem(db as never, s, mine.id))?.producerActive === true);
+  for (const st of ["draft", "archived"] as const) {
+    await db.update(s.products).set({ status: st }).where(eq(s.products.id, mine.id));
+    ok(`K34: status ${st} tidak bisa dipesan`, (await resolveProductCartItem(db as never, s, mine.id))?.producerActive === false);
+  }
+  await db.update(s.products).set({ status: "active" }).where(eq(s.products.id, mine.id));
   ok("beku: setelah admin membuka, produsen bisa mengarsipkan lagi", (await setProducerProductStatus(accC, mine.id, "archived")).ok && (await setProducerProductStatus(accC, mine.id, "active")).ok);
 
   // hapus
