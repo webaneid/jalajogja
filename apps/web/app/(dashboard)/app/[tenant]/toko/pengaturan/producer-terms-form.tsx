@@ -3,8 +3,9 @@
 // Syarat & Ketentuan Produsen — sisi pengurus. Editor = <TiptapEditor> standar project (sama dengan Post/Produk/Event).
 // Versi terbit tidak bisa diedit; "Buat versi baru" menyalin isi lalu menjadi draf. Terbit → semua produsen tanda tangan ulang.
 // Doc: docs/arsitektur-portal-produsen.md § 28.
-import { useState, useTransition } from "react";
-import { CheckCircle2, Clock, FileText } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { AlertTriangle, CheckCircle2, Clock, FileText } from "lucide-react";
+import { findUnfilledPlaceholders } from "@/lib/producer-terms";
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { Input } from "@/components/ui/input";
 import {
@@ -26,6 +27,8 @@ export function ProducerTermsForm({ slug, active, activeBody, draft, signers, ca
     draft ? { key: 0, title: draft.title, body: draft.body } : null,
   );
   const [confirmPublish, setConfirmPublish] = useState(false);
+  // Penanda sisa penyusunan ({{...}}, [PERLU VERIFIKASI HUKUM]) — memblokir tombol Terbitkan (server juga menolak).
+  const leftovers = useMemo(() => (editing ? findUnfilledPlaceholders(editing.body) : []), [editing]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [pending, start] = useTransition();
@@ -127,10 +130,21 @@ export function ProducerTermsForm({ slug, active, activeBody, draft, signers, ca
             placeholder="Tulis syarat & ketentuan untuk produsen di sini..."
           />
 
+          {leftovers.length > 0 && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+              <p className="flex items-center gap-1.5 font-semibold"><AlertTriangle className="h-4 w-4" /> {leftovers.length} penanda belum diisi — belum bisa diterbitkan</p>
+              <p className="mt-1">Isi nilainya dan hapus catatan penyusun. Isi versi terbit tidak bisa diubah, dan produsen akan membaca teks ini apa adanya.</p>
+              <ul className="mt-2 flex flex-wrap gap-1.5">
+                {leftovers.slice(0, 12).map((p) => <li key={p} className="rounded bg-white/70 px-1.5 py-0.5 font-mono text-[11px]">{p}</li>)}
+                {leftovers.length > 12 && <li className="px-1 py-0.5">+{leftovers.length - 12} lainnya</li>}
+              </ul>
+            </div>
+          )}
+
           {error && <p className="text-xs text-destructive">{error}</p>}
           {notice && <p className="text-xs text-green-700">{notice}</p>}
 
-          {confirmPublish ? (
+          {confirmPublish && leftovers.length === 0 ? (
             <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2 text-sm">
               <p>
                 Menerbitkan akan <strong>mengunci {signers.length} produsen</strong> sampai mereka menandatangani versi baru ini.
@@ -151,7 +165,8 @@ export function ProducerTermsForm({ slug, active, activeBody, draft, signers, ca
                 className="rounded-md border border-border px-3 py-1.5 text-xs font-medium disabled:opacity-50">
                 {pending ? "Menyimpan..." : "Simpan Draf"}
               </button>
-              <button type="button" disabled={pending} onClick={() => { setError(""); setConfirmPublish(true); }}
+              <button type="button" disabled={pending || leftovers.length > 0} onClick={() => { setError(""); setConfirmPublish(true); }}
+                title={leftovers.length > 0 ? "Masih ada penanda yang belum diisi" : undefined}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50">
                 Terbitkan
               </button>

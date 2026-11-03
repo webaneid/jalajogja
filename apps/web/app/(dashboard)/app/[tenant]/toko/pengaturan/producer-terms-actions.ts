@@ -9,7 +9,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { isValidUuid } from "@/lib/is-uuid";
 import { pgErrorCode } from "@/lib/pg-error";
-import { validateTermInput } from "@/lib/producer-terms";
+import { validateTermInput, placeholderPublishError } from "@/lib/producer-terms";
 
 type ActionResult<T = void> = { success: true; data: T } | { success: false; error: string };
 
@@ -96,6 +96,9 @@ export async function publishProducerTermAction(slug: string, termId: string): P
       if (!draft || draft.status !== "draft") throw new Error("DRAFT_GONE");
       // Validasi ulang dari DB (bukan percaya klien): isi harus tetap layak terbit
       if (validateTermInput(draft.title, draft.body)) throw new Error("DRAFT_INVALID");
+      // Pengaman terbit: penanda sisa penyusunan ({{...}}, [PERLU VERIFIKASI HUKUM]) tidak boleh lolos — versi terbit tak bisa diedit.
+      const leftover = placeholderPublishError(draft.body);
+      if (leftover) throw new Error("PLACEHOLDER:" + leftover);
 
       const [m] = await tx.select({ v: max(schema.producerTerms.version) }).from(schema.producerTerms);
       const next = (m?.v ?? 0) + 1;
@@ -110,6 +113,7 @@ export async function publishProducerTermAction(slug: string, termId: string): P
     const msg = e instanceof Error ? e.message : "";
     if (msg === "DRAFT_GONE")    return { success: false, error: "Draf tidak ditemukan atau sudah diterbitkan." };
     if (msg === "DRAFT_INVALID") return { success: false, error: "Isi draf belum layak diterbitkan." };
+    if (msg.startsWith("PLACEHOLDER:")) return { success: false, error: msg.slice("PLACEHOLDER:".length) };
     console.error("[publishProducerTerm]", pgErrorCode(e) ?? "unknown");
     return { success: false, error: "Gagal menerbitkan syarat." };
   }
