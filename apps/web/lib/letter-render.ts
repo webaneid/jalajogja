@@ -105,9 +105,42 @@ function sanitizeEmbedHtml(html: string): string {
 // Path relatif ("/...", "#...") dan URL tanpa skema (protocol-relative sudah lolos regex ini
 // karena "//" bukan skema) dianggap aman (link internal).
 function sanitizeLinkHref(href: string): string {
+  // Buang karakter kontrol/spasi di dalam (mis. "java\tscript:") sebelum memeriksa skema; tolak "//host" dan "/\host" (protocol-relative = keluar domain)
   const trimmed = href.trim();
-  if (/^(https?:|mailto:|tel:|\/|#)/i.test(trimmed)) return escapeHtml(trimmed);
+  const probe = trimmed.replace(/[\u0000-\u0020]/g, "");
+  if (/^\/[\/\\]/.test(probe)) return "#";
+  if (/^(https?:|mailto:|tel:|\/|#)/i.test(probe)) return escapeHtml(trimmed);
   return "#";
+}
+
+// Whitelist nilai atribut yang masuk ke HTML mentah (atribut `style` dll). Nilai di luar daftar DIBUANG,
+// bukan di-escape: JSON Tiptap bisa dikirim klien langsung ke Server Action tanpa lewat editor,
+// jadi tiap nilai atribut harus dianggap tidak tepercaya (docs/lessons-learned.md [2026-11-03]).
+const SAFE_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|rgba?\(\s*[\d.]+%?\s*(,\s*[\d.]+%?\s*){2,3}\)|hsla?\(\s*[\d.]+(deg)?\s*,\s*[\d.]+%\s*,\s*[\d.]+%\s*(,\s*[\d.]+%?\s*)?\)|[a-zA-Z]{3,20})$/;
+function safeColor(value: unknown): string | null {
+  return typeof value === "string" && SAFE_COLOR_RE.test(value.trim()) ? value.trim() : null;
+}
+const ALIGNS = new Set(["left", "right", "center", "justify"]);
+function safeAlign(value: unknown): string | null {
+  return typeof value === "string" && ALIGNS.has(value) ? value : null;
+}
+function safeHeadingLevel(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(n) && n >= 1 && n <= 6 ? n : 2;
+}
+function safeColumns(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(n) && n >= 1 && n <= 6 ? n : 3;
+}
+// src gambar: http(s), path relatif/absolut, atau data:image raster. Tolak javascript:/vbscript:/data:text/svg dst.
+function sanitizeImgSrc(src: string): string {
+  const t = src.trim();
+  const probe = t.replace(/[\u0000-\u0020]/g, "");
+  if (/^\/[\/\\]/.test(probe)) return "";             // "//host/x.png" / "/\\host" → gambar dari domain asing
+  if (/^(https?:\/\/|\/)/i.test(probe) || /^data:image\/(png|jpe?g|gif|webp);base64,/i.test(probe)) return t;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(probe)) return "";   // skema lain (termasuk yang disamarkan karakter kontrol) → buang
+  if (/[\u0000-\u0020]/.test(t.slice(0, 12)) && /:/.test(probe.slice(0, 12))) return "";
+  return t;                                              // path relatif tanpa skema
 }
 
 function applyMark(text: string, mark: TiptapMark): string {
@@ -122,11 +155,11 @@ function applyMark(text: string, mark: TiptapMark): string {
       return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
     }
     case "textStyle": {
-      const color = mark.attrs?.color;
+      const color = safeColor(mark.attrs?.color);
       return color ? `<span style="color:${color}">${text}</span>` : text;
     }
     case "highlight": {
-      const color = mark.attrs?.color;
+      const color = safeColor(mark.attrs?.color);
       return color
         ? `<mark style="background-color:${color}">${text}</mark>`
         : `<mark>${text}</mark>`;
@@ -161,15 +194,15 @@ function renderNode(node: TiptapNode, ctx?: RenderContext): string {
       return renderChildren(node, ctx);
 
     case "paragraph": {
-      const align = node.attrs?.textAlign as string | null;
+      const align = safeAlign(node.attrs?.textAlign);
       const style = align ? ` style="text-align:${align}"` : "";
       const inner = renderChildren(node, ctx);
       return `<p${style}>${inner || "<br>"}</p>`;
     }
 
     case "heading": {
-      const level = node.attrs?.level ?? 2;
-      const align = node.attrs?.textAlign as string | null;
+      const level = safeHeadingLevel(node.attrs?.level);
+      const align = safeAlign(node.attrs?.textAlign);
       const style = align ? ` style="text-align:${align}"` : "";
       return `<h${level}${style}>${renderChildren(node, ctx)}</h${level}>`;
     }
@@ -207,7 +240,7 @@ function renderNode(node: TiptapNode, ctx?: RenderContext): string {
       const isExternal = Boolean(node.attrs?.isExternal);
       // URL internal ("/{slug}/post/...") tersimpan path-mode dari <PublicLinkPicker> — WAJIB
       // di-strip di custom domain aktif, jangan pernah untuk URL eksternal (isExternal=true).
-      const url = escapeHtml(isExternal ? rawUrl : resolveInternalHref(rawUrl, ctx));
+      const url = sanitizeLinkHref(isExternal ? rawUrl : resolveInternalHref(rawUrl, ctx));
       return `<div class="related-link-callout my-6 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5 transition-all hover:bg-primary/10 hover:shadow-sm">
         <div class="flex items-center gap-3">
           <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-xs">🔗</span>
@@ -230,7 +263,7 @@ function renderNode(node: TiptapNode, ctx?: RenderContext): string {
 
     case "image": {
       const rawSrc = node.attrs?.src as string ?? "";
-      const src = escapeHtml(fixImageSrc(rawSrc, ctx));
+      const src = escapeHtml(sanitizeImgSrc(fixImageSrc(rawSrc, ctx)));
       const alt = escapeHtml(node.attrs?.alt as string ?? "");
       return `<img src="${src}" alt="${alt}" style="max-width:100%;height:auto">`;
     }
@@ -250,20 +283,21 @@ function renderNode(node: TiptapNode, ctx?: RenderContext): string {
     case "embedBlock": {
       const html = node.attrs?.html as string | null;
       if (html) return `<div style="margin:1em 0">${sanitizeEmbedHtml(html)}</div>`;
-      const url = escapeHtml(node.attrs?.url as string ?? "");
-      return `<a href="${url}" target="_blank">${url}</a>`;
+      const rawEmbedUrl = (node.attrs?.url as string) ?? "";
+      const url = sanitizeLinkHref(rawEmbedUrl);
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${escapeHtml(rawEmbedUrl)}</a>`;
     }
 
     case "galleryBlock": {
       // Render sebagai grid gambar sederhana untuk PDF — tanpa lightbox
       const items = (node.attrs?.items as unknown as Array<{ url: string; alt?: string }>) ?? [];
       if (items.length === 0) return "";
-      const cols = (node.attrs?.columns as number) ?? 3;
+      const cols = safeColumns(node.attrs?.columns);
       const width = Math.floor(100 / cols);
       const imgs = items
         .map((item) =>
           `<td style="width:${width}%;padding:4px;vertical-align:top">` +
-          `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt ?? "")}" ` +
+          `<img src="${escapeHtml(sanitizeImgSrc(String(item.url ?? "")))}" alt="${escapeHtml(String(item.alt ?? ""))}" ` +
           `style="width:100%;height:auto;display:block;border-radius:4px" /></td>`
         )
         .join("");
