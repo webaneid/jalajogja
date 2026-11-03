@@ -32,10 +32,10 @@ export default async function ProdukPage({
   searchParams,
 }: {
   params: Promise<{ tenant: string }>;
-  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; page?: string; owner?: string }>;
 }) {
   const { tenant: slug } = await params;
-  const { q, status, page } = await searchParams;
+  const { q, status, page, owner: ownerParam } = await searchParams;
   const access = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
 
@@ -44,7 +44,14 @@ export default async function ProdukPage({
   const currentPage = Math.max(1, parseInt(page ?? "1"));
   const offset = (currentPage - 1) * PAGE_SIZE;
 
+  // Filter pemilik (ADMIN-ONLY, sama seperti kolom Produsen): "tenant" = produk toko sendiri (tanpa produsen & bukan mitra),
+  // "produsen" = produk milik produsen. Param di luar daftar putih diabaikan; pengguna tanpa akses penuh tak bisa memakainya.
+  const canFilterOwner = hasFullAccess(access.tenantUser, "toko");
+  const owner = canFilterOwner && (ownerParam === "tenant" || ownerParam === "produsen") ? ownerParam : "";
+
   const conditions = [];
+  if (owner === "tenant")   conditions.push(sql`${schema.products.producerId} IS NULL AND ${schema.products.mitraId} IS NULL`);
+  if (owner === "produsen") conditions.push(sql`${schema.products.producerId} IS NOT NULL`);
   if (status && status !== "all") {
     conditions.push(sql`${schema.products.status} = ${status}`);
   }
@@ -91,6 +98,8 @@ export default async function ProdukPage({
     const sp = new URLSearchParams();
     if (overrides.q      ?? q)      sp.set("q",      overrides.q      ?? q ?? "");
     if (overrides.status ?? status) sp.set("status", overrides.status ?? status ?? "");
+    const ownerNext = "owner" in overrides ? overrides.owner : owner;
+    if (ownerNext)                  sp.set("owner",  ownerNext);
     if (overrides.page)             sp.set("page",   overrides.page);
     return `/app/${slug}/toko/produk?${sp.toString()}`;
   };
@@ -161,6 +170,24 @@ export default async function ProdukPage({
         <ProductListClient slug={slug} />
       </div>
 
+      {/* Filter pemilik — admin saja */}
+      {canFilterOwner && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Tampilkan:</span>
+          {([["", "Semua produk"], ["tenant", "Hanya produk tenant"], ["produsen", "Hanya produk produsen"]] as const).map(([v, label]) => (
+            <Link
+              key={v}
+              href={buildUrl({ owner: v, page: "1" })}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                owner === v ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
+      )}
+
       {/* Filter status */}
       <div className="flex flex-wrap gap-2">
         {statuses.map((s) => (
@@ -188,6 +215,7 @@ export default async function ProdukPage({
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
           {status && <input type="hidden" name="status" value={status} />}
+          {owner && <input type="hidden" name="owner" value={owner} />}
         </div>
       </form>
 
