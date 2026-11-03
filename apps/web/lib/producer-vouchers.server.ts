@@ -1,6 +1,6 @@
 // Voucher produsen ("Promo Produsen", K23) — SISI SERVER. docs/arsitektur-produk-produsen.md § 4, § 12.
 //  - Pemilik = produsen dari SESI (vouchers.owner_producer_id). Produsen hanya menyentuh barisnya sendiri.
-//  - Target = produk MILIK produsen itu (divalidasi dari DB, bukan dipercaya dari klien); produk bervariasi belum bisa jadi target.
+//  - Target = produk MILIK produsen itu (divalidasi dari DB, bukan dipercaya dari klien); produk bervariasi BOLEH (harga terendah = termurah di antara harga induk dan variasi aktif).
 //  - Batas potongan = persentase bagian tenant (checkVoucherCap) — ditegakkan juga saat checkout (computeVoucherDiscount).
 import "server-only";
 import { and, desc, eq, inArray, isNull, count } from "drizzle-orm";
@@ -14,19 +14,49 @@ import { checkVoucherCap, type ProducerVoucherInput } from "@/lib/producer-vouch
 type TenantDb = ReturnType<typeof createTenantDb>;
 type Fail = { ok: false; error: string };
 
+const priceNum = (v: unknown) => (v === null || v === undefined ? NaN : parseFloat(String(v)));
+
+/**
+ * Harga satuan TERENDAH per produk target: harga jual/anggota induk, dan untuk produk bervariasi juga harga jual/anggota tiap variasi
+ * AKTIF (variasi yang kosong mengikuti induk, jadi sudah tercakup). Dipakai batas voucher nominal — fail-closed: memakai yang terendah.
+ */
+async function lowestPrices(tc: TenantDb, productIds: string[]): Promise<Map<string, number>> {
+  const P = tc.schema.products, V = tc.schema.productVariations;
+  const out = new Map<string, number>();
+  if (productIds.length === 0) return out;
+  const parents = await tc.db.select({ id: P.id, pub: P.publicPrice, member: P.memberPrice }).from(P).where(inArray(P.id, productIds));
+  const vars = await tc.db.select({ productId: V.productId, pub: V.publicPrice, member: V.memberPrice }).from(V)
+    .where(and(inArray(V.productId, productIds), eq(V.isActive, true)));
+  for (const r of [...parents.map((x) => ({ productId: x.id, pub: x.pub, member: x.member })), ...vars]) {
+    for (const n of [priceNum(r.pub), priceNum(r.member)]) {
+      if (Number.isFinite(n) && n > 0) out.set(r.productId, Math.min(out.get(r.productId) ?? Infinity, n));
+    }
+  }
+  return out;
+}
+
+/** Produk milik produsen yang bisa dijadikan target (sederhana + bervariasi), lengkap dengan harga terendahnya. */
+export async function listVoucherTargetProducts(tc: TenantDb, producerId: string): Promise<{ id: string; name: string; price: number; variable: boolean }[]> {
+  const P = tc.schema.products;
+  const rows = await tc.db.select({ id: P.id, name: P.name, type: P.productType }).from(P)
+    .where(and(eq(P.producerId, producerId), isNull(P.mitraId))).orderBy(P.name);
+  const low = await lowestPrices(tc, rows.map((r) => r.id));
+  return rows.map((r) => ({ id: r.id, name: r.name, price: low.get(r.id) ?? 0, variable: r.type === "variable" }));
+}
+
 async function validateTargetsAndCap(tc: TenantDb, producerId: string, input: ProducerVoucherInput): Promise<{ ok: true; sharePercent: number } | Fail> {
   const com = await getProducerCommercials(tc, producerId);
   if (!com || !com.isActive) return { ok: false, error: "Akun produsen tidak aktif." };
   if (com.sharePercent === null) return { ok: false, error: "Persentase bagi hasil Anda belum ditetapkan pengurus. Hubungi pengurus." };
 
   const P = tc.schema.products;
-  const rows = await tc.db.select({ id: P.id, type: P.productType, pub: P.publicPrice, member: P.memberPrice }).from(P)
+  const rows = await tc.db.select({ id: P.id }).from(P)
     .where(and(inArray(P.id, input.targetItemIds), eq(P.producerId, producerId), isNull(P.mitraId)));
   if (rows.length !== input.targetItemIds.length) return { ok: false, error: "Ada produk target yang bukan milik Anda." };
-  if (rows.some((r) => r.type === "variable")) return { ok: false, error: "Produk bervariasi belum bisa dijadikan target voucher." };
 
-  const prices = rows.flatMap((r) => [r.pub, r.member]).map((v) => (v === null || v === undefined ? NaN : parseFloat(String(v)))).filter((n) => Number.isFinite(n) && n > 0);
-  if (prices.length === 0) return { ok: false, error: "Produk target belum memiliki harga." };
+  const low = await lowestPrices(tc, input.targetItemIds);
+  const prices = input.targetItemIds.map((id) => low.get(id)).filter((n): n is number => typeof n === "number");
+  if (prices.length !== input.targetItemIds.length) return { ok: false, error: "Produk target belum memiliki harga." };
   const capErr = checkVoucherCap(input, com.sharePercent, Math.min(...prices));
   return capErr ? { ok: false, error: capErr } : { ok: true, sharePercent: com.sharePercent };
 }

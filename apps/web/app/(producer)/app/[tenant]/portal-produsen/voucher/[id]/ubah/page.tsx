@@ -1,10 +1,9 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { and, asc, eq, isNull } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
 import { getProducerPageAccess } from "@/lib/producer-access.server";
 import { getProducerCommercials } from "@/lib/producer-products.server";
-import { getProducerVoucher } from "@/lib/producer-vouchers.server";
+import { getProducerVoucher, listVoucherTargetProducts } from "@/lib/producer-vouchers.server";
 import { getTenantTimezone } from "@/lib/tenant-timezone.server";
 import { ProducerVoucherForm } from "@/components/producer/producer-voucher-form";
 import { updateProducerVoucherAction } from "../../actions";
@@ -14,12 +13,10 @@ export default async function EditProducerVoucherPage({ params }: { params: Prom
   const access = await getProducerPageAccess(slug);
   if (!access) redirect("/no-tenant-access");
   const tc = createTenantDb(access.tenant.slug);
-  const P = tc.schema.products;
   const [voucher, com, prods, tz] = await Promise.all([
     getProducerVoucher(tc, access.producer.id, id),
     getProducerCommercials(tc, access.producer.id),
-    tc.db.select({ id: P.id, name: P.name, pub: P.publicPrice }).from(P)
-      .where(and(eq(P.producerId, access.producer.id), isNull(P.mitraId), eq(P.productType, "simple"))).orderBy(asc(P.name)),
+    listVoucherTargetProducts(tc, access.producer.id),
     getTenantTimezone(tc),
   ]);
   if (!voucher) notFound();   // milik produsen lain / voucher admin / id acak = 404
@@ -33,7 +30,7 @@ export default async function EditProducerVoucherPage({ params }: { params: Prom
       <h1 className="text-xl font-semibold">Ubah Voucher</h1>
       <ProducerVoucherForm
         codeLocked
-        products={prods.map((p) => ({ id: p.id, name: p.name, price: parseFloat(String(p.pub ?? 0)) }))}
+        products={prods.map((p) => ({ id: p.id, name: p.variable ? `${p.name} (bervariasi)` : p.name, price: p.price }))}
         sharePercent={com.sharePercent} submitLabel="Simpan Perubahan" backHref={back}
         onSubmit={updateProducerVoucherAction.bind(null, access.tenant.slug, voucher.id)}
         initial={{

@@ -8,7 +8,7 @@
 import { parseCouriersInput } from "@/lib/producer-couriers";
 import { revalidatePath } from "next/cache";
 import { eq, and, count, sql, isNull, isNotNull } from "drizzle-orm";
-import { db as publicDb, createTenantDb, memberBusinesses, memberOwnedPesantren, memberProfessionals, members, producerLogins } from "@jalajogja/db";
+import { db as publicDb, createTenantDb, type TenantDb, memberBusinesses, memberOwnedPesantren, memberProfessionals, members, producerLogins } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/phone";
@@ -16,6 +16,7 @@ import { isValidUuid } from "@/lib/is-uuid";
 import { isTenantMember } from "@/lib/tenant-membership.server";
 import { pgErrorCode } from "@/lib/pg-error";
 import { resolveProducers } from "@/lib/producer.server";
+import { syncBaseCosts } from "@/lib/producer-products.server";
 import type { ProducerSourceKind } from "@/lib/producer-resolve";
 
 type ActionResult<T = void> = { success: true; data: T } | { success: false; error: string };
@@ -355,18 +356,7 @@ export async function setProducerSharePercentAction(slug: string, producerId: st
       const upd = await tx.update(schema.producers).set({ revenueSharePercent: p.toFixed(2), updatedAt: new Date() })
         .where(eq(schema.producers.id, producerId)).returning({ id: schema.producers.id });
       if (upd.length === 0) return null;
-      const synced = await tx.update(schema.products)
-        .set({ price: sql`ROUND(${schema.products.publicPrice} * (100 - ${p.toFixed(2)}::numeric) / 100, 2)`, updatedAt: new Date() })
-        .where(and(eq(schema.products.producerId, producerId), isNull(schema.products.mitraId), isNotNull(schema.products.publicPrice)))
-        .returning({ id: schema.products.id });
-      // K33: variasi yang punya harga jual SENDIRI ikut dihitung ulang (yang kosong mengikuti harga induk, tidak disimpan).
-      await tx.update(schema.productVariations)
-        .set({ price: sql`ROUND(${schema.productVariations.publicPrice} * (100 - ${p.toFixed(2)}::numeric) / 100, 2)` })
-        .where(and(
-          isNotNull(schema.productVariations.publicPrice),
-          sql`${schema.productVariations.productId} IN (SELECT ${schema.products.id} FROM ${schema.products} WHERE ${schema.products.producerId} = ${producerId} AND ${schema.products.mitraId} IS NULL)`,
-        ));
-      return synced.length;
+      return syncBaseCosts({ db: tx as unknown as TenantDb["db"], schema }, producerId, p);
     });
     if (out === null) return { success: false, error: "Produsen tidak ditemukan." };
     refresh(slug);

@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
+import { MemberMediaPicker, type MemberMediaItem } from "@/components/media/member-media-picker";
+import { computeBaseCost } from "@/lib/producer-products";
 import type { AttributeGroup } from "@jalajogja/db";
 import type { ProductImage } from "@/app/(dashboard)/app/[tenant]/toko/actions";
 
@@ -37,6 +39,8 @@ type Props = {
   productMemberPrice: string;   // Harga Anggota produk induk
   productWeightGram:  string;
   productSku:         string;
+  // Mode PRODUSEN (K31/K33): foto dari Media Library ANGGOTA, harga dasar variasi read-only (dihitung dari bagi hasil).
+  producer?:          { sharePercent: number };
 };
 
 function formatRp(n: number) {
@@ -45,7 +49,7 @@ function formatRp(n: number) {
 
 export function VariationTable({
   slug, variations, attributeGroups, onChange, minKomisi,
-  productPrice, productPublicPrice, productMemberPrice, productWeightGram, productSku,
+  productPrice, productPublicPrice, productMemberPrice, productWeightGram, productSku, producer,
 }: Props) {
   const [pickerKey, setPickerKey]   = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -65,7 +69,7 @@ export function VariationTable({
     updateVariation(key, { images: v.images.filter(img => img.id !== imageId) });
   }
 
-  function handleSelectImage(key: string, media: MediaItem) {
+  function handleSelectImage(key: string, media: MediaItem | MemberMediaItem) {
     const v = variations.find(v2 => v2._key === key);
     if (!v) return;
     if (v.images.some(img => img.id === media.id)) return;
@@ -74,7 +78,7 @@ export function VariationTable({
         id:       media.id,
         url:      media.url,
         variants: media.variants ?? null,
-        alt:      media.altText ?? media.originalName,
+        alt:      producer ? "" : (("altText" in media ? media.altText : null) ?? media.originalName),
         order:    v.images.length,
       }],
     });
@@ -192,7 +196,15 @@ export function VariationTable({
       {/* MediaPicker untuk foto variasi — dialog terpisah, boleh terbuka bersamaan dengan
           dialog edit (pola sama MediaEditModal di media-picker.tsx: dua Dialog root Radix
           independen aman dibuka bertumpuk selama masing-masing punya state sendiri). */}
-      {pickerKey && (
+      {pickerKey && producer && (
+        <MemberMediaPicker
+          slug={slug}
+          open={!!pickerKey}
+          onSelect={(media) => handleSelectImage(pickerKey, media)}
+          onClose={() => setPickerKey(null)}
+        />
+      )}
+      {pickerKey && !producer && (
         <MediaPicker
           slug={slug}
           open={!!pickerKey}
@@ -217,6 +229,7 @@ export function VariationTable({
               productMemberPrice={productMemberPrice}
               productWeightGram={productWeightGram}
               productSku={productSku}
+              producer={producer}
               onChange={(patch) => updateVariation(editingVariation._key, patch)}
               onOpenPicker={() => setPickerKey(editingVariation._key)}
               onRemoveImage={(imageId) => removeImage(editingVariation._key, imageId)}
@@ -230,7 +243,7 @@ export function VariationTable({
 
 function VariationEditForm({
   variation, attributeGroups, minKomisi, productPrice, productPublicPrice, productMemberPrice, productWeightGram, productSku,
-  onChange, onOpenPicker, onRemoveImage,
+  producer, onChange, onOpenPicker, onRemoveImage,
 }: {
   variation:         VariationLocal;
   attributeGroups:   AttributeGroup[];
@@ -240,6 +253,7 @@ function VariationEditForm({
   productMemberPrice: string;
   productWeightGram: string;
   productSku:        string;
+  producer?:         { sharePercent: number };
   onChange:          (patch: Partial<VariationLocal>) => void;
   onOpenPicker:      () => void;
   onRemoveImage:     (imageId: string) => void;
@@ -317,8 +331,17 @@ function VariationEditForm({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="var-price">Harga Dasar (modal)</Label>
-            <Input id="var-price" type="number" min={0} value={variation.price}
-              onChange={e => onChange({ price: e.target.value })} placeholder={pricePlaceholder} />
+            {producer ? (
+              // K33: otomatis dari harga jual × (100 − bagi hasil)/100, tidak bisa diisi. Kosong → ikut harga induk.
+              <>
+                <Input id="var-price" readOnly disabled
+                  value={(() => { const base = parseFloat(variation.publicPrice) || parseFloat(productPublicPrice) || 0; return base > 0 ? computeBaseCost(base, producer.sharePercent).toLocaleString("id-ID") : "—"; })()} />
+                <p className="text-[10px] text-muted-foreground mt-0.5">Otomatis dari bagi hasil ({producer.sharePercent}%).</p>
+              </>
+            ) : (
+              <Input id="var-price" type="number" min={0} value={variation.price}
+                onChange={e => onChange({ price: e.target.value })} placeholder={pricePlaceholder} />
+            )}
           </div>
           <div>
             <Label htmlFor="var-stock">Stok</Label>

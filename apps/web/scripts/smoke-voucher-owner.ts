@@ -99,8 +99,11 @@ try {
   // Baris pengiriman = Ambil Sendiri per produsen di keranjang (server memverifikasi terhadap isi keranjang; pickup tidak memanggil RajaOngkir)
   const lineProducers = async () => {
     const ci = await db.select({ itemId: s.cartItems.itemId }).from(s.cartItems).innerJoin(s.carts, eq(s.carts.id, s.cartItems.cartId)).where(eq(s.carts.sessionToken, currentToken));
-    const prods = await db.select({ id: s.products.id, producerId: s.products.producerId }).from(s.products).where(inArray(s.products.id, ci.map((c) => c.itemId!)));
-    return [...new Set(prods.map((p) => p.producerId))];
+    const ids = ci.map((c) => c.itemId!);
+    const prods = await db.select({ id: s.products.id, producerId: s.products.producerId }).from(s.products).where(inArray(s.products.id, ids));
+    // itemId bisa berupa id VARIASI (produk bervariasi) → petakan lewat produk induknya
+    const vars = await db.select({ producerId: s.products.producerId }).from(s.productVariations).innerJoin(s.products, eq(s.products.id, s.productVariations.productId)).where(inArray(s.productVariations.id, ids));
+    return [...new Set([...prods, ...vars].map((p) => p.producerId))];
   };
   const checkout = async (voucher?: string) => {
     const phone = `+62812${Math.floor(10000000 + Math.random() * 89999999)}`; phones.push(phone);
@@ -192,6 +195,20 @@ try {
   if (r7b.success) { const [it] = await itemsOf(r7b.data.invoiceId); ok("tanpa persentase: checkout biasa tetap jalan, snapshot NULL", it.producerSharePercent === null); }
   else ok("tanpa persentase: checkout biasa tetap jalan", false, r7b.error);
 
+  // 7c. Produk BERVARIASI: item keranjang = id variasi; voucher menarget produk induk; batas dihitung dari harga variasi
+  await db.update(s.producers).set({ revenueSharePercent: "10" }).where(eq(s.producers.id, prodA));   // uji 6 menurunkannya ke 4%
+  const [pVar] = await db.insert(s.products).values({ slug: `${tag.toLowerCase()}-pvar`, name: `${tag} Bervariasi`, price: "90000", publicPrice: "100000", stock: 0, producerId: prodA, status: "active" as never, weightGram: 100, productType: "variable" as never }).returning({ id: s.products.id });
+  made.products.push(pVar.id);
+  const [vv] = await db.insert(s.productVariations).values({ productId: pVar.id, price: "36000", publicPrice: "40000", stock: 5, attributeCombo: { Ukuran: "S" } }).returning({ id: s.productVariations.id });
+  const cVar = await mkVoucher("VAR", { ownerProducerId: prodA, targetItemIds: [pVar.id], discountValue: "50" });
+  await newCart([{ id: vv.id, name: "Var S" }]);
+  const r7v = await checkout(cVar);
+  if (r7v.success) {
+    const [it] = await itemsOf(r7v.data.invoiceId);
+    ok("variasi: harga variasi dipakai (40.000), voucher 50% dibatasi 10% = 4.000, ditanggung produsen", Number(it.unitPrice) === 40000 && Number(it.discountAmount) === 4000 && it.discountFundedBy === "producer" && Number(it.total) === 36000, JSON.stringify({ u: it.unitPrice, d: it.discountAmount, t: it.total }));
+    ok("variasi: snapshot persentase 10 tersimpan", Number(it.producerSharePercent) === 10);
+  } else ok("variasi: checkout berhasil", false, r7v.error);
+
   // 8. Preview memakai aturan yang sama
   await db.update(s.producers).set({ revenueSharePercent: "10" }).where(eq(s.producers.id, prodA));
   await newCart([{ id: pA, name: "A" }]);
@@ -213,6 +230,7 @@ try {
   await cleanup("cart_items", () => made.carts.length ? db.delete(s.cartItems).where(inArray(s.cartItems.cartId, made.carts)) : Promise.resolve());
   await cleanup("carts", () => made.carts.length ? db.delete(s.carts).where(inArray(s.carts.id, made.carts)) : Promise.resolve());
   await cleanup("vouchers", () => db.delete(s.vouchers).where(like(s.vouchers.code, `${tag.toUpperCase()}%`)));
+  await cleanup("variations", () => made.products.length ? db.delete(s.productVariations).where(inArray(s.productVariations.productId, made.products)) : Promise.resolve());
   await cleanup("products", () => made.products.length ? db.delete(s.products).where(inArray(s.products.id, made.products)) : Promise.resolve());
   await cleanup("producers", () => made.producers.length ? db.delete(s.producers).where(inArray(s.producers.id, made.producers)) : Promise.resolve());
   await cleanup("pickup_setting", async () => { if (createdPickup) await db.delete(s.settings).where(and(eq(s.settings.key, "pickup_enabled"), eq(s.settings.group, "toko"))); });

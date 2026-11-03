@@ -16,6 +16,7 @@ import { originBelongsTo } from "@/lib/shipping-origins.server";
 import { DEFAULT_PRODUCER_PRODUCT_LIMIT } from "@/lib/producer-application";
 
 type TenantDb = ReturnType<typeof createTenantDb>;
+type TxLike = { db: TenantDb["db"]; schema: TenantDb["schema"] };
 
 /** Bentuk foto yang disimpan di `products.images` (sama dengan form admin: toko/actions.ts ProductImage). */
 export type StoredProductImage = {
@@ -183,6 +184,35 @@ async function categoryExists(tc: TenantDb, id: string | null): Promise<boolean>
   return !!r;
 }
 
+/**
+ * K24/K33: hitung ulang harga dasar SEMUA produk milik produsen (dan variasi yang punya harga jual sendiri) dari persentase `p`.
+ * Dipanggil admin dalam transaksi yang sama dengan perubahan persentase. Variasi tanpa harga jual sendiri tidak disimpan (ikut induk).
+ * Mengembalikan jumlah produk yang dihitung ulang.
+ */
+export async function syncBaseCosts(tx: TxLike, producerId: string, p: number): Promise<number> {
+  const P = tx.schema.products, V = tx.schema.productVariations;
+  const pct = p.toFixed(2);
+  const synced = await tx.db.update(P)
+    .set({ price: sql`ROUND(${P.publicPrice} * (100 - ${pct}::numeric) / 100, 2)`, updatedAt: new Date() })
+    .where(and(eq(P.producerId, producerId), isNull(P.mitraId), sql`${P.publicPrice} IS NOT NULL`))
+    .returning({ id: P.id });
+  await tx.db.update(V)
+    .set({ price: sql`ROUND(${V.publicPrice} * (100 - ${pct}::numeric) / 100, 2)` })
+    .where(and(
+      sql`${V.publicPrice} IS NOT NULL`,
+      sql`${V.productId} IN (SELECT ${P.id} FROM ${P} WHERE ${P.producerId} = ${producerId} AND ${P.mitraId} IS NULL)`,
+    ));
+  return synced.length;
+}
+
+/** Persentase TERKINI dibaca DI DALAM transaksi dengan kunci baca pada baris produsen: perubahan persentase admin tidak bisa menyelip lalu tertimpa harga dasar lama. */
+async function shareInTx(tx: TxLike, producerId: string, fallback: number): Promise<number> {
+  const Pr = tx.schema.producers;
+  const [r] = await tx.db.select({ share: Pr.revenueSharePercent }).from(Pr).where(eq(Pr.id, producerId)).for("share").limit(1);
+  const n = r?.share === null || r?.share === undefined ? NaN : Number(r.share);
+  return Number.isFinite(n) && n > 0 && n < 100 ? n : fallback;
+}
+
 /** Gudang: harus milik produsen ini; bila produsen punya >1 gudang, wajib dipilih (K31). null = ikut gudang utama produsen. */
 async function checkOrigin(tc: TenantDb, producerId: string, originId: string | null): Promise<string | null> {
   if (originId) return (await originBelongsTo(tc, originId, producerId)) ? null : "Gudang tidak valid. Pilih salah satu gudang Anda.";
@@ -203,7 +233,22 @@ async function mergeImages(memberId: string, currentRaw: unknown, input: Produce
   return input.map((it, order) => ({ ...(current.get(it.mediaId) ?? freshById.get(it.mediaId)!), alt: it.alt, order }));
 }
 
-type TxLike = { db: TenantDb["db"]; schema: TenantDb["schema"] };
+
+/**
+ * Buang variasi yang tidak dikirim lagi. Variasi yang SUDAH dirujuk baris pesanan (invoice_items / order_items) hanya DINONAKTIFKAN —
+ * dihapus akan membuat item_id di riwayat pesanan menunjuk ke id yang tidak ada (stok, fulfillment, laporan kehilangan konteks).
+ */
+async function dropVariations(tx: TxLike, productId: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const { db, schema: s } = tx;
+  const V = s.productVariations;
+  const usedInv = await db.select({ id: s.invoiceItems.itemId }).from(s.invoiceItems).where(and(eq(s.invoiceItems.itemType, "product"), inArray(s.invoiceItems.itemId, ids)));
+  const usedOld = await db.select({ id: s.orderItems.productId }).from(s.orderItems).where(inArray(s.orderItems.productId, ids));
+  const used = new Set([...usedInv.map((r) => r.id), ...usedOld.map((r) => r.id)].filter((x): x is string => !!x));
+  const del = ids.filter((id) => !used.has(id));
+  if (used.size) await db.update(V).set({ isActive: false }).where(and(eq(V.productId, productId), inArray(V.id, [...used])));
+  if (del.length) await db.delete(V).where(and(eq(V.productId, productId), inArray(V.id, del)));
+}
 
 /**
  * Simpan variasi (K33) — diff-upsert seperti admin: variasi yang masih dikirim dipertahankan UUID-nya (keranjang pembeli tidak yatim).
@@ -218,8 +263,7 @@ async function saveVariations(
   const existing = await tx.db.select({ id: V.id }).from(V).where(eq(V.productId, productId));
   const existingIds = new Set(existing.map((r) => r.id));
   const keep = new Set(variations.filter((v) => v.id && existingIds.has(v.id)).map((v) => v.id!));
-  const drop = [...existingIds].filter((id) => !keep.has(id));
-  if (drop.length) await tx.db.delete(V).where(and(eq(V.productId, productId), inArray(V.id, drop)));
+  await dropVariations(tx, productId, [...existingIds].filter((id) => !keep.has(id)));
   void memberId;
   for (let i = 0; i < variations.length; i++) {
     const v = variations[i];
@@ -279,11 +323,12 @@ export async function createProducerProduct(access: ProducerAccessLite, input: P
         const txl = { db: tx as unknown as TenantDb["db"], schema: tc.schema };
         const over = await assertWithinLimit(txl, access.producer.id, com.c.productLimit);
         if (over) return { error: over, id: undefined as string | undefined };
+        const pct = await shareInTx(txl, access.producer.id, com.c.sharePercent);
         const [row] = await tx.insert(P).values({
           slug:        buildProductSlug(input.name, randomUUID().slice(0, 8)),
           name:        input.name,
           description: input.description || null,
-          price:       computeBaseCost(input.publicPrice, com.c.sharePercent).toFixed(2),   // K24: read-only, bukan input
+          price:       computeBaseCost(input.publicPrice, pct).toFixed(2),   // K24: read-only, bukan input
           publicPrice: input.publicPrice.toFixed(2),
           memberPrice: input.memberPrice !== null ? input.memberPrice.toFixed(2) : null,
           stock:       input.productType === "variable" ? 0 : input.stock,
@@ -296,7 +341,7 @@ export async function createProducerProduct(access: ProducerAccessLite, input: P
           productType: input.productType,
           attributeGroups: input.productType === "variable" ? input.attributeGroups : null,
         }).returning({ id: P.id });
-        if (input.productType === "variable") await saveVariations(txl, row.id, com.c.sharePercent, com.c.memberId, input.variations, varImages);
+        if (input.productType === "variable") await saveVariations(txl, row.id, pct, com.c.memberId, input.variations, varImages);
         return { error: undefined as string | undefined, id: row.id as string | undefined };
       });
       if (out.error || !out.id) return { ok: false, error: out.error ?? "Gagal membuat produk." };
@@ -334,10 +379,11 @@ export async function updateProducerProduct(access: ProducerAccessLite, productI
     const [cur] = await tx.select({ id: P.id, status: P.status }).from(P)
       .where(and(eq(P.id, productId), eq(P.producerId, access.producer.id), isNull(P.mitraId))).for("update").limit(1);
     if (!cur) return NOT_FOUND;
+    const pct = await shareInTx(txl, access.producer.id, com.c.sharePercent);   // dibaca SETELAH baris produk terkunci
     const upd = await tx.update(P).set({
       name:        input.name,
       description: input.description || null,
-      price:       computeBaseCost(input.publicPrice, com.c.sharePercent).toFixed(2),   // K24: dihitung ulang dari persentase TERKINI
+      price:       computeBaseCost(input.publicPrice, pct).toFixed(2),   // K24: dihitung ulang dari persentase TERKINI
       publicPrice: input.publicPrice.toFixed(2),
       memberPrice: input.memberPrice !== null ? input.memberPrice.toFixed(2) : null,
       stock:       input.productType === "variable" ? 0 : input.stock,
@@ -352,8 +398,11 @@ export async function updateProducerProduct(access: ProducerAccessLite, productI
       updatedAt:   new Date(),
     }).where(and(eq(P.id, productId), eq(P.producerId, access.producer.id), isNull(P.mitraId))).returning({ id: P.id });
     if (!upd.length) return NOT_FOUND;
-    if (input.productType === "variable") await saveVariations(txl, productId, com.c.sharePercent, com.c.memberId, input.variations, varImages);
-    else await tx.delete(tc.schema.productVariations).where(eq(tc.schema.productVariations.productId, productId));   // kembali jadi produk sederhana
+    if (input.productType === "variable") await saveVariations(txl, productId, pct, com.c.memberId, input.variations, varImages);
+    else {   // kembali jadi produk sederhana: variasi dibuang (yang sudah dipesan hanya dinonaktifkan)
+      const ids = (await tx.select({ id: tc.schema.productVariations.id }).from(tc.schema.productVariations).where(eq(tc.schema.productVariations.productId, productId))).map((r) => r.id);
+      await dropVariations(txl, productId, ids);
+    }
     return { ok: true as const };
   });
 }
@@ -387,9 +436,11 @@ export async function deleteProducerProduct(access: ProducerAccessLite, productI
   try {
     return await tc.db.transaction(async (tx) => {
       await tx.execute(lockProducer(access.producer.id));
-      const [own] = await tx.select({ id: P.id }).from(P)
+      const [own] = await tx.select({ id: P.id, status: P.status }).from(P)
         .where(and(eq(P.id, productId), eq(P.producerId, access.producer.id), isNull(P.mitraId))).for("update").limit(1);
       if (!own) return NOT_FOUND;
+      // K30: produk beku tidak bisa dihapus produsen (hapus + buat ulang = melewati pembekuan dan mengembalikan slot).
+      if (own.status === "frozen") return { ok: false as const, error: "Produk ini dibekukan pengurus sehingga tidak bisa dihapus dari portal. Hubungi pengurus." };
       if (await hasPaidOrders({ db: tx as unknown as TenantDb["db"], schema: tc.schema }, productId)) {
         return { ok: false as const, error: "Produk ini sudah memiliki pesanan lunas sehingga tidak bisa dihapus. Arsipkan saja agar tidak tampil di toko." };
       }

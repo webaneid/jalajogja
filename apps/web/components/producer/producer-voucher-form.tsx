@@ -85,7 +85,7 @@ export function ProducerVoucherForm({ products, sharePercent, initial = EMPTY, c
 
       <section className="space-y-3 rounded-lg border border-border bg-card p-4">
         <h2 className="text-sm font-semibold">Berlaku untuk produk <span className="text-destructive">*</span></h2>
-        {products.length === 0 ? <p className="text-sm text-muted-foreground">Anda belum memiliki produk sederhana yang bisa dipilih.</p> : (
+        {products.length === 0 ? <p className="text-sm text-muted-foreground">Anda belum memiliki produk yang bisa dipilih.</p> : (
           <ul className="grid gap-2 sm:grid-cols-2">
             {products.map((p) => (
               <li key={p.id}>

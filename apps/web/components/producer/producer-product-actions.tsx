@@ -16,14 +16,16 @@ export function ProducerProductActions({ slug, productId, status, editHref, list
   const router = useRouter();
   const [pending, start] = useTransition();
   const [confirming, setConfirming] = useState(false);
+  const draft    = status === "draft";
   const archived = status === "archived";
   const frozen   = status === "frozen";   // K30: dibekukan admin — tombol status disembunyikan, server juga menolak
 
   function toggle() {
     start(async () => {
-      const res = await setProducerProductStatusAction(slug, productId, archived ? "active" : "archived");
+      const target = draft || archived ? "active" : "archived";
+      const res = await setProducerProductStatusAction(slug, productId, target);
       if (!res.success) { toast.error(res.error); return; }
-      toast.success(archived ? "Produk diaktifkan kembali." : "Produk diarsipkan.");
+      toast.success(draft ? "Produk ditayangkan." : archived ? "Produk diaktifkan kembali." : "Produk diarsipkan.");
       router.refresh();
     });
   }
@@ -53,7 +55,7 @@ export function ProducerProductActions({ slug, productId, status, editHref, list
         <span className="inline-flex h-9 items-center rounded-md border border-red-200 bg-red-50 px-3 text-xs font-medium text-red-700">Dibekukan pengurus</span>
       ) : (
         <Button size="sm" variant="outline" disabled={pending} onClick={toggle}>
-          {archived ? <><ArchiveRestore className="mr-1.5 h-4 w-4" />Aktifkan</> : <><Archive className="mr-1.5 h-4 w-4" />Arsipkan</>}
+          {draft ? <><ArchiveRestore className="mr-1.5 h-4 w-4" />Tayangkan</> : archived ? <><ArchiveRestore className="mr-1.5 h-4 w-4" />Aktifkan</> : <><Archive className="mr-1.5 h-4 w-4" />Arsipkan</>}
         </Button>
       )}
       <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" disabled={pending} onClick={() => setConfirming(true)}><Trash2 className="mr-1.5 h-4 w-4" />Hapus</Button>

@@ -10,7 +10,7 @@ import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { db as pdb, createTenantDb, resolveProductCartItem, tenants, members, memberMedia, tenantMemberships } from "@jalajogja/db";
 import { parseProductInput, computeBaseCost, buildProductSlug } from "../lib/producer-products";
 import {
-  getProducerCommercials, createProducerProduct, updateProducerProduct, setProducerProductStatus, deleteProducerProduct, requireOwnedProduct, countOwnedProducts, hasPaidOrders, resolveProductImages, findMediaInUse, assertWithinLimit,
+  getProducerCommercials, syncBaseCosts, createProducerProduct, updateProducerProduct, setProducerProductStatus, deleteProducerProduct, requireOwnedProduct, countOwnedProducts, hasPaidOrders, resolveProductImages, findMediaInUse, assertWithinLimit,
 } from "../lib/producer-products.server";
 
 const isLocalHost = (h: string) => h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
@@ -278,9 +278,27 @@ try {
     && (await db.select().from(s.productVariations).where(eq(s.productVariations.productId, mine.id))).every((v) => v.id !== otherV.id));
   ok("variasi: foto variasi milik anggota lain ditolak", foreign ? !(await updateProducerProduct(accC, mine.id, pv(varEdit([uv({ images: [{ mediaId: foreign, alt: "" }] })], { publicPrice: 200000 })))).ok : true);
 
+  // variasi yang SUDAH dipesan dinonaktifkan, bukan dihapus (riwayat pesanan tidak yatim)
+  const [usedInv] = await db.insert(s.invoices).values({ invoiceNumber: `${tag}-VAR`, sourceType: "cart", customerName: tag, subtotal: "10", total: "10", status: "pending" as never }).returning({ id: s.invoices.id });
+  made.invoices.push(usedInv.id);
+  const curVars = await db.select().from(s.productVariations).where(eq(s.productVariations.productId, mine.id));
+  await db.insert(s.invoiceItems).values({ invoiceId: usedInv.id, itemType: "product", itemId: curVars[0].id, name: "x", quantity: 1, unitPrice: "10", total: "10" } as never);
+  const r3b = await updateProducerProduct(accC, mine.id, pv(varEdit([uv({}, "M")], { publicPrice: 200000 })));   // variasi lama (S) tidak dikirim lagi
+  const afterDrop = await db.select().from(s.productVariations).where(eq(s.productVariations.id, curVars[0].id));
+  ok("variasi: yang sudah ada di pesanan DINONAKTIFKAN (tidak dihapus)", r3b.ok && afterDrop.length === 1 && afterDrop[0].isActive === false);
+
   // kembali ke produk sederhana → variasi dibersihkan
   const r4 = await updateProducerProduct(accC, mine.id, edit);
-  ok("variasi: kembali ke produk sederhana membersihkan variasi", r4.ok && (await db.select().from(s.productVariations).where(eq(s.productVariations.productId, mine.id))).length === 0 && (await db.select().from(s.products).where(eq(s.products.id, mine.id)))[0].attributeGroups === null);
+  ok("variasi: kembali ke produk sederhana membersihkan variasi (yang sudah dipesan hanya nonaktif)", r4.ok && (await db.select().from(s.productVariations).where(eq(s.productVariations.productId, mine.id))).every((v) => v.isActive === false) && (await db.select().from(s.products).where(eq(s.products.id, mine.id)))[0].attributeGroups === null);
+
+  // admin mengubah persentase → harga dasar produk sederhana, induk bervariasi, dan variasi ber-harga-sendiri ikut dihitung ulang
+  await updateProducerProduct(accC, mine.id, pv(varEdit([uv({ publicPrice: 150000 }), uv({}, "M")], { publicPrice: 200000 })));
+  const nSync = await db.transaction((tx) => syncBaseCosts({ db: tx as never, schema: s }, pC, 20));
+  const [sp] = await db.select().from(s.products).where(eq(s.products.id, mine.id));
+  const svs = await db.select().from(s.productVariations).where(eq(s.productVariations.productId, mine.id));
+  ok("sinkron persentase 20%: induk 160.000, variasi sendiri 120.000, variasi tanpa harga tetap null", nSync >= 1 && Number(sp.price) === 160000 && svs.some((v) => Number(v.price) === 120000) && svs.some((v) => v.price === null));
+  ok("sinkron persentase: produk produsen LAIN tidak tersentuh", Number((await db.select().from(s.productVariations).where(eq(s.productVariations.id, otherV.id)))[0].price) === 5);
+  await updateProducerProduct(accC, mine.id, edit);   // kembali sederhana untuk uji berikutnya
 
   // buat produk bervariasi langsung (produsen baru, slot cukup) + status bawaan draft
   const pV = await mkProducer("Variabel", mem.id, "20", 3);
@@ -314,6 +332,12 @@ try {
     if (cro.ok) made.products.push(cro.productId);
     ok("gudang: produsen dengan SATU gudang boleh tanpa memilih", await (async () => { await db.update(s.products).set({ originId: null }).where(eq(s.products.originId, o2)); await db.delete(s.shippingOrigins).where(eq(s.shippingOrigins.id, o2)); made.origins = made.origins.filter((x) => x !== o2); void o1; const r = await createProducerProduct(accV, withO(null)); if (r.ok) made.products.push(r.productId); return r.ok; })());
   }
+
+  // K30: produk beku tidak bisa dihapus produsen (hapus + buat ulang = melewati pembekuan)
+  const [frz] = await db.insert(s.products).values({ slug: `${tag.toLowerCase()}-frz`, name: `${tag} Beku`, price: "1", publicPrice: "10", stock: 1, producerId: pC, status: "frozen" as never }).returning({ id: s.products.id });
+  made.products.push(frz.id);
+  ok("beku: produsen tidak bisa MENGHAPUS produk beku", await (async () => { const r = await deleteProducerProduct(accC, frz.id); return !r.ok && /dibekukan/i.test(r.error); })() && (await db.select().from(s.products).where(eq(s.products.id, frz.id))).length === 1);
+  await db.delete(s.products).where(eq(s.products.id, frz.id)); made.products = made.products.filter((x) => x !== frz.id);   // jangan menggeser hitungan slot uji berikutnya
 
   // status
   ok("status: arsipkan", (await setProducerProductStatus(accC, mine.id, "archived")).ok && (await db.select().from(s.products).where(eq(s.products.id, mine.id)))[0].status === "archived");

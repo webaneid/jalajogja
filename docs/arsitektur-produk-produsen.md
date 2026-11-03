@@ -208,7 +208,7 @@ Tidak ada IDOR, mass assignment, SQL injection, XSS baru, atau kebocoran lintas 
 - **Status: KODE SELESAI + diuji** (`smoke-producer-products.ts`: 7 pengecekan beku; semua regresi lain lulus). **Deploy: migration `0094` DULU**, baru build/restart.
 - **Catatan terbuka (pra-ada, bukan bagian K30):** produk berstatus `archived`/`draft` yang sudah terlanjur di keranjang pembeli tidak ditolak checkout (hanya `frozen` & produsen nonaktif yang ditolak). Perlu keputusan bila mau diseragamkan.
 
-## 15. RENCANA REFAKTOR — satu `ProductForm` bersama (K31–K33; arahan user 2026-11-03, BELUM dikerjakan)
+## 15. REFAKTOR — satu `ProductForm` bersama (K31–K33; arahan user 2026-11-03) — KODE SELESAI R1–R3, audit selesai (0C/0H/2M/3L)
 **Latar:** form produsen buatan sendiri (`components/producer/producer-product-form.tsx`, 174 baris) diputuskan sepihak dan kurang lengkap (tanpa gudang, variasi, pilihan status). User: cukup beri akses ke produsen pada arsitektur yang sudah ada. Form admin (`components/toko/product-form.tsx`, 906 baris) sudah punya semuanya.
 
 **Keputusan:**
@@ -225,3 +225,23 @@ Tidak ada IDOR, mass assignment, SQL injection, XSS baru, atau kebocoran lintas 
 | R1 (server) | Simpan variasi untuk produsen (diff-upsert seperti admin, kepemilikan diverifikasi, `price` dihitung server); gudang di create/update; status tiga arah (frozen terkunci); sinkron harga dasar variasi saat persentase berubah; uji lokal |
 | R2 (UI) | `ProductForm mode="producer"` + halaman portal memakainya; hapus `producer-product-form.tsx` setelah lolos uji |
 | R3 | Voucher produsen boleh menarget produk bervariasi (resolver sudah per-harga-baris; tinggal pemilih target); audit `security-auditor`; docs; push; deploy |
+
+### 15.1 Status eksekusi (2026-11-03)
+- **R1 server** ✔: parser diperluas (status draft/aktif/arsip — bawaan draft; `originId`; `productType`; atribut; variasi) di `lib/producer-products.ts`; `createProducerProduct`/`updateProducerProduct` menyimpan variasi dalam transaksi (diff-upsert, UUID dipertahankan, hanya variasi MILIK produk itu yang disentuh), harga dasar induk + variasi ber-harga-sendiri dihitung server, gudang diverifikasi (`originBelongsTo`; wajib dipilih bila produsen punya >1 gudang), foto induk & variasi hanya dari Media Library anggota (foto lama dipertahankan), `frozen` tidak diubah dari jalur produsen; `setProducerProductStatus` tiga arah (draft/aktif/arsip) dan menolak produk beku; `syncBaseCosts` (dipakai `setProducerSharePercentAction`) menghitung ulang harga dasar produk sederhana, induk bervariasi, dan variasi ber-harga-sendiri.
+- **R2 UI** ✔: `ProductForm` menerima prop `producer` (mode produsen): menyembunyikan slug, SKU induk, SEO, gratis ongkir, ambil sendiri, pemilih produsen, centang "khusus anggota tenant", tombol toggle status; harga dasar read-only (induk dan di dialog variasi); foto dari `MemberMediaPicker`; editor deskripsi mode `basic`; pilihan status Draft/Aktif/Diarsipkan (Dibekukan → pesan, tak bisa diubah); generate variasi di klien (`lib/variation-combos.ts`, murni). Halaman `produk/baru` dan `produk/[id]/ubah` memakai form itu; `components/producer/producer-product-form.tsx` (form terpisah) DIHAPUS. Jalur simpan tetap Server Action produsen (`getProducerAccess`, whitelist, harga dasar server).
+- **R3** ✔: voucher produsen boleh menarget produk bervariasi; batas nominal = harga TERENDAH di antara induk dan variasi aktif (`lowestPrices`); persentase tidak bergantung harga. Checkout dengan item = id variasi teruji (`smoke-voucher-owner.ts`: harga variasi 40.000, voucher 50% dibatasi 4.000).
+- Tombol cepat di detail produk: Draft → "Tayangkan", Aktif → "Arsipkan", Arsip → "Aktifkan".
+- **Regresi (DB lokal):** `smoke-producer-products` (variasi, gudang, status, sinkron persentase, beku), `smoke-producer-vouchers`, `smoke-voucher-owner`, `smoke-producer-application` semua lulus; type-check + build bersih.
+- **Belum teruji di browser:** tampilan form bersama di portal produsen (mobile & desktop), pemilih foto anggota di dialog variasi, tombol Generate Variasi, hapus lewat form.
+- Perilaku yang berubah: temuan audit lama "draft tidak bisa ditayangkan produsen" dicabut untuk produk milik produsen (K32).
+
+### 15.2 Audit keamanan R1–R3 (subagent `security-auditor`, 2026-11-03) — 0 Critical, 0 High, 2 Medium, 3 Low
+Tidak ada mass-assignment/IDOR (harga dasar, `producerId`, `frozen` tak bisa dikirim; id variasi milik produk lain jadi INSERT baru, tak menyentuh variasi orang lain), foto, gudang, batas produk, voucher variasi, dan halaman baru dinyatakan aman.
+| Temuan | Tindakan |
+|---|---|
+| MEDIUM — produk beku bisa DIHAPUS produsen lalu dibuat ulang (pembekuan terlewati + slot kembali) | **Diperbaiki**: `deleteProducerProduct` menolak produk `frozen`; teruji |
+| MEDIUM — keranjang/checkout tidak memeriksa `status='active'` (draft/arsip hanya tersembunyi dari halaman publik; pra-ada) | **TERBUKA — butuh keputusan user.** Dengan K32 produsen mengandalkan draft/arsip sebagai kontrol penjualan. Usulan: `resolveProductCartItem` menolak status selain `active` (jalur publik saja; invoice manual admin tetap boleh). Akibat: item draft/arsip yang terlanjur di keranjang pembeli ditolak saat checkout |
+| LOW — variasi yang sudah ada di pesanan ikut terhapus | **Diperbaiki**: hanya dinonaktifkan bila dirujuk `invoice_items`/`order_items` (juga saat kembali ke produk sederhana); teruji |
+| LOW — persentase dibaca di luar transaksi (harga dasar bisa basi bila admin mengubah persentase persis di sela) | **Diperbaiki**: dibaca di dalam transaksi dengan kunci baca pada baris produsen |
+| LOW — nama/SKU/atribut tanpa pembatasan karakter (formula injection di ekspor CSV) | Dicatat. Render React aman; belum ditemukan ekspor CSV yang memakai kolom ini (satu-satunya `text/csv` di `lib/` bukan ekspor produk). Cek bila ekspor baru dibuat |
+Tidak bisa diverifikasi dari kode: unique index pada `sku` (galat 23505 di create diasumsikan bentrok slug dan diulang 3×).

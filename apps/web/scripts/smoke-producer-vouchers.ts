@@ -56,7 +56,12 @@ try {
   ok("buat: kode ganda ditolak", !(await createProducerVoucher(acc(A), inp())).ok);
   ok("buat: kode ganda dari produsen LAIN juga ditolak", !(await createProducerVoucher(acc(B), inp({ targetItemIds: [pb] }))).ok);
   ok("buat: target produk produsen lain ditolak", !(await createProducerVoucher(acc(A), inp({ code: `${tag}-V2`, targetItemIds: [pb] }))).ok);
-  ok("buat: target produk bervariasi ditolak", !(await createProducerVoucher(acc(A), inp({ code: `${tag}-V3`, targetItemIds: [pvar] }))).ok);
+  // Produk bervariasi BOLEH jadi target (R3); batas nominal memakai harga TERENDAH (induk atau variasi aktif)
+  await db.insert(s.productVariations).values({ productId: pvar, publicPrice: "40000", stock: 1, attributeCombo: { U: "S" }, isActive: true });
+  await db.insert(s.productVariations).values({ productId: pvar, publicPrice: "10000", stock: 1, attributeCombo: { U: "XS" }, isActive: false });   // nonaktif → tidak dihitung
+  ok("buat: target produk bervariasi DITERIMA (persen 10%)", (await createProducerVoucher(acc(A), inp({ code: `${tag}-V3`, targetItemIds: [pvar] }))).ok);
+  ok("buat: bervariasi — nominal 5.000 melebihi batas dari harga variasi termurah (40.000 @10% = 4.000) ditolak", await (async () => { const r = await createProducerVoucher(acc(A), inp({ code: `${tag}-V3b`, targetItemIds: [pvar], discountType: "fixed", discountValue: 5000 })); return !r.ok && /4\.000/.test(r.error); })());
+  ok("buat: bervariasi — nominal 4.000 diterima (variasi nonaktif 10.000 tidak dihitung)", (await createProducerVoucher(acc(A), inp({ code: `${tag}-V3c`, targetItemIds: [pvar], discountType: "fixed", discountValue: 4000 }))).ok);
   ok("buat: target produk mitra / id acak ditolak", !(await createProducerVoucher(acc(A), inp({ code: `${tag}-V4`, targetItemIds: [pmitra] }))).ok && !(await createProducerVoucher(acc(A), inp({ code: `${tag}-V5`, targetItemIds: [randomUUID()] }))).ok);
   ok("buat: campuran (satu milik sendiri + satu orang lain) ditolak", !(await createProducerVoucher(acc(A), inp({ code: `${tag}-V6`, targetItemIds: [pa, pb] }))).ok);
   ok("buat: persen di atas bagian tenant (11% @10%) ditolak + pesan batas", await (async () => { const r = await createProducerVoucher(acc(A), inp({ code: `${tag}-V7`, discountValue: 11 })); return !r.ok && /maksimal 10%/.test(r.error); })());
@@ -106,6 +111,7 @@ try {
   await cleanup("redemptions", async () => { const ids = (await db.select({ id: s.vouchers.id }).from(s.vouchers).where(like(s.vouchers.code, `${tag.toUpperCase()}%`))).map((x) => x.id); if (ids.length) await db.delete(s.voucherRedemptions).where(inArray(s.voucherRedemptions.voucherId, ids)); });
   await cleanup("invoices", () => db.delete(s.invoices).where(like(s.invoices.invoiceNumber, `${tag}%`)));
   await cleanup("vouchers", () => db.delete(s.vouchers).where(like(s.vouchers.code, `${tag.toUpperCase()}%`)));
+  await cleanup("variations", () => made.products.length ? db.delete(s.productVariations).where(inArray(s.productVariations.productId, made.products)) : Promise.resolve());
   await cleanup("products", () => made.products.length ? db.delete(s.products).where(inArray(s.products.id, made.products)) : Promise.resolve());
   await cleanup("producers", () => made.producers.length ? db.delete(s.producers).where(inArray(s.producers.id, made.producers)) : Promise.resolve());
 }

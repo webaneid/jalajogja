@@ -17,6 +17,9 @@ import {
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { SeoPanel } from "@/components/seo/seo-panel";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
+import { MemberMediaPicker, type MemberMediaItem } from "@/components/media/member-media-picker";
+import { computeBaseCost } from "@/lib/producer-products";
+import { buildVariationCombos } from "@/lib/variation-combos";
 import { FreeShippingPicker, type FreeShippingMode, type FreeShippingRegion } from "@/components/toko/free-shipping-picker";
 import {
   createProductAction,
@@ -97,6 +100,16 @@ export type ProductFormProps = {
   // Asal kirim yang tersedia (shipping_origins, semua pemilik) — dipilih per produk; difilter ke pemilik produk di form.
   // producerId null = milik toko/internal. Doc: docs/arsitektur-alamat.md § 20.
   originOptions?: { id: string; producerId: string | null; label: string; place: string; isDefault: boolean }[];
+  // MODE PRODUSEN (docs/arsitektur-produk-produsen.md § 15, K31): tampilan SAMA, tetapi field terlarang disembunyikan, foto dari
+  // Media Library ANGGOTA, harga dasar read-only. Ini HANYA tampilan — jalur simpan (onSave/onDelete) adalah Server Action produsen
+  // yang menegakkan semuanya di server (producerId dari sesi, harga dasar dihitung server, gudang/variasi diverifikasi).
+  producer?: {
+    sharePercent: number;
+    listHref:     string;   // daftar produk produsen
+    detailHref:   string;   // awalan halaman produk: `${detailHref}/${id}`
+    onSave:       (input: unknown) => Promise<{ success: true; productId?: string } | { success: false; error: string }>;
+    onDelete?:    () => Promise<{ success: true } | { success: false; error: string }>;
+  };
 };
 
 // ─── StatusBadge ──────────────────────────────────────────────────────────────
@@ -118,20 +131,22 @@ function ProductImages({
   slug,
   images,
   onChange,
+  member = false,
 }: {
   slug:     string;
   images:   ProductImage[];
   onChange: (imgs: ProductImage[]) => void;
+  member?:  boolean;   // true = Media Library ANGGOTA (mode produsen)
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  function handleSelect(media: MediaItem) {
+  function handleSelect(media: MediaItem | MemberMediaItem) {
     if (images.some((img) => img.id === media.id)) return;
     const newImg: ProductImage = {
       id:       media.id,
       url:      media.url,
       variants: media.variants ?? null,
-      alt:      media.altText ?? media.originalName,
+      alt:      member ? "" : (("altText" in media ? media.altText : null) ?? media.originalName),   // produsen: alt diisi nama produk saat simpan
       order:    images.length,
     };
     onChange([...images, newImg]);
@@ -225,14 +240,18 @@ function ProductImages({
         Hover gambar untuk mengubah urutan atau menghapus.
       </p>
 
-      <MediaPicker
-        slug={slug}
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        onSelect={handleSelect}
-        module="shop"
-        accept={["image/"]}
-      />
+      {member ? (
+        <MemberMediaPicker slug={slug} open={pickerOpen} onClose={() => setPickerOpen(false)} onSelect={handleSelect} />
+      ) : (
+        <MediaPicker
+          slug={slug}
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          onSelect={handleSelect}
+          module="shop"
+          accept={["image/"]}
+        />
+      )}
     </div>
   );
 }
@@ -247,8 +266,10 @@ export function ProductForm({
   categories,
   producerOptions,
   originOptions = [],
+  producer,
 }: ProductFormProps) {
   const router = useRouter();
+  const isProducer = !!producer;
 
   // Form state
   const [name,        setName]        = useState(initialData.name);
@@ -310,6 +331,41 @@ export function ProductForm({
     const publicNum     = parseFloat(publicPrice) || 0;
     const memberNum     = parseFloat(memberPrice) || 0;
     const stockNum      = parseInt(stock) || 0;
+
+    // ── MODE PRODUSEN: payload sempit ke Server Action produsen (harga dasar TIDAK dikirim — dihitung server) ──
+    if (producer) {
+      if (!name.trim()) { setError("Nama produk wajib diisi."); return; }
+      if (publicNum <= 0) { setError("Harga jual wajib diisi."); return; }
+      if (memberNum > publicNum) { setError("Harga Anggota tidak boleh lebih tinggi dari Harga Jual."); return; }
+      if (!(parseInt(weightGram) > 0)) { setError("Berat (gram) wajib diisi."); return; }
+      if (images.length === 0) { setError("Minimal 1 foto produk."); return; }
+      const mineOrigins = originOptions.filter((o) => o.producerId === initialData.producerId);
+      if (mineOrigins.length > 1 && !mineOrigins.some((o) => o.id === originId)) { setError("Pilih gudang pengiriman produk ini."); return; }
+      if (productType === "variable" && variations.length === 0) { setError("Produk bervariasi butuh minimal satu variasi. Isi atribut lalu klik Generate Variasi."); return; }
+      const toImg = (i: ProductImage) => ({ mediaId: i.id, alt: i.alt || name.trim() });
+      const payload = {
+        name: name.trim(), description: description || "", categoryId: categoryId === "none" ? null : categoryId,
+        images: images.map(toImg), publicPrice, memberPrice: memberPrice.trim() === "" ? null : memberPrice,
+        stock, weightGram, status: status === "frozen" ? "draft" : status,   // status beku tidak dikirim berubah: server mempertahankan
+        originId: mineOrigins.some((o) => o.id === originId) ? originId : null,
+        productType, attributeGroups: productType === "variable" ? attributeGroups : [],
+        variations: productType === "variable" ? variations.map((v) => ({
+          id: v.id ?? null, sku: v.sku.trim() || null,
+          publicPrice: v.publicPrice.trim() === "" ? null : v.publicPrice, memberPrice: v.memberPrice.trim() === "" ? null : v.memberPrice,
+          stock: v.stock, weightGram: v.weightGram.trim() === "" ? null : v.weightGram,
+          images: v.images.map(toImg), attributeCombo: v.attributeCombo, isActive: v.isActive,
+        })) : [],
+      };
+      startTransition(async () => {
+        const res = await producer.onSave(payload);
+        if (!res.success) { setError(res.error); return; }
+        if (productId === null && res.productId) { router.push(`${producer.detailHref}/${res.productId}`); router.refresh(); return; }
+        setSaveMsg("Tersimpan");
+        setTimeout(() => setSaveMsg(""), 2000);
+        router.refresh();
+      });
+      return;
+    }
 
     // Model harga baru: Harga Dasar (modal) + Harga Publik (harga jual) wajib. Server memvalidasi
     // ulang — ini hanya supaya admin tahu sebelum request dikirim.
@@ -395,6 +451,15 @@ export function ProductForm({
   function handleDelete() {
     if (!productId) return;
     if (!confirm("Hapus produk ini? Tindakan tidak bisa dibatalkan.")) return;
+    if (producer) {
+      startDelete(async () => {
+        const res = await producer.onDelete?.();
+        if (!res || !res.success) { setError(res ? res.error : "Hapus tidak tersedia."); return; }
+        router.push(producer.listHref);
+        router.refresh();
+      });
+      return;
+    }
     startDelete(async () => {
       const res = await deleteProductAction(slug, productId);
       if (res.success) {
@@ -421,7 +486,7 @@ export function ProductForm({
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background px-6 py-3">
         <button
           type="button"
-          onClick={() => router.push(`/app/${slug}/toko/produk`)}
+          onClick={() => router.push(producer ? producer.listHref : `/app/${slug}/toko/produk`)}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -445,18 +510,18 @@ export function ProductForm({
             />
           </div>
 
-          {/* Slug */}
-          <div className="flex items-center gap-2">
+          {/* Slug — disembunyikan untuk produsen (dibuat otomatis server) */}
+          {!isProducer && <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground shrink-0">Slug:</span>
             <Input
               value={productSlug}
               onChange={(e) => handleSlugChange(slugify(e.target.value))}
               className="font-mono text-xs border-none shadow-none px-0 h-auto py-0 focus-visible:ring-0 text-muted-foreground"
             />
-          </div>
+          </div>}
 
-          {/* SKU */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* SKU — disembunyikan untuk produsen */}
+          {!isProducer && <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs text-muted-foreground mb-1">SKU (opsional)</label>
               <Input
@@ -465,7 +530,7 @@ export function ProductForm({
                 placeholder="mis. PRD-001"
               />
             </div>
-          </div>
+          </div>}
 
           <Separator />
 
@@ -474,23 +539,28 @@ export function ProductForm({
             <p className="text-xs text-muted-foreground mb-2">Deskripsi Produk</p>
             <TiptapEditor
               slug={slug}
+              basic={isProducer}
               content={description}
               onChange={setDescription}
               placeholder="Tulis deskripsi produk di sini..."
             />
           </div>
 
-          <Separator />
+          {!isProducer && (
+            <>
+              <Separator />
 
-          {/* SEO Panel */}
-          <SeoPanel
-            slug={slug}
-            contentType="product"
-            values={seo}
-            onChange={setSeo}
-            title={name}
-            content={description}
-          />
+              {/* SEO Panel — tidak tersedia untuk produsen (K27) */}
+              <SeoPanel
+                slug={slug}
+                contentType="product"
+                values={seo}
+                onChange={setSeo}
+                title={name}
+                content={description}
+              />
+            </>
+          )}
         </div>
 
         {/* ── Sidebar ── */}
@@ -518,25 +588,31 @@ export function ProductForm({
                 {/* Harga Dasar (modal) */}
                 <div className="flex items-center gap-3 px-3 py-2.5">
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium leading-none">Harga Dasar <span className="text-destructive">*</span></p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Modal / harga dari produsen — tidak tampil ke pembeli</p>
+                    <p className="text-xs font-medium leading-none">Harga Dasar {!producer && <span className="text-destructive">*</span>}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {producer ? `Otomatis dari bagi hasil (${producer.sharePercent}% untuk tenant) — tidak bisa diubah` : "Modal / harga dari produsen — tidak tampil ke pembeli"}
+                    </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <span className="text-xs text-muted-foreground">Rp</span>
-                    <Input
-                      type="number" min="0" step="1"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                      placeholder="0"
-                      className="h-7 text-xs w-28 px-2"
-                    />
+                    {producer ? (
+                      <Input readOnly disabled value={Number(publicPrice) > 0 ? computeBaseCost(Number(publicPrice), producer.sharePercent).toLocaleString("id-ID") : "—"} className="h-7 text-xs w-28 px-2" />
+                    ) : (
+                      <Input
+                        type="number" min="0" step="1"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                        placeholder="0"
+                        className="h-7 text-xs w-28 px-2"
+                      />
+                    )}
                   </div>
                 </div>
 
                 {/* Harga Publik */}
                 <div className="flex items-center gap-3 px-3 py-2.5">
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium leading-none">Harga Publik <span className="text-destructive">*</span></p>
+                    <p className="text-xs font-medium leading-none">{producer ? "Harga Jual" : "Harga Publik"} <span className="text-destructive">*</span></p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">Harga jual untuk semua orang (login maupun tidak)</p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -569,7 +645,7 @@ export function ProductForm({
                       />
                     </div>
                   </div>
-                  <label className="flex items-start gap-2 text-[11px] text-muted-foreground cursor-pointer">
+                  {!isProducer && <label className="flex items-start gap-2 text-[11px] text-muted-foreground cursor-pointer">
                     <input
                       type="checkbox"
                       checked={memberPriceTenantOnly}
@@ -584,12 +660,12 @@ export function ProductForm({
                           : "Tidak dicentang: berlaku untuk semua anggota IKPM terdaftar."}
                       </span>
                     </span>
-                  </label>
+                  </label>}
                   {Number(publicPrice) > 0 && Number(memberPrice) > Number(publicPrice) && (
                     <p className="text-[11px] text-destructive">Harga Anggota tidak boleh lebih tinggi dari Harga Publik.</p>
                   )}
                 </div>
-                {Number(price) > 0 && Number(publicPrice) > 0 && Number(publicPrice) < Number(price) && (
+                {!isProducer && Number(price) > 0 && Number(publicPrice) > 0 && Number(publicPrice) < Number(price) && (
                   <p className="px-3 py-2 text-[11px] text-amber-600">
                     Harga Publik di bawah Harga Dasar (modal) — produk dijual rugi. Pastikan ini disengaja.
                   </p>
@@ -647,13 +723,15 @@ export function ProductForm({
                   return (
                     <>
                       <p className="text-[10px] text-muted-foreground">
-                        Opsional — kosongkan untuk memakai asal utama{main ? ` (${main.label} — ${main.place})` : ownerId ? " produsen; bila produsen belum punya asal, memakai asal utama toko" : " toko"}.
+                        {isProducer && mine.length > 1
+                          ? <>Pilih gudang tempat produk ini dikirim <span className="text-destructive">*</span>. Kelola gudang di menu Profil.</>
+                          : <>Opsional — kosongkan untuk memakai asal utama{main ? ` (${main.label} — ${main.place})` : ownerId ? " produsen; bila produsen belum punya asal, memakai asal utama toko" : " toko"}.</>}
                       </p>
                       <Combobox
-                        options={[{ value: "", label: "Ikuti asal utama" }, ...mine.map((o) => ({ value: o.id, label: `${o.label} — ${o.place}` }))]}
+                        options={[...(isProducer && mine.length > 1 ? [] : [{ value: "", label: "Ikuti asal utama" }]), ...mine.map((o) => ({ value: o.id, label: `${o.label} — ${o.place}` }))]}
                         value={mine.some((o) => o.id === originId) ? originId : ""}
                         onValueChange={setOriginId}
-                        placeholder="Ikuti asal utama"
+                        placeholder={isProducer && mine.length > 1 ? "Pilih gudang" : "Ikuti asal utama"}
                         searchPlaceholder="Cari asal kirim..."
                         emptyText="Belum ada asal kirim."
                       />
@@ -664,7 +742,7 @@ export function ProductForm({
 
               {/* Gratis Ongkir — diskon proporsional-berat saat checkout, bukan hard Rp0.
                   KHUSUS produk tenant sendiri, sama alasan Kota Asal Pengiriman di atas. */}
-              <div className="rounded-xl border border-border bg-card p-3 space-y-1.5">
+              {!isProducer && <div className="rounded-xl border border-border bg-card p-3 space-y-1.5">
                 <p className="text-xs font-medium leading-none">Gratis Ongkir</p>
                 <p className="text-[10px] text-muted-foreground">
                   Ongkir produk ini ditanggung toko — semua daerah, atau daerah tertentu saja.
@@ -679,12 +757,12 @@ export function ProductForm({
                     setFreeShippingCities(cities);
                   }}
                 />
-              </div>
+              </div>}
 
               {/* Lokasi Ambil Sendiri — override opsional dari default toko, KHUSUS produk
                   tenant sendiri (bukan mitra — mitra atur lokasi sendiri di profil mitra).
                   Kosongkan untuk pakai lokasi default toko. docs/arsitektur-billing.md § 14.5. */}
-              <div className="rounded-xl border border-border bg-card p-3 space-y-1.5">
+              {!isProducer && <div className="rounded-xl border border-border bg-card p-3 space-y-1.5">
                 <p className="text-xs font-medium leading-none">Lokasi Ambil Sendiri</p>
                 <p className="text-[10px] text-muted-foreground">
                   Opsional — kosongkan untuk pakai lokasi ambil sendiri default toko.
@@ -708,7 +786,7 @@ export function ProductForm({
                   placeholder="Link Google Maps (opsional)"
                   className="h-8 text-xs"
                 />
-              </div>
+              </div>}
             </div>
 
             <Separator />
@@ -748,11 +826,12 @@ export function ProductForm({
                 <div className="space-y-3">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Atribut Produk</p>
                   <AttributeGroupEditor groups={attributeGroups} onChange={setAttributeGroups} />
-                  {attributeGroups.length > 0 && attributeGroups.every(g => g.values.length > 0) && productId && (
+                  {attributeGroups.length > 0 && attributeGroups.every(g => g.values.length > 0) && (productId || isProducer) && (
                     <button
                       type="button"
                       onClick={async () => {
-                        const result = await generateVariationsAction(slug, productId, attributeGroups, variations);
+                        if (isProducer) { setVariations(buildVariationCombos(attributeGroups, variations)); return; }
+                        const result = await generateVariationsAction(slug, productId!, attributeGroups, variations);
                         if (result.variations) setVariations(result.variations);
                       }}
                       className="text-xs text-primary hover:underline"
@@ -777,6 +856,7 @@ export function ProductForm({
                     productMemberPrice={memberPrice}
                     productWeightGram={weightGram}
                     productSku={sku}
+                    producer={producer ? { sharePercent: producer.sharePercent } : undefined}
                   />
                 </div>
               </>
@@ -793,7 +873,7 @@ export function ProductForm({
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                 Gambar Produk {productType === "variable" && <span className="normal-case font-normal">(Sampul Utama)</span>}
               </p>
-              <ProductImages slug={slug} images={images} onChange={setImages} />
+              <ProductImages slug={slug} images={images} onChange={setImages} member={isProducer} />
               {productType === "variable" && (
                 <p className="text-xs text-muted-foreground mt-1.5">
                   Ditampilkan sebagai foto sampul di arsip/kartu toko. Foto per varian (mis. per
@@ -847,6 +927,12 @@ export function ProductForm({
             {/* Status */}
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Status</p>
+              {isProducer && status === "frozen" ? (
+                // K30: dibekukan pengurus — produsen tidak bisa mengubah status, isi produk tetap boleh diperbaiki.
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  Produk ini dibekukan pengurus sehingga tidak tampil di toko. Anda tetap bisa memperbaiki isinya; hubungi pengurus untuk membukanya.
+                </p>
+              ) : (
               <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
@@ -855,9 +941,10 @@ export function ProductForm({
                   <SelectItem value="draft">Draft</SelectItem>
                   <SelectItem value="active">Aktif</SelectItem>
                   <SelectItem value="archived">Diarsipkan</SelectItem>
-                  {(producerId !== "internal" || status === "frozen") && <SelectItem value="frozen">Dibekukan (oleh pengurus)</SelectItem>}
+                  {!isProducer && (producerId !== "internal" || status === "frozen") && <SelectItem value="frozen">Dibekukan (oleh pengurus)</SelectItem>}
                 </SelectContent>
               </Select>
+              )}
             </div>
           </div>
 
@@ -876,17 +963,19 @@ export function ProductForm({
               {isPending ? "Menyimpan..." : saveLabel}
             </Button>
 
-            {productId && (
+            {productId && (!isProducer || producer?.onDelete) && (
               <>
-                <Button
-                  variant={toggleBtn.variant}
-                  className="w-full"
-                  onClick={handleToggleStatus}
-                  disabled={isToggling}
-                >
-                  <ToggleIcon className="h-4 w-4 mr-2" />
-                  {isToggling ? "Memproses..." : toggleBtn.label}
-                </Button>
+                {!isProducer && (
+                  <Button
+                    variant={toggleBtn.variant}
+                    className="w-full"
+                    onClick={handleToggleStatus}
+                    disabled={isToggling}
+                  >
+                    <ToggleIcon className="h-4 w-4 mr-2" />
+                    {isToggling ? "Memproses..." : toggleBtn.label}
+                  </Button>
+                )}
 
                 <button
                   type="button"

@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { and, asc, eq, isNull } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
 import { getProducerPageAccess } from "@/lib/producer-access.server";
 import { getProducerCommercials } from "@/lib/producer-products.server";
+import { listVoucherTargetProducts } from "@/lib/producer-vouchers.server";
 import { ProducerVoucherForm } from "@/components/producer/producer-voucher-form";
 import { createProducerVoucherAction } from "../actions";
 
@@ -12,11 +12,9 @@ export default async function NewProducerVoucherPage({ params }: { params: Promi
   const access = await getProducerPageAccess(slug);
   if (!access) redirect("/no-tenant-access");
   const tc = createTenantDb(access.tenant.slug);
-  const P = tc.schema.products;
   const [com, prods] = await Promise.all([
     getProducerCommercials(tc, access.producer.id),
-    tc.db.select({ id: P.id, name: P.name, pub: P.publicPrice }).from(P)
-      .where(and(eq(P.producerId, access.producer.id), isNull(P.mitraId), eq(P.productType, "simple"))).orderBy(asc(P.name)),
+    listVoucherTargetProducts(tc, access.producer.id),
   ]);
   const back = `/app/${access.tenant.slug}/portal-produsen/voucher`;
   if (!com || !com.isActive || com.sharePercent === null) {
@@ -32,7 +30,7 @@ export default async function NewProducerVoucherPage({ params }: { params: Promi
     <div className="max-w-3xl space-y-4">
       <h1 className="text-xl font-semibold">Buat Voucher</h1>
       <ProducerVoucherForm
-        products={prods.map((p) => ({ id: p.id, name: p.name, price: parseFloat(String(p.pub ?? 0)) }))}
+        products={prods.map((p) => ({ id: p.id, name: p.variable ? `${p.name} (bervariasi)` : p.name, price: p.price }))}
         sharePercent={com.sharePercent} submitLabel="Simpan Voucher" backHref={back}
         onSubmit={createProducerVoucherAction.bind(null, access.tenant.slug)}
       />
