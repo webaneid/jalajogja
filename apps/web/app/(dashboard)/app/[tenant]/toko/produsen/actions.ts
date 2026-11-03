@@ -7,7 +7,7 @@
 //  - Produsen yang dipakai produk tidak boleh dihapus (hanya dinonaktifkan).
 import { parseCouriersInput } from "@/lib/producer-couriers";
 import { revalidatePath } from "next/cache";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, sql, isNull, isNotNull } from "drizzle-orm";
 import { db as publicDb, createTenantDb, memberBusinesses, memberOwnedPesantren, memberProfessionals, members, producerLogins } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
@@ -234,8 +234,9 @@ export async function deleteProducerAction(slug: string, producerId: string): Pr
     refresh(slug);
     return { success: true, data: undefined };
   } catch (err) {
-    // FK ON DELETE RESTRICT (0075): produk baru dipasangi produsen ini tepat saat dihapus → database menolak
-    if (pgErrorCode(err) === "23503") return { success: false, error: "Produsen baru saja dipakai produk — nonaktifkan saja, atau ganti produsen produknya dulu." };
+    // FK ON DELETE RESTRICT: penahan BUKAN hanya produk — juga riwayat pesanan (invoice_items), pengiriman, batch. Pesan harus jujur
+    // soal itu; riwayat penjualan tidak boleh dihapus, jadi jalan keluarnya menonaktifkan produsen.
+    if (pgErrorCode(err) === "23503") return { success: false, error: "Produsen tidak bisa dihapus karena masih memiliki riwayat (pesanan, pengiriman, batch, atau voucher) atau baru saja dipakai produk. Nonaktifkan saja agar riwayat penjualan tetap utuh." };
     console.error("[deleteProducerAction]", err);
     return { success: false, error: "Gagal menghapus produsen." };
   }
@@ -334,6 +335,38 @@ export async function setProducerProductLimitAction(slug: string, producerId: st
   } catch (err) {
     console.error("[setProducerProductLimitAction]", pgErrorCode(err) ?? "unknown");
     return { success: false, error: "Gagal menyimpan batas produk." };
+  }
+}
+
+/**
+ * Admin menetapkan / mengubah persentase bagi hasil produsen (K20: HANYA admin; produsen tidak bisa mengubah sendiri).
+ * K24: harga dasar (modal) produk sederhana milik produsen ini dihitung ulang dari persentase baru dalam transaksi yang sama.
+ * Pesanan lama TIDAK berubah (snapshot per baris pesanan, K25). Produk bervariasi menunggu fase variasi produsen.
+ */
+export async function setProducerSharePercentAction(slug: string, producerId: string, percent: number): Promise<ActionResult<{ updatedProducts: number }>> {
+  const g = await guard(slug);
+  if (!g.access) return { success: false, error: g.error ?? "Akses ditolak." };
+  if (!isValidUuid(producerId)) return { success: false, error: "Produsen tidak ditemukan." };
+  const p = typeof percent === "number" && Number.isFinite(percent) ? Math.round(percent * 100) / 100 : NaN;
+  if (!(p > 0 && p < 100)) return { success: false, error: "Persentase harus lebih dari 0 dan kurang dari 100." };
+  try {
+    const { db, schema } = createTenantDb(slug);
+    const out = await db.transaction(async (tx) => {
+      const upd = await tx.update(schema.producers).set({ revenueSharePercent: p.toFixed(2), updatedAt: new Date() })
+        .where(eq(schema.producers.id, producerId)).returning({ id: schema.producers.id });
+      if (upd.length === 0) return null;
+      const synced = await tx.update(schema.products)
+        .set({ price: sql`ROUND(${schema.products.publicPrice} * (100 - ${p.toFixed(2)}::numeric) / 100, 2)`, updatedAt: new Date() })
+        .where(and(eq(schema.products.producerId, producerId), isNull(schema.products.mitraId), eq(schema.products.productType, "simple"), isNotNull(schema.products.publicPrice)))
+        .returning({ id: schema.products.id });
+      return synced.length;
+    });
+    if (out === null) return { success: false, error: "Produsen tidak ditemukan." };
+    refresh(slug);
+    return { success: true, data: { updatedProducts: out } };
+  } catch (err) {
+    console.error("[setProducerSharePercentAction]", pgErrorCode(err) ?? "unknown");
+    return { success: false, error: "Gagal menyimpan persentase bagi hasil." };
   }
 }
 

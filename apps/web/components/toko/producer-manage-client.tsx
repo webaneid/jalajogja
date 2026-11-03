@@ -14,12 +14,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import type { ProducerSourceKind } from "@/lib/producer-resolve";
 import { ProductLimitForm } from "@/components/toko/product-limit-form";
+import { SharePercentForm } from "@/components/toko/share-percent-form";
 import { CourierForm } from "@/components/producer/courier-form";
 import { ProducerCard } from "@/components/toko/producer-card";
 import type { ProducerView } from "@/lib/producer.server";
 import {
   createMemberProducerAction, createCustomProducerAction, updateProducerAction,
-  toggleProducerActiveAction, deleteProducerAction, grantProducerLoginAction, revokeProducerLoginAction, setProducerCouriersAction, setProducerProductLimitAction, type CustomProducerInput,
+  toggleProducerActiveAction, deleteProducerAction, grantProducerLoginAction, revokeProducerLoginAction, setProducerCouriersAction, setProducerProductLimitAction, setProducerSharePercentAction, type CustomProducerInput,
 } from "@/app/(dashboard)/app/[tenant]/toko/produsen/actions";
 
 export type ProducerItem = {
@@ -81,6 +82,7 @@ export function ProducerManageClient({ slug, internal, internalProductCount, ite
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<ProducerItem | null>(null);
   const [limitFor, setLimitFor] = useState<ProducerItem | null>(null);
+  const [shareFor, setShareFor] = useState<ProducerItem | null>(null);
   const [courierFor, setCourierFor] = useState<ProducerItem | null>(null);
 
   // Tambah dari anggota
@@ -142,7 +144,12 @@ export function ProducerManageClient({ slug, internal, internalProductCount, ite
                 Batas produk: {it.terms.productLimit ?? "tanpa batas"}
               </Button>
             )}
-            {it.terms.sharePercent && <span className="self-center text-xs text-muted-foreground">Bagi hasil {it.terms.sharePercent}%{it.terms.brand ? ` · ${it.terms.brand}` : ""}</span>}
+            {it.view.kind === "member" && (
+              <Button size="sm" variant="outline" onClick={() => setShareFor(it)}>
+                Bagi hasil: {it.terms.sharePercent ? `${it.terms.sharePercent}%` : "belum diatur"}
+              </Button>
+            )}
+            {it.terms.brand && <span className="self-center text-xs text-muted-foreground">{it.terms.brand}</span>}
             <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => toggleProducerActiveAction(slug, it.view.id as string))}>
               {it.view.isActive ? "Nonaktifkan" : "Aktifkan"}
             </Button>
@@ -216,6 +223,22 @@ export function ProducerManageClient({ slug, internal, internalProductCount, ite
               <CourierForm key={courierFor.view.id as string} initial={courierFor.couriers}
                 onSave={(c) => setProducerCouriersAction(slug, courierFor.view.id as string, c)}
                 onDone={() => setCourierFor(null)} />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!shareFor} onOpenChange={(o) => !o && setShareFor(null)}>
+        <DialogContent className="max-w-sm">
+          {shareFor && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Bagi hasil: {shareFor.view.name}</DialogTitle>
+                <DialogDescription>Wajib diisi agar produsen bisa menambah produk dan membuat voucher sendiri.</DialogDescription>
+              </DialogHeader>
+              <SharePercentForm key={shareFor.view.id as string} initial={shareFor.terms.sharePercent}
+                onSave={(p) => setProducerSharePercentAction(slug, shareFor.view.id as string, p)}
+                onDone={() => { setShareFor(null); router.refresh(); }} />
             </>
           )}
         </DialogContent>
