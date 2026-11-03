@@ -2718,6 +2718,8 @@ export type VoucherListItem = {
   validFrom:              string | null;
   validUntil:             string | null;
   createdAt:              string;
+  /** Promo Produsen (K23): nama produsen pemilik/penanggung; null = Promo Tenant. */
+  ownerName:              string | null;
 };
 
 export async function getVoucherListAction(
@@ -2730,13 +2732,14 @@ export async function getVoucherListAction(
 
   const { db, schema } = createTenantDb(slug);
   const rows = await db
-    .select()
+    .select({ v: schema.vouchers, ownerCustom: schema.producers.customName, ownerCache: schema.producers.nameCache })
     .from(schema.vouchers)
+    .leftJoin(schema.producers, eq(schema.producers.id, schema.vouchers.ownerProducerId))
     .orderBy(desc(schema.vouchers.createdAt));
 
   return {
     success: true,
-    data: rows.map((r) => ({
+    data: rows.map(({ v: r, ownerCustom, ownerCache }) => ({
       id:            r.id,
       code:          r.code,
       name:          r.name,
@@ -2750,6 +2753,7 @@ export async function getVoucherListAction(
       validFrom:     r.validFrom?.toISOString()  ?? null,
       validUntil:    r.validUntil?.toISOString() ?? null,
       createdAt:     r.createdAt.toISOString(),
+      ownerName:     r.ownerProducerId ? (ownerCustom ?? ownerCache ?? "Produsen") : null,
     })),
   };
 }
@@ -2868,11 +2872,13 @@ export async function updateVoucherAction(
   const { db, schema } = tenantDb;
 
   const [existing] = await db
-    .select({ id: schema.vouchers.id })
+    .select({ id: schema.vouchers.id, ownerProducerId: schema.vouchers.ownerProducerId })
     .from(schema.vouchers)
     .where(eq(schema.vouchers.id, voucherId))
     .limit(1);
   if (!existing) return { success: false, error: "Voucher tidak ditemukan." };
+  // Promo Produsen ditanggung & dikelola produsen itu sendiri (K23) — tenant tidak ikut campur; admin hanya boleh menonaktifkan.
+  if (existing.ownerProducerId) return { success: false, error: "Voucher ini milik produsen dan hanya dapat dinonaktifkan oleh admin, tidak diubah isinya." };
 
   try {
     const tenantTimezone = await getTenantTimezone(tenantDb);

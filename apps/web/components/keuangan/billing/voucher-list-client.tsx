@@ -67,6 +67,7 @@ export function VoucherListClient({ slug, rows }: Props) {
                   {r.code}
                 </Link>
                 <span className="block text-xs text-muted-foreground truncate max-w-[180px]">{r.name}</span>
+                {r.ownerName && <span className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">Promo Produsen · {r.ownerName}</span>}
               </td>
               <td className="px-4 py-3 text-muted-foreground">
                 {TARGET_LABELS[r.targetType] ?? r.targetType}
