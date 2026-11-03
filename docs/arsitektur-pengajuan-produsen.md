@@ -293,12 +293,12 @@ Uji wajib sebelum selesai: dua penyetuju menyetujui bersamaan; keluar keanggotaa
 ## 19. Yang MASIH terbuka (diperbarui setelah P7)
 
 Sudah dijawab user: izin (K10), sumber (K11), contoh produk (K12), PDF (K13), retensi (K14), saklar (K15), notifikasi (K16), tawaran bagi hasil dari pemohon (K17). Tersisa — TIDAK memblokir peluncuran pengajuan, tetapi perlu keputusan:
-1. **Penyetuju memutuskan pengajuannya sendiri** — saat ini dibolehkan + diberi peringatan + ditandai (§ 20). Kunci atau biarkan?
-2. **Model harga/bagi hasil** (§ 17): varian A/B (diskon anggota ditanggung siapa), dasar hitung terhadap voucher, batas bawah persentase di form. Memblokir tahap produk & pencairan, bukan pengajuan.
-3. **Mengubah persentase bagi hasil SETELAH disetujui** — belum ada UI (hanya batas produk yang bisa diubah admin). Perlu? Siapa yang boleh?
+1. ~~Penyetuju memutuskan pengajuannya sendiri~~ — **DIJAWAB user 2026-11-03 (K19): BOLEH** (Ketua/Sekjen punya otoritas). Perilaku sekarang (peringatan + penanda otomatis) dipertahankan; tidak ada penguncian.
+2. **Model harga/bagi hasil** (§ 17): **varian diskon anggota DIJAWAB user 2026-11-03 (K18): ditanggung BERSAMA** — persentase bagi hasil berlaku atas harga yang benar-benar dibayar pembeli. Contoh: tawaran 10%, harga umum Rp10.000 → bagian toko Rp1.000; harga anggota Rp9.000 → bagian toko Rp900; persentasenya TETAP 10% di keduanya (produsen dan toko sama-sama menanggung selisih diskon). Masih terbuka: dasar hitung terhadap voucher, batas bawah persentase di form. Memblokir tahap produk & pencairan, bukan pengajuan.
+3. **Mengubah persentase bagi hasil SETELAH disetujui** — **DIJAWAB user 2026-11-03 (K20): produsen TIDAK boleh mengubah sendiri; HANYA admin** (setelah produsen dan toko berkomunikasi, bisa naik/turun). UI admin untuk ini BELUM dibuat (hanya batas produk yang bisa diubah); perubahan harus tercatat (siapa, kapan, nilai lama → baru) — dirancang di tahap pencairan.
 4. **Aturan hitung batas produk** (draf+aktif, tanpa arsip) — usulan; belum ditegakkan karena portal belum bisa membuat produk (tahap produk).
 5. **Kategori/"jenis" produk tambahan** di luar `product_categories` yang sudah ada (digital/jasa dicatat sebagai tahap sendiri).
-6. **Email seketika ke penyetuju** saat pengajuan masuk (sekarang: lencana + dashboard + digest PJ) — dibahas di rapat.
+6. ~~Email seketika ke penyetuju~~ — **DIKERJAKAN 2026-11-03 (PR-E, `arsitektur-produk-produsen.md` § 8)**; lencana, dashboard, dan digest PJ tetap ada.
 7. **Sekretaris tanpa akses penuh Toko** boleh menyetujui (keputusan K6) — dicatat agar disadari.
 8. **Retensi data pribadi** (hasil audit akhir): dokumen legalitas pengajuan DISETUJUI disimpan tanpa batas waktu (K14), pengajuan PENDING tanpa batas waktu (berkas tertahan selama belum diputuskan), dan baris teks final (nama PJ, WA, deskripsi) disimpan selamanya. Pertimbangkan TTL panjang (mis. 1–2 tahun) untuk dokumen, dan pembatalan/peringatan otomatis untuk pending > N bulan.
 9. **Deploy**: migration 0092 hanya menyentuh tenant `is_active=true`; tenant nonaktif yang diaktifkan kemudian harus menjalankan 0091/0092 lagi sebelum fitur dipakai (tabel/kolom tak ada → 42P01/42703).

@@ -913,3 +913,18 @@ DB. **Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi l
 pesanan+voucher 100% yang sesungguhnya** — user perlu coba lagi setelah deploy: buat pesanan di
 `/toko/pesanan/new` dengan voucher yang menghabiskan seluruh tagihan, konfirmasi invoice
 langsung berstatus "Lunas" tanpa kode unik tersisa.
+
+
+---
+
+## 19. Voucher dua jenis — Promo Tenant vs Promo Produsen (2026-11-03, K23/K25)
+
+Detail keputusan: `docs/arsitektur-produk-produsen.md` § 4 + § 12. Ringkas:
+
+- **Promo Tenant** (`vouchers.owner_producer_id IS NULL`): dibuat admin (alur di atas, tidak berubah). Potongan **ditanggung tenant** — bagian produsen dihitung dari harga sebelum voucher.
+- **Promo Produsen** (`owner_producer_id` = produsen): dibuat & dikelola produsen di `/app/{slug}/portal-produsen/voucher`. Potongan **ditanggung produsen** — bagian tenant tetap. Tenant tidak ikut campur: admin hanya bisa **menonaktifkan** (`updateVoucherAction` menolak voucher berpemilik).
+- **Resolver** (`computeVoucherDiscount`): voucher berpemilik hanya cocok dengan item yang `producerId`-nya = pemilik, dan potongan per baris dibatasi `floor(harga × qty × persen_bagian_tenant)/100`. Pemanggil yang tidak mengirim `producerId`/`sharePercent` (invoice manual admin, pesanan manual toko) tidak pernah cocok → fail-closed.
+- **Batas**: persen ≤ persentase bagian tenant; nominal ≤ persentase itu × harga terendah target (form) dan dibatasi lagi saat checkout memakai persentase TERKINI (menurunkan persentase otomatis memperketat voucher lama).
+- **Snapshot (K25)** per baris di `invoice_items`: `producer_share_percent` (persen saat checkout, hanya baris ber-produsen) dan `discount_funded_by` (`tenant`|`producer`, hanya baris bertotal diskon). Untuk pencairan/laporan nanti; perubahan harga/persentase kemudian tidak mengubah riwayat.
+- Hapus voucher produsen ditolak bila sudah pernah dipakai (riwayat `voucher_redemptions`); nonaktifkan saja. Kode voucher tetap unik se-tenant (produsen vs admin bersaing kode → "sudah dipakai").
+- Migration: `0093_voucher_owner_and_share_snapshot.sql`. Uji: `apps/web/scripts/smoke-voucher-owner.ts` (memanggil `checkoutAction` nyata), `smoke-producer-vouchers.ts`.

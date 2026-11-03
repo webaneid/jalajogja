@@ -15,13 +15,29 @@
 4. **Rate limit/validasi tidak cukup tanpa memeriksa dulu hal yang murah.** Pemrosesan gambar (Sharp) harus berjalan SESUDAH cek status draf/izin, dengan batas piksel kecil dan batas konkurensi global — rate limit per-akun tidak melindungi memori server dari banyak akun sekaligus.
 **Catatan pengujian:** (a) DB dev lokal sering tertinggal migration → `select *` pada tabel yang bertambah kolom gagal di skrip uji; pakai kolom eksplisit dan jalankan migration yang tertinggal. (b) Uji XSS dengan regex yang mencocokkan teks ter-escape memberi kegagalan palsu — periksa TAG/ATRIBUT sungguhan. (c) Turbo tidak meneruskan env shell ke `bun run dev` (strict env); uji rute berbasis env dengan `next dev` langsung dari `apps/web`. (d) Skrip regresi data-nyata yang mengubah DB WAJIB menolak jalan di luar localhost.
 
+## [2026-11-03] Diagnosis lewat loop `while read` + `docker compose exec` hanya memeriksa SATU baris
+**Masalah:** untuk mencari tabel yang masih menunjuk ke `producers`, saya memberi pengguna loop `... | while read k; do docker compose exec -T postgres psql ... done`. `docker compose exec` ikut membaca stdin, jadi daftar tabel habis dimakan iterasi pertama: loop berhenti setelah 1 tabel dan kesimpulan ("hanya batch yang menahan") salah — tabel lain (289 baris `invoice_items`) baru ketahuan di putaran berikutnya.
+**Pencegahan:** perintah yang membaca stdin di dalam loop WAJIB `</dev/null`, atau baca daftar dari berkas (`done < daftar.txt`). Untuk diagnosis jarak jauh, lebih baik satu query katalog (`pg_constraint`) + satu `UNION ALL` daripada loop.
+
+## [2026-11-03] Pesan galat FK yang menyebut satu penyebab padahal ada banyak
+**Masalah:** `deleteProducerAction` memetakan SEMUA galat 23503 ke "dipakai produk". Produsen yang produknya sudah dipindah masih ditahan riwayat pesanan/pengiriman/batch, sehingga pesan menyesatkan dan pengguna mengira data belum bersih.
+**Fix:** pesan menyebut semua kemungkinan (pesanan, pengiriman, batch, produk) dan jalan keluarnya (nonaktifkan). **Pelajaran:** `ON DELETE RESTRICT` pada tabel riwayat memang sengaja; jangan pernah menyarankan menghapus paksa riwayat — nonaktifkan/arsipkan.
+
+## [2026-11-03] Skrip uji di `apps/web/scripts/` ikut `tsc`: `bun:test` dan pembersihan berbasis nama
+**Masalah 1:** `import { mock } from "bun:test"` tidak punya tipe di tsc proyek → `type-check` merah. **Fix:** muat dinamis tanpa tipe (`await import("bun:" + "test")`).
+**Masalah 2:** pembersihan skrip uji menghapus produk menurut penanda nama, tetapi produk buatan fungsi aplikasi (`createProducerProduct`) tidak bernama penanda → produsen uji tertahan FK RESTRICT dan tersisa. **Pencegahan:** bersihkan menurut ID/produsen induk yang dibuat skrip (dan daftar `made.*`), bukan hanya menurut nama; selalu verifikasi sisa data dengan `SELECT count(*)` setelah skrip.
+**Masalah 3:** DB dev lokal tertinggal migration (0069 belum jalan) → uji gagal di INSERT. Cek `\d tabel` / jalankan migration yang hilang sebelum menyimpulkan kode salah.
+
+## [2026-11-03] `normalizePhone` longgar — jangan jadikan satu-satunya validasi untuk pembatas
+`normalizePhone("abc")` menghasilkan `+62abc`. Untuk nilai yang dipakai MEMBATASI (voucher personal) tambahkan pemeriksaan bentuk E.164 (`/^\+[1-9]\d{7,14}$/`) setelah normalisasi; admin `validateVoucherData` belum melakukannya (tidak berbahaya: pembatas tak cocok = voucher tak terpakai).
+
 ## [2026-11-03] `renderBody` menyisipkan atribut node Tiptap tanpa escape → stored XSS lewat Server Action
 
 - **Gejala (ditemukan audit fitur Syarat Produsen):** `lib/letter-render.ts` meng-escape teks dan `href` mark link, tetapi `color` (mark `textStyle`/`highlight`),
   `textAlign`, `level` heading, dan `url` blok `relatedLinkBlock`/`embedBlock` masuk ke HTML mentah. JSON Tiptap dikirim klien ke Server Action tanpa validasi struktur,
   jadi pengguna dengan akses penuh modul bisa menyisipkan `color:'x" onmouseover="..."'` tanpa lewat editor.
 - **Mitigasi di fitur syarat produsen:** `renderProducerTermHtml()` (`lib/producer-terms.server.ts`) = `renderBody` + `sanitize-html` daftar putih (tanpa iframe/script, style hanya color/background-color/text-align dengan regex).
-- **BELUM diperbaiki di renderer bersama** (dipakai Post/Page/Produk/Event/Surat) — perbaikan akarnya: whitelist nilai di `letter-render.ts` (color regex, textAlign enum, level 1–6 integer, url lewat `sanitizeLinkHref`). Perlu keputusan user karena menyentuh semua modul.
+- **DIPERBAIKI di renderer bersama 2026-11-03 (disetujui user):** `lib/letter-render.ts` kini whitelist nilai atribut — `safeColor` (hex/rgb/hsl/nama), `safeAlign` (enum), `safeHeadingLevel` (1–6), `safeColumns`, `sanitizeImgSrc` (tolak `javascript:`/`data:` non-raster), url `relatedLinkBlock`/`embedBlock` lewat `sanitizeLinkHref`. Nilai di luar daftar DIBUANG (bukan di-escape). Diuji 12 skenario (payload serangan + konten normal). `renderProducerTermHtml` tetap memakai `sanitize-html` sebagai lapis kedua.
 - **Pola:** HTML yang dirakit dengan template string dari data JSON bebas WAJIB di-escape/di-whitelist per atribut, atau disanitasi di titik render; "teks sudah di-escape" tidak berarti atribut aman.
 
 ## [2026-11-02] Edit file besar lewat skrip: `str.index(penanda)` yang tidak unik MENGGANDAKAN isi file

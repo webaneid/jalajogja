@@ -831,3 +831,39 @@ T1 schema + migration + DDL tenant baru · T2 tab "Syarat Produsen" (draf/Tiptap
   Daftar uji browser yang dianjurkan (rincian mana yang sudah dicoba user belum dicatat): draf tersimpan setelah muat ulang → terbit (konfirmasi "mengunci N produsen") → produsen terkunci
   (sidebar hanya "Syarat", halaman lain dialihkan) → tanda tangan (QR + hash) → portal terbuka → `/{slug}/verify/{hash}` valid → status tercatat di pengaturan toko → versi 2 mengunci ulang → dua tab bersamaan.
   Pembatalan darurat tanpa rollback kode: kembalikan versi terbit ke draf (`UPDATE "tenant_<slug>".producer_terms SET status='draft', version=NULL, published_at=NULL WHERE status='published'`) — tidak ada versi aktif ⇒ tidak ada penguncian.
+
+## 29. Kepemilikan pesanan saat produk berpindah produsen — RENCANA (2026-11-03, menunggu keputusan user; BELUM ada kode)
+
+### 29.1 Temuan (diverifikasi di kode + data forbis 2026-11-03)
+- Pesanan menempel ke produsen lewat **snapshot saat checkout**: `invoice_items.producer_id` dan `invoice_shipping_lines.producer_id` diisi dari `products.producer_id` pada detik pembeli checkout (`cart/actions.ts`; ADR-0005).
+  Portal produsen (daftar Pesanan, batch, label, resi — `lib/producer-orders.server.ts`) memfilter dengan snapshot itu, BUKAN dengan produk saat ini.
+- Akibatnya: produk dipindah ke produsen/internal lain → pesanan LAMA tetap di produsen lama (di forbis: produsen Webane masih memegang 289 baris barang + 269 pengiriman walau tidak punya produk).
+  Produsen lama juga TIDAK bisa dihapus (FK `ON DELETE RESTRICT`), dan pesan galat lama ("dipakai produk") menyesatkan — sudah dikoreksi.
+- Admin melihat pesanan per produk/seluruhnya sehingga tidak merasakan masalah ini; yang merasakan: produsen lama (memegang pesanan produk yang bukan lagi miliknya) dan produsen baru (tidak melihat pesanan produknya).
+
+### 29.2 Mengapa snapshot dulu dipilih (ADR-0005) — dan batasnya
+Satu pengiriman = satu produsen = satu resi/label/batch. Bila kepemilikan dihitung ulang dari produk saat ini, sebuah baris pengiriman bisa berisi barang dua produsen berbeda,
+batch yang sudah dibuat berubah isinya, label yang sudah dicetak tidak cocok, dan laporan/bagi hasil periode lampau ikut bergeser. Sisi lemahnya: produk yang pindah TIDAK membawa pesanan yang BELUM dikirim.
+
+### 29.3 Opsi
+- **A. Tetap snapshot (status quo).** Aman bagi riwayat; produk pindah tidak membawa pesanan apa pun. Kekurangan: pesanan berjalan tertinggal di produsen lama.
+- **B. Ikut produk sepenuhnya (dihitung hidup).** Sesuai gambaran "pesanan milik produk". Risiko tinggi: riwayat dan bagi hasil lampau berpindah, invarian "satu pengiriman = satu produsen" rusak, batch/label/resi yang sudah ada tidak konsisten. Perlu mendesain ulang ADR-0005.
+- **C. Hibrida (REKOMENDASI).** Riwayat TETAP snapshot (selesai/dikirim/dibatalkan tidak pernah berpindah). Pesanan BERJALAN (belum dikirim: pending/processing/packed, belum masuk batch dan belum dicetak) IKUT produk ketika produsen produk diganti:
+  saat admin mengganti produsen produk, sistem menampilkan "N pesanan berjalan untuk produk ini" dan admin memilih ikut pindah atau tetap di produsen lama. Pemindahan hanya untuk baris pengiriman yang SELURUH barangnya milik produk yang dipindah;
+  baris yang bercampur ditandai "perlu ditangani admin" (tidak dipecah otomatis). Dicatat di log perubahan. Hanya amandemen ADR-0005 (ADR baru yang meluruskan, bukan membatalkan).
+- Tambahan untuk semua opsi: produsen yang tidak aktif dan tidak punya produk boleh DIARSIPKAN (hilang dari daftar kerja) alih-alih dihapus, karena riwayatnya wajib utuh.
+
+### 29.4 Yang saya butuhkan dari user sebelum kode
+1. Pilih A, B, atau C. (Saran saya C: menjawab kekhawatiran "pesanan harus ikut produk" untuk pesanan yang masih berjalan tanpa merusak riwayat.)
+2. Bila C: ikut pindah otomatis, atau admin yang memilih tiap kali (rekomendasi: admin memilih)?
+3. Perlu tombol "Arsipkan produsen" (lihat catatan di atas)?
+
+### 29.5 Keputusan user (2026-11-03)
+**Opsi A dipertahankan sementara** (snapshot saat checkout, tanpa kode baru). Pesanan lama produsen percobaan (Webane di forbis) dipindahkan/dibersihkan MANUAL oleh admin (SQL dengan ID persis setelah diagnosa) bila perlu.
+Opsi C (pesanan berjalan ikut produk) dan tombol Arsipkan produsen ditunda — dibuka lagi bila produsen sungguhan mulai memindahkan produk.
+
+
+## 30. Produk & Voucher dikelola produsen (2026-11-03)
+Halaman Produk portal **tidak lagi baca-saja**: produsen menambah, mengubah, mengarsipkan, dan menghapus produknya sendiri; menu **Voucher** baru untuk Promo Produsen.
+Aturan lengkap, keputusan K21–K29, dan status: `docs/arsitektur-produk-produsen.md` (§ 12–13). Kode: `lib/producer-products*.ts`, `lib/producer-vouchers*.ts`, `portal-produsen/{produk,voucher}/**`.
+Catatan: komentar "BACA-SAJA" pada `produk/page.tsx` dan `produk/[id]/page.tsx` di § 7 / § 17 di atas sudah usang.
