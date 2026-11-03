@@ -8,6 +8,11 @@
 
 ---
 
+## [2026-11-04] Heredoc multi-baris (`<<'SQL'`) rusak saat ditempel ke terminal user — beri perintah SATU BARIS pendek
+**Gejala:** perintah `docker compose exec ... psql <<'SQL' ... SQL` yang ditempel ke SSH user terpotong (penutup menjadi `SQ`), terminal menunggu input tak berujung dan diagnosis gagal.
+**Akar masalah:** menempel blok multi-baris ke terminal SSH tidak andal (terpotong/wrap, indentasi masuk ke heredoc).
+**Pencegahan:** untuk perintah yang user jalankan di VPS: (1) satu baris pendek dengan `psql -Atc "..."`; (2) loop ditulis satu baris dengan `</dev/null` pada `docker compose exec` (lihat lesson 2026-11-03 soal `while read`); (3) bila benar-benar panjang, jadikan skrip di repo (`scripts/…`) yang user jalankan setelah `git pull`. Jangan pernah heredoc multi-baris, dan beri tahu user menekan Ctrl+C bila terminalnya sudah menggantung.
+
 ## [2026-11-03] Modul Pengajuan Produsen — empat pola yang hampir lolos ke production
 1. **Nama bucket/objek yang diturunkan dari slug bisa bertabrakan dengan slug lain.** `tenant-{slug}-private` bertabrakan dengan bucket PUBLIK tenant bersluk `{slug}-private` (kebijakan publik-baca ikut menempel pada berkas "privat"). Fix: prefiks berbeda (`private-{slug}`) + `ensurePrivateBucket` fail-closed bila bucket sudah punya kebijakan. Pencegahan: nama sumber daya turunan slug HARUS dari namespace yang tidak bisa dibentuk oleh slug lain.
 2. **Menggabung array hasil unggahan berdasarkan POSISI membuat autosave basi menghapus data.** Klien mengirim daftar lebih pendek/urutan berbeda → foto yang baru diunggah terpotong atau menempel ke contoh yang salah. Fix: gabung per ID yang dikenal server; entri yang tak ada di kiriman klien DIPERTAHANKAN; penghapusan hanya lewat aksi hapus eksplisit; rujukan berkas hanya diubah server.
