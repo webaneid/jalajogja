@@ -254,13 +254,14 @@ export default async function AkunPage({ params }: { params: Params }) {
   const canApplyProducer = !isProducer && (await getTokoSettings(slug)).producerApplicationsEnabled;
   const directoryLinks = (
     [
+      // Paling awal + disorot warna utama tenant (ajakan bergabung harus terlihat)
+      ...(canApplyProducer ? [{ href: `${baseUrl}/akun/produsen`, icon: Factory, label: "Daftar Menjadi Produsen", desc: "Ajukan produk Anda", highlight: true }] : []),
       { href: `${baseUrl}/akun/pesantren`,   icon: BookOpen,   label: resolveEkosistemModuleLabel("pesantren", moduleLabels),   desc: "Data keterlibatan pesantren", moduleKey: "pesantren" },
       ...(isProducer ? [{ href: `/app/${slug}/portal-produsen`, icon: Factory, label: "Produsen", desc: "Dashboard produsen" }] : []),
-      ...(canApplyProducer ? [{ href: `${baseUrl}/akun/produsen`, icon: Factory, label: "Jadi Produsen", desc: "Ajukan produk Anda" }] : []),
       { href: `${baseUrl}/akun/usaha`,       icon: Building2,  label: resolveEkosistemModuleLabel("usaha", moduleLabels),       desc: "Data usaha & bisnis",         moduleKey: "usaha" },
       { href: `${baseUrl}/akun/profesional`, icon: Briefcase,  label: resolveEkosistemModuleLabel("profesional", moduleLabels), desc: "Data profesi & kredensial",   moduleKey: "profesional" },
       { href: `${baseUrl}/akun/media`,       icon: ImageIcon,  label: "Foto Saya",   desc: "Kelola foto yang Anda upload" },
-    ] as Array<{ href: string; icon: React.ElementType; label: string; desc: string; moduleKey?: EkosistemModule }>
+    ] as Array<{ href: string; icon: React.ElementType; label: string; desc: string; moduleKey?: EkosistemModule; highlight?: boolean }>
   ).filter((item) => !item.moduleKey || enabledModulesConfig[item.moduleKey]);
 
   const completeBanner = isMember && isIncomplete && (
@@ -370,13 +371,16 @@ export default async function AkunPage({ params }: { params: Params }) {
       {/* Quick links data anggota */}
       {isMember && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {directoryLinks.map(({ href, icon: Icon, label, desc }) => (
+          {directoryLinks.map(({ href, icon: Icon, label, desc, highlight }) => (
             <a key={href} href={href}
-              className="flex items-center gap-3 rounded-xl border border-border p-4 hover:border-primary/50 hover:bg-muted/40 transition-all">
-              <Icon className="h-5 w-5 text-primary shrink-0" />
+              style={highlight ? { backgroundColor: primaryColor, borderColor: primaryColor } : undefined}
+              className={highlight
+                ? "flex items-center gap-3 rounded-xl border p-4 text-white hover:opacity-90 transition-all"
+                : "flex items-center gap-3 rounded-xl border border-border p-4 hover:border-primary/50 hover:bg-muted/40 transition-all"}>
+              <Icon className={highlight ? "h-5 w-5 shrink-0" : "h-5 w-5 text-primary shrink-0"} />
               <div className="min-w-0">
                 <p className="font-medium text-sm">{label}</p>
-                <p className="text-xs text-muted-foreground truncate">{desc}</p>
+                <p className={highlight ? "text-xs text-white/80 truncate" : "text-xs text-muted-foreground truncate"}>{desc}</p>
               </div>
             </a>
           ))}
@@ -465,9 +469,13 @@ export default async function AkunPage({ params }: { params: Params }) {
         <div>
           <p className="mb-2 text-sm font-semibold">Menu Cepat</p>
           <div className="flex gap-4 overflow-x-auto pb-1">
-            {directoryLinks.map(({ href, icon: Icon, label }) => (
+            {directoryLinks.map(({ href, icon: Icon, label, highlight }) => (
               <a key={href} href={href} className="flex shrink-0 flex-col items-center gap-1.5 w-16">
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <span
+                  style={highlight ? { backgroundColor: primaryColor } : undefined}
+                  className={highlight
+                    ? "flex h-12 w-12 items-center justify-center rounded-full text-white"
+                    : "flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary"}>
                   <Icon className="h-5 w-5" />
                 </span>
                 <span className="text-center text-[11px] leading-tight text-muted-foreground">{label}</span>
