@@ -266,3 +266,6 @@ Gambar/URL asing di deskripsi, canonical/robots/OG image lewat payload, IDOR slu
 - LOW pesan "slug/SKU sudah dipakai" menjadi oracle keberadaan slug/SKU produk lain → **diterima** (trade-off UX, dibatasi rate limit; slug publik toh terlihat).
 - LOW gambar deskripsi sisipan admin (Media Library tenant) hilang bila produsen menyimpan → **dicatat** (fail-closed; admin sebaiknya tak menyisipkan gambar di deskripsi produk produsen).
 - Catatan: produsen boleh menaruh tautan `https://` eksternal di teks (bukan XSS); slug produk beku masih bisa diubah produsen — keputusan produk bila ingin dikunci.
+
+### 17.2 Koreksi K38 (2026-11-04) — akar masalah header yang sebenarnya
+`absolute inset-0` saja tidak cukup. Header form memakai `sticky top-0` di dalam `<main>` yang berpadding (`p-6`): posisi sticky mengikuti batas padding, sehingga header TURUN 1,5rem dari tepi atas dan menimpa 1,5rem teratas isi form (judul & label "HARGA & STOK"). Terukur di halaman replika (header di y=80 vs form di y=56). Perbaikan: header `shrink-0` (bukan sticky) — body di bawahnya sudah scroll sendiri; terukur header y=56, body y=105. Di dashboard admin (main tanpa padding) tidak ada perubahan perilaku.

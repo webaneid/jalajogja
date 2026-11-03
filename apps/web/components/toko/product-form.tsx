@@ -486,7 +486,9 @@ export function ProductForm({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background px-6 py-3">
+      {/* shrink-0 (bukan sticky): body di bawah sudah scroll sendiri. `sticky top-0` di dalam <main> berpadding
+          (portal produsen) menempel di batas padding → header turun 1,5rem dan menimpa isi form. */}
+      <div className="shrink-0 flex items-center justify-between border-b border-border bg-background px-6 py-3">
         <button
           type="button"
           onClick={() => router.push(producer ? producer.listHref : `/app/${slug}/toko/produk`)}
