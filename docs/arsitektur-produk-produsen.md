@@ -1,5 +1,7 @@
 # Arsitektur: Produsen Mengelola Produk Sendiri + Voucher Dua Jenis + Model Bagi Hasil
 
+> **STATUS AKHIR (2026-11-04):** seluruh isi dokumen ini (K18–K40: produk, voucher, bagi hasil, pembekuan, form bersama, gratis ongkir produsen, filter admin) KODE SELESAI & DEPLOYED. Keputusan terbuka tersisa: tidak ada yang memblokir. Pencairan: `docs/arsitektur-pencairan-produsen.md`; dashboard: `docs/arsitektur-portal-produsen.md` § 29.
+
 > **Status: KEPUTUSAN TERKUNCI 2026-11-03 (§ 12) — eksekusi per PR.** Ditulis SEBELUM eksekusi sesuai aturan kerja proyek.
 > Arahan user: produsen boleh **mengunggah, mengubah, dan menghapus produknya sendiri, KECUALI produk yang sudah ada pemesannya**;
 > voucher ada dua jenis (promo tenant vs. promo produsen); bagi hasil ditanggung bersama (K18); rencana dipecah menjadi beberapa PR/fase agar commit konsisten.

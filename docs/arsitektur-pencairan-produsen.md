@@ -1,4 +1,6 @@
-# Pencairan Dana Produsen — RENCANA (belum ada kode)
+# Pencairan Dana Produsen — IMPLEMENTASI SELESAI & DEPLOYED (2026-11-04)
+
+> **STATUS AKHIR:** kode selesai, migration 0095–0097 dan 2 cron dijalankan di VPS, sapuan terverifikasi. Bacaan cepat: § 13 (keputusan implementasi, runbook, audit), § 13.7–13.8 (temuan deploy: antrean sapuan & pesanan model lama). Bagian § 1–12 di bawah = rencana/keputusan asal (tetap benar sebagai alasan desain). Belum: C1c (pelacakan RajaOngkir), laporan Keuangan yang memisahkan Hutang Produsen, refund otomatis.
 
 > Status: **RENCANA 2026-11-04** — keputusan D1–D8 + jawaban T1–T6 (putaran 2) sudah masuk; SEMUA pertanyaan terjawab (T7–T8, D12) — siap mulai C1 bila user bilang mulai.
 > Konteks: bagi hasil K18–K25 di `docs/arsitektur-produk-produsen.md`; pengiriman per produsen ADR-0005; keuangan `docs/arsitektur-keuangan.md`;
