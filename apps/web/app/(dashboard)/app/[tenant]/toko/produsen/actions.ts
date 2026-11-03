@@ -357,8 +357,15 @@ export async function setProducerSharePercentAction(slug: string, producerId: st
       if (upd.length === 0) return null;
       const synced = await tx.update(schema.products)
         .set({ price: sql`ROUND(${schema.products.publicPrice} * (100 - ${p.toFixed(2)}::numeric) / 100, 2)`, updatedAt: new Date() })
-        .where(and(eq(schema.products.producerId, producerId), isNull(schema.products.mitraId), eq(schema.products.productType, "simple"), isNotNull(schema.products.publicPrice)))
+        .where(and(eq(schema.products.producerId, producerId), isNull(schema.products.mitraId), isNotNull(schema.products.publicPrice)))
         .returning({ id: schema.products.id });
+      // K33: variasi yang punya harga jual SENDIRI ikut dihitung ulang (yang kosong mengikuti harga induk, tidak disimpan).
+      await tx.update(schema.productVariations)
+        .set({ price: sql`ROUND(${schema.productVariations.publicPrice} * (100 - ${p.toFixed(2)}::numeric) / 100, 2)` })
+        .where(and(
+          isNotNull(schema.productVariations.publicPrice),
+          sql`${schema.productVariations.productId} IN (SELECT ${schema.products.id} FROM ${schema.products} WHERE ${schema.products.producerId} = ${producerId} AND ${schema.products.mitraId} IS NULL)`,
+        ));
       return synced.length;
     });
     if (out === null) return { success: false, error: "Produsen tidak ditemukan." };

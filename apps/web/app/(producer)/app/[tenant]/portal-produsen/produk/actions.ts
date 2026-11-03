@@ -60,7 +60,7 @@ export async function setProducerProductStatusAction(slug: string, productId: st
   const access = await getProducerAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
   if (typeof productId !== "string" || !isValidUuid(productId)) return { success: false, error: "Produk tidak ditemukan." };
-  if (status !== "active" && status !== "archived") return { success: false, error: "Status tidak valid." };
+  if (status !== "draft" && status !== "active" && status !== "archived") return { success: false, error: "Status tidak valid." };
   try {
     const res = await setProducerProductStatus(access, productId, status);
     if (!res.ok) return { success: false, error: res.error };

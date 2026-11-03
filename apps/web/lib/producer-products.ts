@@ -9,6 +9,12 @@ export const PRODUCER_PRODUCT_LIMITS = {
   altMax:         160,
   imagesMin:      1,
   imagesMax:      8,
+  variationsMax:  100,
+  variationImagesMax: 4,
+  attributeGroupsMax: 3,
+  attributeValuesMax: 20,
+  attributeNameMax:   40,
+  skuMax:         64,
   priceMax:       1_000_000_000,   // Rp1 miliar per unit — batas kewajaran, bukan aturan bisnis
   stockMax:       1_000_000,
   weightMaxGram:  200_000,         // 200 kg
@@ -17,6 +23,24 @@ export const PRODUCER_PRODUCT_LIMITS = {
 /** Satu foto dalam input: HANYA id Media Library anggota + alt. URL/varian di-resolve server dari baris DB. */
 export type ProducerProductImageInput = { mediaId: string; alt: string };
 
+/** Status yang boleh dipilih produsen (K32). `frozen` hanya admin (K30). */
+export const PRODUCER_SELECTABLE_STATUSES = ["draft", "active", "archived"] as const;
+export type ProducerSelectableStatus = typeof PRODUCER_SELECTABLE_STATUSES[number];
+
+/** Satu variasi dalam input. Kosong (null) = ikut produk induk — logika sama dengan form admin (K33). */
+export type ProducerVariationInput = {
+  id:             string | null;          // id variasi yang sudah ada (milik produk ini) atau null = baru
+  sku:            string | null;
+  publicPrice:    number | null;          // null = ikut harga jual induk
+  memberPrice:    number | null;          // null = ikut harga anggota induk
+  stock:          number;
+  weightGram:     number | null;          // null = ikut berat induk
+  images:         ProducerProductImageInput[];
+  attributeCombo: Record<string, string>;
+  isActive:       boolean;
+};
+export type ProducerAttributeGroup = { name: string; values: string[] };
+
 export type ProducerProductInput = {
   name:        string;
   description: string;                       // JSON Tiptap ("" = kosong)
@@ -24,8 +48,13 @@ export type ProducerProductInput = {
   images:      ProducerProductImageInput[];  // urutan = urutan tampil; [0] = foto utama
   publicPrice: number;                       // harga jual publik (wajib)
   memberPrice: number | null;                // null = sama dengan publik
-  stock:       number;
+  stock:       number;                       // produk bervariasi: diabaikan (stok = Σ stok variasi aktif)
   weightGram:  number;                       // WAJIB (ongkir)
+  status:      ProducerSelectableStatus;     // K32: bawaan draft; produsen sendiri yang mengubah ke aktif
+  originId:    string | null;                // gudang MILIK produsen; kepemilikan diverifikasi server
+  productType: "simple" | "variable";
+  attributeGroups: ProducerAttributeGroup[]; // [] bila simple
+  variations:  ProducerVariationInput[];     // [] bila simple
 };
 
 type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -106,6 +135,103 @@ export function sanitizeDescription(raw: string): { ok: true; value: string } | 
   return { ok: true, value: JSON.stringify(cleaned) };
 }
 
+
+function parseImages(raw: unknown, max: number): Parsed<ProducerProductImageInput[]> {
+  if (!Array.isArray(raw)) return { ok: false, error: "Foto produk tidak valid." };
+  if (raw.length > max) return { ok: false, error: `Maksimal ${max} foto.` };
+  const out: ProducerProductImageInput[] = [];
+  const seen = new Set<string>();
+  for (const it of raw) {
+    if (!isRecord(it) || typeof it.mediaId !== "string" || !isValidUuid(it.mediaId)) return { ok: false, error: "Foto produk tidak valid." };
+    if (seen.has(it.mediaId)) return { ok: false, error: "Foto yang sama dipilih lebih dari sekali." };
+    seen.add(it.mediaId);
+    out.push({ mediaId: it.mediaId, alt: typeof it.alt === "string" ? it.alt.trim().slice(0, PRODUCER_PRODUCT_LIMITS.altMax) : "" });
+  }
+  return { ok: true, value: out };
+}
+
+function parseAttributeGroups(raw: unknown): Parsed<ProducerAttributeGroup[]> {
+  const L = PRODUCER_PRODUCT_LIMITS;
+  if (!Array.isArray(raw) || raw.length === 0) return { ok: false, error: "Produk bervariasi butuh minimal satu atribut (mis. Ukuran)." };
+  if (raw.length > L.attributeGroupsMax) return { ok: false, error: `Maksimal ${L.attributeGroupsMax} atribut.` };
+  const out: ProducerAttributeGroup[] = [];
+  const names = new Set<string>();
+  for (const g of raw) {
+    if (!isRecord(g) || typeof g.name !== "string" || !Array.isArray(g.values)) return { ok: false, error: "Atribut tidak valid." };
+    const name = g.name.trim().replace(/\s+/g, " ");
+    if (!name || name.length > L.attributeNameMax) return { ok: false, error: "Nama atribut tidak valid." };
+    if (names.has(name.toLowerCase())) return { ok: false, error: "Nama atribut tidak boleh sama." };
+    names.add(name.toLowerCase());
+    const values: string[] = [];
+    for (const v of g.values) {
+      if (typeof v !== "string") return { ok: false, error: "Nilai atribut tidak valid." };
+      const val = v.trim().replace(/\s+/g, " ");
+      if (!val || val.length > L.attributeNameMax) return { ok: false, error: "Nilai atribut tidak valid." };
+      if (!values.some((x) => x.toLowerCase() === val.toLowerCase())) values.push(val);
+    }
+    if (values.length === 0) return { ok: false, error: `Atribut "${name}" butuh minimal satu nilai.` };
+    if (values.length > L.attributeValuesMax) return { ok: false, error: `Atribut "${name}" maksimal ${L.attributeValuesMax} nilai.` };
+    out.push({ name, values });
+  }
+  return { ok: true, value: out };
+}
+
+function parseVariations(raw: unknown, groups: ProducerAttributeGroup[], parentPublic: number): Parsed<ProducerVariationInput[]> {
+  const L = PRODUCER_PRODUCT_LIMITS;
+  if (!Array.isArray(raw) || raw.length === 0) return { ok: false, error: "Produk bervariasi butuh minimal satu variasi." };
+  if (raw.length > L.variationsMax) return { ok: false, error: `Maksimal ${L.variationsMax} variasi.` };
+  const out: ProducerVariationInput[] = [];
+  const combos = new Set<string>();
+  const ids = new Set<string>();
+  for (const v of raw) {
+    if (!isRecord(v)) return { ok: false, error: "Variasi tidak valid." };
+    let id: string | null = null;
+    if (v.id !== null && v.id !== undefined && v.id !== "") {
+      if (typeof v.id !== "string" || !isValidUuid(v.id)) return { ok: false, error: "Variasi tidak valid." };
+      if (ids.has(v.id)) return { ok: false, error: "Variasi ganda." };
+      ids.add(v.id); id = v.id;
+    }
+    // Kombinasi atribut: persis satu nilai per atribut, dan nilainya harus ada di daftar atribut.
+    if (!isRecord(v.attributeCombo)) return { ok: false, error: "Kombinasi variasi tidak valid." };
+    const combo: Record<string, string> = {};
+    for (const g of groups) {
+      const val = v.attributeCombo[g.name];
+      if (typeof val !== "string" || !g.values.includes(val)) return { ok: false, error: "Kombinasi variasi tidak sesuai atribut." };
+      combo[g.name] = val;
+    }
+    if (Object.keys(v.attributeCombo).length !== groups.length) return { ok: false, error: "Kombinasi variasi tidak sesuai atribut." };
+    const key = JSON.stringify(groups.map((g) => combo[g.name]));
+    if (combos.has(key)) return { ok: false, error: "Ada kombinasi variasi yang sama." };
+    combos.add(key);
+
+    let sku: string | null = null;
+    if (typeof v.sku === "string" && v.sku.trim() !== "") { sku = v.sku.trim(); if (sku.length > L.skuMax) return { ok: false, error: "SKU variasi terlalu panjang." }; }
+
+    let publicPrice: number | null = null;
+    if (v.publicPrice !== null && v.publicPrice !== undefined && v.publicPrice !== "") {
+      publicPrice = toMoney(v.publicPrice);
+      if (publicPrice === null || !(publicPrice > 0) || publicPrice > L.priceMax) return { ok: false, error: "Harga jual variasi tidak valid." };
+    }
+    let memberPrice: number | null = null;
+    if (v.memberPrice !== null && v.memberPrice !== undefined && v.memberPrice !== "") {
+      memberPrice = toMoney(v.memberPrice);
+      if (memberPrice === null || !(memberPrice > 0)) return { ok: false, error: "Harga anggota variasi tidak valid." };
+      if (memberPrice > (publicPrice ?? parentPublic)) return { ok: false, error: "Harga anggota variasi tidak boleh lebih tinggi dari harga jualnya." };
+    }
+    const stock = toInt(v.stock);
+    if (stock === null || stock < 0 || stock > L.stockMax) return { ok: false, error: "Stok variasi harus bilangan bulat 0 atau lebih." };
+    let weightGram: number | null = null;
+    if (v.weightGram !== null && v.weightGram !== undefined && v.weightGram !== "") {
+      weightGram = toInt(v.weightGram);
+      if (weightGram === null || weightGram < 1 || weightGram > L.weightMaxGram) return { ok: false, error: "Berat variasi tidak valid." };
+    }
+    const imgs = parseImages(v.images ?? [], L.variationImagesMax);
+    if (!imgs.ok) return imgs;
+    out.push({ id, sku, publicPrice, memberPrice, stock, weightGram, images: imgs.value, attributeCombo: combo, isActive: v.isActive !== false });
+  }
+  return { ok: true, value: out };
+}
+
 export function parseProductInput(input: unknown): Parsed<ProducerProductInput> {
   if (!isRecord(input)) return { ok: false, error: "Data produk tidak valid." };
   const L = PRODUCER_PRODUCT_LIMITS;
@@ -124,18 +250,10 @@ export function parseProductInput(input: unknown): Parsed<ProducerProductInput> 
     categoryId = input.categoryId;
   }
 
-  if (!Array.isArray(input.images)) return { ok: false, error: "Foto produk tidak valid." };
-  if (input.images.length < L.imagesMin) return { ok: false, error: "Minimal 1 foto produk." };
-  if (input.images.length > L.imagesMax) return { ok: false, error: `Maksimal ${L.imagesMax} foto produk.` };
-  const images: ProducerProductImageInput[] = [];
-  const seen = new Set<string>();
-  for (const it of input.images) {
-    if (!isRecord(it) || typeof it.mediaId !== "string" || !isValidUuid(it.mediaId)) return { ok: false, error: "Foto produk tidak valid." };
-    if (seen.has(it.mediaId)) return { ok: false, error: "Foto yang sama dipilih lebih dari sekali." };
-    seen.add(it.mediaId);
-    const alt = typeof it.alt === "string" ? it.alt.trim().slice(0, L.altMax) : "";
-    images.push({ mediaId: it.mediaId, alt });
-  }
+  const imgRes = parseImages(input.images, L.imagesMax);
+  if (!imgRes.ok) return imgRes;
+  if (imgRes.value.length < L.imagesMin) return { ok: false, error: "Minimal 1 foto produk." };
+  const images = imgRes.value;
 
   const publicPrice = toMoney(input.publicPrice);
   if (publicPrice === null || !(publicPrice > 0)) return { ok: false, error: "Harga jual wajib diisi." };
@@ -155,7 +273,35 @@ export function parseProductInput(input: unknown): Parsed<ProducerProductInput> 
   if (weightGram === null || weightGram < 1) return { ok: false, error: "Berat (gram) wajib diisi." };
   if (weightGram > L.weightMaxGram) return { ok: false, error: "Berat terlalu besar." };
 
-  return { ok: true, value: { name, description, categoryId, images, publicPrice, memberPrice, stock, weightGram } };
+  // K32: status bawaan draft; produsen hanya boleh draft/aktif/arsip (frozen = hanya admin).
+  let status: ProducerSelectableStatus = "draft";
+  if (input.status !== undefined && input.status !== null) {
+    if (typeof input.status !== "string" || !(PRODUCER_SELECTABLE_STATUSES as readonly string[]).includes(input.status)) return { ok: false, error: "Status tidak valid." };
+    status = input.status as ProducerSelectableStatus;
+  }
+
+  let originId: string | null = null;
+  if (input.originId !== null && input.originId !== undefined && input.originId !== "") {
+    if (typeof input.originId !== "string" || !isValidUuid(input.originId)) return { ok: false, error: "Gudang tidak valid." };
+    originId = input.originId;
+  }
+
+  let productType: "simple" | "variable" = "simple";
+  let attributeGroups: ProducerAttributeGroup[] = [];
+  let variations: ProducerVariationInput[] = [];
+  if (input.productType === "variable") {
+    productType = "variable";
+    const g = parseAttributeGroups(input.attributeGroups);
+    if (!g.ok) return g;
+    attributeGroups = g.value;
+    const v = parseVariations(input.variations, attributeGroups, publicPrice);
+    if (!v.ok) return v;
+    variations = v.value;
+  } else if (input.productType !== undefined && input.productType !== "simple") {
+    return { ok: false, error: "Tipe produk tidak valid." };
+  }
+
+  return { ok: true, value: { name, description, categoryId, images, publicPrice, memberPrice, stock: productType === "variable" ? 0 : stock, weightGram, status, originId, productType, attributeGroups, variations } };
 }
 
 /**

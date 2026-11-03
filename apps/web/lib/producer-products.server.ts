@@ -5,13 +5,14 @@
 //  - Hapus (K22): ditolak bila ada pesanan LUNAS; mengubah/arsip bebas.
 //  - Foto (K28): hanya Media Library anggota pemilik produsen; dipakai-produk tidak boleh dihapus.
 import "server-only";
-import { and, eq, inArray, isNull, sql, count } from "drizzle-orm";
+import { and, eq, ne, inArray, isNull, sql, count } from "drizzle-orm";
 import { db as publicDb, createTenantDb, memberMedia, tenants } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
 import { pgErrorCode } from "@/lib/pg-error";
 import { isValidUuid } from "@/lib/is-uuid";
 import { randomUUID } from "crypto";
-import { PRODUCER_PRODUCT_LIMITS, buildProductSlug, computeBaseCost, type ProducerProductImageInput, type ProducerProductInput } from "@/lib/producer-products";
+import { PRODUCER_PRODUCT_LIMITS, buildProductSlug, computeBaseCost, type ProducerProductImageInput, type ProducerProductInput, type ProducerVariationInput } from "@/lib/producer-products";
+import { originBelongsTo } from "@/lib/shipping-origins.server";
 import { DEFAULT_PRODUCER_PRODUCT_LIMIT } from "@/lib/producer-application";
 
 type TenantDb = ReturnType<typeof createTenantDb>;
@@ -182,6 +183,81 @@ async function categoryExists(tc: TenantDb, id: string | null): Promise<boolean>
   return !!r;
 }
 
+/** Gudang: harus milik produsen ini; bila produsen punya >1 gudang, wajib dipilih (K31). null = ikut gudang utama produsen. */
+async function checkOrigin(tc: TenantDb, producerId: string, originId: string | null): Promise<string | null> {
+  if (originId) return (await originBelongsTo(tc, originId, producerId)) ? null : "Gudang tidak valid. Pilih salah satu gudang Anda.";
+  const [{ n }] = await tc.db.select({ n: count() }).from(tc.schema.shippingOrigins).where(eq(tc.schema.shippingOrigins.producerId, producerId));
+  return Number(n) > 1 ? "Pilih gudang pengiriman produk ini." : null;
+}
+
+/**
+ * Gabungkan foto input dengan foto yang SUDAH ada: yang sudah ada dipertahankan apa adanya (boleh berasal dari Media Library
+ * tenant, dipasang admin); yang baru WAJIB milik anggota pemilik produsen. Urutan dan alt mengikuti input. null = ada foto tidak sah.
+ */
+async function mergeImages(memberId: string, currentRaw: unknown, input: ProducerProductImageInput[]): Promise<StoredProductImage[] | null> {
+  const current = new Map((Array.isArray(currentRaw) ? currentRaw : []).map((i) => [(i as StoredProductImage).id, i as StoredProductImage]));
+  const fresh = input.filter((i) => !current.has(i.mediaId));
+  const freshResolved = fresh.length ? await resolveProductImages(memberId, fresh) : [];
+  if (!freshResolved) return null;
+  const freshById = new Map(freshResolved.map((i) => [i.id, i]));
+  return input.map((it, order) => ({ ...(current.get(it.mediaId) ?? freshById.get(it.mediaId)!), alt: it.alt, order }));
+}
+
+type TxLike = { db: TenantDb["db"]; schema: TenantDb["schema"] };
+
+/**
+ * Simpan variasi (K33) — diff-upsert seperti admin: variasi yang masih dikirim dipertahankan UUID-nya (keranjang pembeli tidak yatim).
+ * Harga dasar variasi DIHITUNG server: bila variasi punya harga jual sendiri → jual × (100 − persen)/100; bila kosong → null (ikut induk).
+ * Hanya variasi MILIK produk ini yang disentuh (id lain diperlakukan sebagai baru).
+ */
+async function saveVariations(
+  tx: TxLike, productId: string, sharePercent: number, memberId: string,
+  variations: ProducerVariationInput[], images: Map<number, StoredProductImage[]>,
+): Promise<void> {
+  const V = tx.schema.productVariations;
+  const existing = await tx.db.select({ id: V.id }).from(V).where(eq(V.productId, productId));
+  const existingIds = new Set(existing.map((r) => r.id));
+  const keep = new Set(variations.filter((v) => v.id && existingIds.has(v.id)).map((v) => v.id!));
+  const drop = [...existingIds].filter((id) => !keep.has(id));
+  if (drop.length) await tx.db.delete(V).where(and(eq(V.productId, productId), inArray(V.id, drop)));
+  void memberId;
+  for (let i = 0; i < variations.length; i++) {
+    const v = variations[i];
+    const values = {
+      productId,
+      sku:            v.sku,
+      price:          v.publicPrice !== null ? computeBaseCost(v.publicPrice, sharePercent).toFixed(2) : null,
+      publicPrice:    v.publicPrice !== null ? v.publicPrice.toFixed(2) : null,
+      memberPrice:    v.memberPrice !== null ? v.memberPrice.toFixed(2) : null,
+      stock:          v.stock,
+      weightGram:     v.weightGram,
+      images:         images.get(i) ?? [],
+      attributeCombo: v.attributeCombo,
+      isActive:       v.isActive,
+    };
+    if (v.id && existingIds.has(v.id)) await tx.db.update(V).set(values).where(and(eq(V.id, v.id), eq(V.productId, productId)));
+    else await tx.db.insert(V).values(values);
+  }
+}
+
+/** Foto tiap variasi: yang lama dipertahankan, yang baru wajib milik anggota. null = ada foto tidak sah. */
+async function resolveVariationImages(memberId: string, productId: string | null, tc: TenantDb, variations: ProducerVariationInput[]): Promise<Map<number, StoredProductImage[]> | null> {
+  const currentById = new Map<string, unknown>();
+  if (productId) {
+    const rows = await tc.db.select({ id: tc.schema.productVariations.id, images: tc.schema.productVariations.images })
+      .from(tc.schema.productVariations).where(eq(tc.schema.productVariations.productId, productId));
+    for (const r of rows) currentById.set(r.id, r.images);
+  }
+  const out = new Map<number, StoredProductImage[]>();
+  for (let i = 0; i < variations.length; i++) {
+    const v = variations[i];
+    const merged = await mergeImages(memberId, v.id ? currentById.get(v.id) : [], v.images);
+    if (!merged) return null;
+    out.set(i, merged);
+  }
+  return out;
+}
+
 export async function createProducerProduct(access: ProducerAccessLite, input: ProducerProductInput): Promise<{ ok: true; productId: string } | { ok: false; error: string }> {
   const tc = createTenantDb(access.tenant.slug);
   const com = await requireCommercials(tc, access.producer.id);
@@ -189,14 +265,19 @@ export async function createProducerProduct(access: ProducerAccessLite, input: P
 
   const images = await resolveProductImages(com.c.memberId, input.images);
   if (!images) return { ok: false, error: "Foto tidak valid. Pilih foto dari Media Library Anda sendiri." };
+  const varImages = await resolveVariationImages(com.c.memberId, null, tc, input.variations);
+  if (!varImages) return { ok: false, error: "Foto variasi tidak valid. Pilih foto dari Media Library Anda sendiri." };
   if (!(await categoryExists(tc, input.categoryId))) return { ok: false, error: "Kategori tidak ditemukan." };
+  const originErr = await checkOrigin(tc, access.producer.id, input.originId);
+  if (originErr) return { ok: false, error: originErr };
 
   const P = tc.schema.products;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const out = await tc.db.transaction(async (tx) => {
         await tx.execute(lockProducer(access.producer.id));
-        const over = await assertWithinLimit({ db: tx as unknown as TenantDb["db"], schema: tc.schema }, access.producer.id, com.c.productLimit);
+        const txl = { db: tx as unknown as TenantDb["db"], schema: tc.schema };
+        const over = await assertWithinLimit(txl, access.producer.id, com.c.productLimit);
         if (over) return { error: over, id: undefined as string | undefined };
         const [row] = await tx.insert(P).values({
           slug:        buildProductSlug(input.name, randomUUID().slice(0, 8)),
@@ -205,14 +286,17 @@ export async function createProducerProduct(access: ProducerAccessLite, input: P
           price:       computeBaseCost(input.publicPrice, com.c.sharePercent).toFixed(2),   // K24: read-only, bukan input
           publicPrice: input.publicPrice.toFixed(2),
           memberPrice: input.memberPrice !== null ? input.memberPrice.toFixed(2) : null,
-          stock:       input.stock,
+          stock:       input.productType === "variable" ? 0 : input.stock,
           weightGram:  input.weightGram,
+          originId:    input.originId,
           images,
           categoryId:  input.categoryId,
           producerId:  access.producer.id,         // dari SESI
-          status:      "active",                   // K21
-          productType: "simple",
+          status:      input.status,               // K32: bawaan draft, produsen sendiri yang menayangkan
+          productType: input.productType,
+          attributeGroups: input.productType === "variable" ? input.attributeGroups : null,
         }).returning({ id: P.id });
+        if (input.productType === "variable") await saveVariations(txl, row.id, com.c.sharePercent, com.c.memberId, input.variations, varImages);
         return { error: undefined as string | undefined, id: row.id as string | undefined };
       });
       if (out.error || !out.id) return { ok: false, error: out.error ?? "Gagal membuat produk." };
@@ -235,57 +319,62 @@ export async function updateProducerProduct(access: ProducerAccessLite, productI
   if (!com.ok) return com;
   const row = await requireOwnedProduct(tc, access.producer.id, productId);
   if (!row) return NOT_FOUND;
-  if (row.productType === "variable") return { ok: false, error: "Produk bervariasi belum bisa diubah dari portal. Hubungi pengurus." };
 
-  // Foto: yang SUDAH ada di produk ini dipertahankan apa adanya (boleh berasal dari Media Library tenant, dipasang admin);
-  // yang baru WAJIB milik anggota pemilik produsen. Urutan dan alt mengikuti input.
-  const current = new Map((Array.isArray(row.images) ? row.images : []).map((i) => [(i as StoredProductImage).id, i as StoredProductImage]));
-  const fresh = input.images.filter((i) => !current.has(i.mediaId));
-  const freshResolved = fresh.length ? await resolveProductImages(com.c.memberId, fresh) : [];
-  if (!freshResolved) return { ok: false, error: "Foto tidak valid. Pilih foto dari Media Library Anda sendiri." };
-  const freshById = new Map(freshResolved.map((i) => [i.id, i]));
-  const images: StoredProductImage[] = input.images.map((it, order) => {
-    const base = current.get(it.mediaId) ?? freshById.get(it.mediaId)!;
-    return { ...base, alt: it.alt, order };
-  });
-
+  const images = await mergeImages(com.c.memberId, row.images, input.images);
+  if (!images) return { ok: false, error: "Foto tidak valid. Pilih foto dari Media Library Anda sendiri." };
+  const varImages = await resolveVariationImages(com.c.memberId, productId, tc, input.variations);
+  if (!varImages) return { ok: false, error: "Foto variasi tidak valid. Pilih foto dari Media Library Anda sendiri." };
   if (!(await categoryExists(tc, input.categoryId))) return { ok: false, error: "Kategori tidak ditemukan." };
+  const originErr = await checkOrigin(tc, access.producer.id, input.originId);
+  if (originErr) return { ok: false, error: originErr };
 
   const P = tc.schema.products;
-  const upd = await tc.db.update(P).set({
-    name:        input.name,
-    description: input.description || null,
-    price:       computeBaseCost(input.publicPrice, com.c.sharePercent).toFixed(2),   // K24: dihitung ulang dari persentase TERKINI
-    publicPrice: input.publicPrice.toFixed(2),
-    memberPrice: input.memberPrice !== null ? input.memberPrice.toFixed(2) : null,
-    stock:       input.stock,
-    weightGram:  input.weightGram,
-    images,
-    categoryId:  input.categoryId,
-    updatedAt:   new Date(),
-  }).where(and(eq(P.id, productId), eq(P.producerId, access.producer.id), isNull(P.mitraId))).returning({ id: P.id });
-  return upd.length ? { ok: true } : NOT_FOUND;
+  return tc.db.transaction(async (tx) => {
+    const txl = { db: tx as unknown as TenantDb["db"], schema: tc.schema };
+    const [cur] = await tx.select({ id: P.id, status: P.status }).from(P)
+      .where(and(eq(P.id, productId), eq(P.producerId, access.producer.id), isNull(P.mitraId))).for("update").limit(1);
+    if (!cur) return NOT_FOUND;
+    const upd = await tx.update(P).set({
+      name:        input.name,
+      description: input.description || null,
+      price:       computeBaseCost(input.publicPrice, com.c.sharePercent).toFixed(2),   // K24: dihitung ulang dari persentase TERKINI
+      publicPrice: input.publicPrice.toFixed(2),
+      memberPrice: input.memberPrice !== null ? input.memberPrice.toFixed(2) : null,
+      stock:       input.productType === "variable" ? 0 : input.stock,
+      weightGram:  input.weightGram,
+      originId:    input.originId,
+      images,
+      categoryId:  input.categoryId,
+      productType: input.productType,
+      attributeGroups: input.productType === "variable" ? input.attributeGroups : null,
+      // K30: produk yang dibekukan admin TIDAK berubah statusnya dari sini (isi tetap boleh diperbaiki).
+      ...(cur.status === "frozen" ? {} : { status: input.status }),
+      updatedAt:   new Date(),
+    }).where(and(eq(P.id, productId), eq(P.producerId, access.producer.id), isNull(P.mitraId))).returning({ id: P.id });
+    if (!upd.length) return NOT_FOUND;
+    if (input.productType === "variable") await saveVariations(txl, productId, com.c.sharePercent, com.c.memberId, input.variations, varImages);
+    else await tx.delete(tc.schema.productVariations).where(eq(tc.schema.productVariations.productId, productId));   // kembali jadi produk sederhana
+    return { ok: true as const };
+  });
 }
 
-/** Arsip ⇄ aktif. Tidak perlu cek batas: arsip tetap dihitung (K26), jadi mengaktifkan kembali tidak menambah hitungan. */
-export async function setProducerProductStatus(access: ProducerAccessLite, productId: string, status: "active" | "archived"): Promise<{ ok: true } | Fail> {
-  if (status !== "active" && status !== "archived") return { ok: false, error: "Status tidak valid." };
+/**
+ * Ubah status antar draft / aktif / arsip (K32 — produsen menayangkan sendiri, seperti admin). Tidak perlu cek batas: semua status
+ * dihitung (K26). Produk 'frozen' (dibekukan admin, K30) TIDAK bisa diubah dari sini (juga tak bisa dibekukan oleh produsen).
+ */
+export async function setProducerProductStatus(access: ProducerAccessLite, productId: string, status: "draft" | "active" | "archived"): Promise<{ ok: true } | Fail> {
+  if (status !== "draft" && status !== "active" && status !== "archived") return { ok: false, error: "Status tidak valid." };
   const tc = createTenantDb(access.tenant.slug);
   const com = await getProducerCommercials(tc, access.producer.id);
   if (!com || !com.isActive) return { ok: false, error: "Akun produsen tidak aktif." };
   const P = tc.schema.products;
-  // Transisi yang diizinkan HANYA active ⇄ archived. Produk berstatus draft (dipasang admin) tidak bisa ditayangkan produsen:
-  // statusnya ditentukan admin. Produk 'frozen' (dibekukan admin, K30) tidak
-  // cocok dengan `from` mana pun sehingga tak bisa dibalik dari sini; lihat docs/arsitektur-produk-produsen.md § 14.
-  const from = status === "archived" ? "active" : "archived";
-  const upd = await tc.db.update(P).set({ status, updatedAt: new Date() })
-    .where(and(eq(P.id, productId), eq(P.producerId, access.producer.id), isNull(P.mitraId), eq(P.status, from))).returning({ id: P.id });
+  const mine = and(eq(P.id, productId), eq(P.producerId, access.producer.id), isNull(P.mitraId));
+  const upd = await tc.db.update(P).set({ status, updatedAt: new Date() }).where(and(mine, ne(P.status, "frozen"))).returning({ id: P.id });
   if (upd.length) return { ok: true };
-  const [cur] = await tc.db.select({ status: P.status }).from(P).where(and(eq(P.id, productId), eq(P.producerId, access.producer.id), isNull(P.mitraId))).limit(1);
+  const [cur] = await tc.db.select({ status: P.status }).from(P).where(mine).limit(1);
   if (!cur) return NOT_FOUND;
-  if (cur.status === status) return { ok: true };   // sudah di status itu (klik ganda / dua tab) — idempoten
-  if (cur.status === "frozen") return { ok: false, error: "Produk ini dibekukan pengurus sehingga tidak bisa diaktifkan atau diarsipkan dari portal. Hubungi pengurus." };
-  return { ok: false, error: "Status produk ini tidak bisa diubah dari portal. Hubungi pengurus." };
+  if (cur.status === "frozen") return { ok: false, error: "Produk ini dibekukan pengurus sehingga statusnya tidak bisa diubah dari portal. Hubungi pengurus." };
+  return NOT_FOUND;
 }
 
 /** Hapus: ditolak bila ada pesanan LUNAS (cukup arsipkan). Menghapus membebaskan 1 slot (K26). */
