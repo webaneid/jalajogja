@@ -128,6 +128,12 @@ try {
   ok("sapuan: baru 3 hari tanpa konfirmasi → belum selesai", (await done(recent.lineIds[0])).completedAt === null && (await ledgerOf(recent.lineIds[0])).length === 0);
   ok("sapuan: sudah dikonfirmasi pembeli → selesai (sumber buyer)", (await done(conf.lineIds[0])).completionSource === "buyer");
   ok("sapuan: persen tak tercatat dilaporkan (blocked), tidak dikreditkan", (sw.blocked.persentase_tidak_tercatat ?? 0) >= 1 && (await done(oldNull.lineIds[0])).completedAt === null);
+  // Kelaparan antrean: pengiriman TANPA persentase yang lebih tua tidak boleh menghabiskan batas jalan dan menghalangi yang valid
+  const starveNull = await mkInvoice("paid", [{ producerId: pA, unit: 10000, percent: null }], [{ producerId: pA, cost: 0, shippedAt: new Date(Date.now() - 30 * DAY) }]);
+  const starveOk = await mkInvoice("paid", [{ producerId: pA, unit: 10000 }], [{ producerId: pA, cost: 500, shippedAt: new Date(Date.now() - 20 * DAY) }]);
+  const swLim = await sweepProducerSettlements(tc, { limit: 1 });
+  ok("sapuan: pengiriman tanpa persentase yang lebih tua TIDAK menghabiskan batas (yang valid tetap selesai)", (await done(starveOk.lineIds[0])).completedAt !== null && (await done(starveNull.lineIds[0])).completedAt === null, JSON.stringify(swLim));
+  ok("sapuan: yang tanpa persentase tetap dilaporkan (dihitung terpisah, tanpa batas)", (swLim.blocked.persentase_tidak_tercatat ?? 0) >= 2);
   const sw2 = await sweepProducerSettlements(tc, { limit: 500 });
   ok("sapuan: dijalankan ulang tidak membuat kredit ganda", sw2.completed === 0 && (await ledgerOf(old.lineIds[0])).length === 2);
 

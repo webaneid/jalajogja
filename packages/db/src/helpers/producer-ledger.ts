@@ -203,16 +203,23 @@ export async function sweepProducerSettlements(tc: TenantDb, opts: { limit?: num
   const { db, schema: s } = tc;
   const now = opts.now ?? new Date();
   const cutoff = new Date(now.getTime() - AUTO_COMPLETE_DAYS * 24 * 60 * 60 * 1000);
+  // Pengiriman yang barisnya TANPA persentase tersimpan (pesanan lama sebelum snapshot bagi hasil) TIDAK dipilih: tak bisa dikreditkan otomatis dan —
+  // bila ikut dipilih — mereka (terlama dulu) menghabiskan batas per jalan sehingga pengiriman valid yang lebih baru tak pernah terproses.
+  // Jumlahnya tetap DILAPORKAN lewat `blocked.persentase_tidak_tercatat` (dihitung terpisah, tanpa batas).
+  const noPercent = sql`EXISTS (SELECT 1 FROM ${s.invoiceItems} ii WHERE ii.invoice_id = ${s.invoiceShippingLines.invoiceId} AND ii.producer_id = ${s.invoiceShippingLines.producerId} AND ii.item_type = 'product' AND ii.producer_share_percent IS NULL)`;
+  const dueCond = and(
+    isNotNull(s.invoiceShippingLines.producerId), isNull(s.invoiceShippingLines.completedAt),
+    or(isNotNull(s.invoiceShippingLines.buyerConfirmedAt), and(isNotNull(s.invoiceShippingLines.shippedAt), lt(s.invoiceShippingLines.shippedAt, cutoff))),
+  );
   const rows = await db.select({ id: s.invoiceShippingLines.id, confirmed: s.invoiceShippingLines.buyerConfirmedAt })
     .from(s.invoiceShippingLines)
-    .where(and(
-      isNotNull(s.invoiceShippingLines.producerId), isNull(s.invoiceShippingLines.completedAt),
-      or(isNotNull(s.invoiceShippingLines.buyerConfirmedAt), and(isNotNull(s.invoiceShippingLines.shippedAt), lt(s.invoiceShippingLines.shippedAt, cutoff))),
-    ))
+    .where(and(dueCond, sql`NOT ${noPercent}`))
     .orderBy(sql`${s.invoiceShippingLines.shippedAt} ASC NULLS LAST`)
     .limit(opts.limit ?? 200);
 
   const out = { completed: 0, already: 0, blocked: {} as Record<string, number> };
+  const [{ n: reviewN }] = await db.select({ n: sql<number>`count(*)::int` }).from(s.invoiceShippingLines).where(and(dueCond, noPercent));
+  if (Number(reviewN) > 0) out.blocked.persentase_tidak_tercatat = Number(reviewN);
   for (const r of rows) {
     const res = await completeProducerShipment(tc, r.id, r.confirmed ? "buyer" : "auto");
     if (res.ok) { if (res.already) out.already++; else out.completed++; }
