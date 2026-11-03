@@ -15,6 +15,8 @@
 
 import { and, eq, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
 import type { TenantDb } from "../tenant-client";
+import { generateFinancialNumber } from "./finance";
+import { resolveProducerAccounts, systemActorUserId, postJournalTx, journalDate } from "./producer-accounting";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -118,13 +120,25 @@ export async function loadShipmentCredit(tc: TxLike, shippingLineId: string): Pr
 
 export type CompleteResult =
   | { ok: true; already: boolean; total: number }
-  | { ok: false; reason: "tidak_ditemukan" | "belum_lunas" | "persentase_tidak_tercatat" | "tanpa_produk" };
+  | { ok: false; reason: "tidak_ditemukan" | "belum_lunas" | "persentase_tidak_tercatat" | "tanpa_produk" | "akun_belum_dikonfigurasi" };
 
 /**
  * Selesaikan satu pengiriman produsen → buat kredit ledger. Idempoten & aman bersamaan (kunci baris + indeks unik).
  * `source` hanya mencatat asal ('buyer' bila pembeli sudah menekan konfirmasi, 'auto' = batas waktu). Tidak pernah menerima nominal dari luar.
  */
 export async function completeProducerShipment(tc: TenantDb, shippingLineId: string, source: "buyer" | "auto"): Promise<CompleteResult> {
+  // Pra-cek di luar transaksi (murah): tak perlu menghabiskan nomor jurnal untuk yang sudah selesai / terblokir.
+  const pre = await loadShipmentCredit({ db: tc.db, schema: tc.schema }, shippingLineId);
+  if (!pre) return { ok: false, reason: "tidak_ditemukan" };
+  if (pre.completedAt) return { ok: true, already: true, total: pre.total };
+  if (pre.blocker) return { ok: false, reason: pre.blocker };
+  // Pengakuan hutang (D8): bagian produsen dipindah dari Pendapatan Toko ke Hutang Produsen. Akun/aktor tak ada → TIDAK diselesaikan (dilaporkan, tidak ditebak).
+  const accts = await resolveProducerAccounts(tc.db, tc.schema);
+  const actor = await systemActorUserId(tc.db, tc.schema);
+  if (!accts.income || !accts.hutang || !actor) return { ok: false, reason: "akun_belum_dikonfigurasi" };
+  const incomeAcc: string = accts.income, hutangAcc: string = accts.hutang, actorId: string = actor;
+  const journalRef = pre.total > 0 ? await generateFinancialNumber(tc, "journal") : null;
+
   return tc.db.transaction(async (tx) => {
     const txl: TxLike = { db: tx as unknown as Db, schema: tc.schema };
     const s = tc.schema;
@@ -156,6 +170,16 @@ export async function completeProducerShipment(tc: TenantDb, shippingLineId: str
       // agar pengiriman tidak ditandai selesai dengan kredit hilang).
       const have = await tx.select({ id: s.producerLedgerEntries.id }).from(s.producerLedgerEntries).where(eq(s.producerLedgerEntries.shippingLineId, shippingLineId));
       if (have.length < rows.length) throw new Error("ledger: baris kredit tidak lengkap setelah insert");
+    }
+    if (journalRef && credit.total > 0) {
+      await postJournalTx(tx as unknown as Db, tc.schema, {
+        date: journalDate(), referenceNumber: journalRef, createdBy: actorId,
+        description: `Pengakuan hutang produsen — pengiriman ${credit.invoiceNumber ?? credit.invoiceId.slice(0, 8)} (otomatis)`,
+        entries: [
+          { accountId: incomeAcc, type: "debit",  amount: credit.total, note: "Bagian produsen (bukan pendapatan tenant)" },
+          { accountId: hutangAcc, type: "credit", amount: credit.total, note: `Hutang produsen ${credit.producerId.slice(0, 8)}` },
+        ],
+      });
     }
 
     await tx.update(s.invoiceShippingLines).set({

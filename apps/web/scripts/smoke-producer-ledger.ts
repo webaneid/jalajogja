@@ -5,7 +5,7 @@
 //
 // PENGAMAN: host DATABASE_URL harus PERSIS localhost/127.0.0.1; wajib SMOKE_I_KNOW=1; data uji bertanda "SMOKE-" dan dihapus di finally.
 import { randomUUID } from "crypto";
-import { eq, inArray, like } from "drizzle-orm";
+import { eq, inArray, like, sql } from "drizzle-orm";
 import { createTenantDb, computeLineCredit, loadShipmentCredit, completeProducerShipment, sweepProducerSettlements, getProducerBalance, listProducerShipments } from "@jalajogja/db";
 
 const isLocalHost = (h: string) => h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
@@ -94,6 +94,12 @@ try {
   const bal1 = await getProducerBalance({ db, schema: s }, pA);
   ok("saldo: sesudah selesai → Bisa dicairkan 39.300, Menunggu 0", bal1.available === 39300 && bal1.waiting === 0, JSON.stringify(bal1));
 
+  // 3b) Jurnal pengakuan hutang (D8): Dr Pendapatan / Cr Hutang Produsen = total kredit, berimbang
+  const jr = await db.select().from(s.transactions).where(like(s.transactions.description, `%${tag}-0%`));
+  const je = jr.length ? await db.select().from(s.transactionEntries).where(eq(s.transactionEntries.transactionId, jr[0].id)) : [];
+  ok("jurnal: satu jurnal pengakuan hutang untuk pengiriman A, berimbang 39.300", jr.length === 1 && je.length === 2 && je.filter((e) => e.type === "debit").reduce((a, e) => a + Number(e.amount), 0) === 39300 && je.filter((e) => e.type === "credit").reduce((a, e) => a + Number(e.amount), 0) === 39300);
+  ok("jurnal: idempoten — panggilan ulang tidak membuat jurnal kedua", (await db.select().from(s.transactions).where(like(s.transactions.description, `%${tag}-0%`))).length === 1);
+
   // 4) Balapan: 6 penyelesaian bersamaan → kredit tepat sekali
   const race = await Promise.all(Array.from({ length: 6 }, () => completeProducerShipment(tc, slB, "auto")));
   ok("balapan: semua ok, tepat satu yang membuat kredit", race.every((r) => r.ok) && race.filter((r) => r.ok && !r.already).length === 1);
@@ -136,6 +142,7 @@ try {
   })());
 } finally {
   const cleanup = async (label: string, fn: () => Promise<unknown>) => { try { await fn(); } catch (e) { console.error("cleanup", label, e instanceof Error ? e.message : e); fails++; } };
+  await cleanup("jurnal", () => db.delete(s.transactions).where(sql`${s.transactions.description} LIKE ${"%" + tag + "-%"}`));
   await cleanup("ledger", () => made.producers.length ? db.delete(s.producerLedgerEntries).where(inArray(s.producerLedgerEntries.producerId, made.producers)) : Promise.resolve());
   await cleanup("shipping", () => made.invoices.length ? db.delete(s.invoiceShippingLines).where(inArray(s.invoiceShippingLines.invoiceId, made.invoices)) : Promise.resolve());
   await cleanup("items", () => made.invoices.length ? db.delete(s.invoiceItems).where(inArray(s.invoiceItems.invoiceId, made.invoices)) : Promise.resolve());

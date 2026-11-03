@@ -1570,6 +1570,9 @@ export async function createTenantSchemaInDb(
         buyer_confirmed_at TIMESTAMPTZ,   -- pembeli menekan "Sudah diterima" (0095)
         completed_at       TIMESTAMPTZ,   -- pengiriman SELESAI → kredit saldo produsen dibuat
         completion_source  TEXT CHECK (completion_source IN ('buyer','auto')),
+        payout_hold_at     TIMESTAMPTZ,   -- TAHAN pencairan (0096)
+        payout_hold_reason TEXT,
+        payout_hold_by     UUID,
         created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
       )
@@ -1639,6 +1642,72 @@ export async function createTenantSchemaInDb(
     `));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_percent_history_producer_idx ON "${s}".producer_percent_history(producer_id, created_at)`));
 
+    // ── Rekening produsen + pengajuan pencairan (docs/arsitektur-pencairan-produsen.md § 13, migration 0096) ──
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".producer_bank_accounts (
+        id                 UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        producer_id        UUID        NOT NULL REFERENCES "${s}".producers(id) ON DELETE RESTRICT,
+        bank_code          TEXT        NOT NULL,
+        bank_name          TEXT        NOT NULL,
+        account_number_enc TEXT        NOT NULL,
+        account_last4      TEXT        NOT NULL,
+        account_holder     TEXT        NOT NULL,
+        effective_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        replaced_at        TIMESTAMPTZ,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_bank_accounts_producer_idx ON "${s}".producer_bank_accounts(producer_id, effective_at)`));
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".producer_payouts (
+        id                 UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+        number             TEXT          NOT NULL UNIQUE,
+        producer_id        UUID          NOT NULL REFERENCES "${s}".producers(id) ON DELETE RESTRICT,
+        status             TEXT          NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','approved','paid','rejected','cancelled')),
+        credits_total      NUMERIC(15,2) NOT NULL,
+        debt_total         NUMERIC(15,2) NOT NULL DEFAULT 0,
+        adjustment_total   NUMERIC(15,2) NOT NULL DEFAULT 0,
+        subtotal           NUMERIC(15,2) NOT NULL,
+        transfer_fee       NUMERIC(15,2) NOT NULL DEFAULT 0,
+        net_amount         NUMERIC(15,2),
+        bank_code          TEXT          NOT NULL,
+        bank_name          TEXT          NOT NULL,
+        account_number_enc TEXT          NOT NULL,
+        account_last4      TEXT          NOT NULL,
+        account_holder     TEXT          NOT NULL,
+        requested_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        approved_by        UUID,
+        approved_at        TIMESTAMPTZ,
+        rejected_reason    TEXT,
+        paid_by            UUID,
+        paid_at            TIMESTAMPTZ,
+        source_bank_label  TEXT,
+        proof_media_id     UUID,
+        proof_url          TEXT,
+        transaction_id     UUID          REFERENCES "${s}".transactions(id) ON DELETE SET NULL,
+        note               TEXT,
+        created_at         TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at         TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_payouts_producer_idx ON "${s}".producer_payouts(producer_id, requested_at)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_payouts_status_idx ON "${s}".producer_payouts(status)`));
+    await tx.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS producer_payouts_active_uniq ON "${s}".producer_payouts(producer_id) WHERE status IN ('requested','approved')`));
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".producer_payout_lines (
+        id                UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+        payout_id         UUID          NOT NULL REFERENCES "${s}".producer_payouts(id) ON DELETE CASCADE,
+        shipping_line_id  UUID,
+        label             TEXT          NOT NULL,
+        product_amount    NUMERIC(15,2) NOT NULL DEFAULT 0,
+        shipping_amount   NUMERIC(15,2) NOT NULL DEFAULT 0,
+        adjustment_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+        total             NUMERIC(15,2) NOT NULL,
+        sort_order        INTEGER       NOT NULL DEFAULT 0
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS producer_payout_lines_payout_idx ON "${s}".producer_payout_lines(payout_id)`));
+
     // ── 39. SEO Page Overrides (Fase 3, docs/arsitektur-seo.md § 3.3) ───────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".seo_page_overrides (
@@ -1665,6 +1734,7 @@ export async function createTenantSchemaInDb(
         ('2000', 'Kewajiban',          'liability'),
         ('2100', 'Hutang',             'liability'),
         ('2200', 'Dana Titipan',       'liability'),
+        ('2300', 'Hutang Produsen',    'liability'),
         ('2201', 'Dana Titipan Donasi','liability'),
         ('3000', 'Ekuitas',            'equity'),
         ('3100', 'Modal Organisasi',   'equity'),

@@ -31,6 +31,7 @@ import { createProducersTable } from "./producers";
 import { createProducerTermsTable, createProducerTermAcceptancesTable } from "./producer-terms";
 import { createProducerApplicationsTable } from "./producer-applications";
 import { createProducerLedgerEntriesTable, createProducerPercentHistoryTable } from "./producer-ledger";
+import { createProducerBankAccountsTable, createProducerPayoutsTable, createProducerPayoutLinesTable } from "./producer-payouts";
 import { createShippingOriginsTable } from "./shipping-origins";
 import { createProducerShipmentBatchesTable, createProducerShipmentInvoicesTable } from "./producer-shipments";
 import {
@@ -122,6 +123,9 @@ function buildTenantSchema(slug: string) {
     producerShipmentInvoices: createProducerShipmentInvoicesTable(s),
     producerLedgerEntries:    createProducerLedgerEntriesTable(s),
     producerPercentHistory:   createProducerPercentHistoryTable(s),
+    producerBankAccounts:     createProducerBankAccountsTable(s),
+    producerPayouts:          createProducerPayoutsTable(s),
+    producerPayoutLines:      createProducerPayoutLinesTable(s),
     // Settings & navigasi
     settings: createSettingsTable(s),
     menus: createMenusTable(s),
@@ -169,6 +173,7 @@ export * from "./producers";
 export * from "./producer-terms";
 export * from "./producer-applications";
 export * from "./producer-ledger";
+export * from "./producer-payouts";
 export * from "./shipping-origins";
 export * from "./producer-shipments";
 export * from "./seo";

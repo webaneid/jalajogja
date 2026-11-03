@@ -374,6 +374,10 @@ export function createInvoiceShippingLinesTable(s: ReturnType<typeof pgSchema>) 
     buyerConfirmedAt: timestamp("buyer_confirmed_at", { withTimezone: true }),
     completedAt:      timestamp("completed_at", { withTimezone: true }),
     completionSource: text("completion_source", { enum: ["buyer", "auto"] as const }),
+    // TAHAN pencairan (sengketa/dugaan resi palsu): kredit pengiriman ini tidak ikut diajukan sampai admin melepas. Hak admin keuangan.
+    payoutHoldAt:     timestamp("payout_hold_at", { withTimezone: true }),
+    payoutHoldReason: text("payout_hold_reason"),
+    payoutHoldBy:     uuid("payout_hold_by"),
     createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   }, (t) => ({
